@@ -23,17 +23,18 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v6
         with:
+          cache-dependency-path: frontend/pnpm-lock.yaml
           node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
-        working-directory: ./frontend
         run: pnpm install
+        working-directory: frontend
 
       - name: Lint
-        working-directory: ./frontend
         run: pnpm run lint
+        working-directory: frontend
 
       - name: Typecheck
-        working-directory: ./frontend
         run: pnpm run typecheck
+        working-directory: frontend
