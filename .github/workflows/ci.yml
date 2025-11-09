@@ -10,7 +10,10 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node: [22]
-
+        
+    defaults:
+      run:
+        working-directory: ./frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v5
