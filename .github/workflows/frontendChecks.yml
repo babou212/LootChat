@@ -10,10 +10,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node: [22]
-        
-    defaults:
-      run:
-        working-directory: /frontend
+  
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -28,10 +25,13 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
+        working-directory: ./frontend
         run: pnpm install
 
       - name: Lint
+        working-directory: ./frontend
         run: pnpm run lint
 
       - name: Typecheck
+        working-directory: ./frontend
         run: pnpm run typecheck
