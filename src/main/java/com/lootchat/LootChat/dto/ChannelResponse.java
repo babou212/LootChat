@@ -1,5 +1,6 @@
 package com.lootchat.LootChat.dto;
 
+import com.lootchat.LootChat.entity.ChannelType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +16,7 @@ public class ChannelResponse {
     private Long id;
     private String name;
     private String description;
+    private ChannelType channelType;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

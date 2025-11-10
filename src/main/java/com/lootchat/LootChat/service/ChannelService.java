@@ -4,6 +4,7 @@ import com.lootchat.LootChat.dto.ChannelResponse;
 import com.lootchat.LootChat.dto.CreateChannelRequest;
 import com.lootchat.LootChat.dto.UpdateChannelRequest;
 import com.lootchat.LootChat.entity.Channel;
+import com.lootchat.LootChat.entity.ChannelType;
 import com.lootchat.LootChat.repository.ChannelRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +31,7 @@ public class ChannelService {
         Channel channel = Channel.builder()
                 .name(request.getName())
                 .description(request.getDescription())
+                .channelType(request.getChannelType() != null ? request.getChannelType() : ChannelType.TEXT)
                 .build();
 
         Channel savedChannel = channelRepository.save(channel);
@@ -74,6 +76,10 @@ public class ChannelService {
             channel.setDescription(request.getDescription());
         }
 
+        if (request.getChannelType() != null) {
+            channel.setChannelType(request.getChannelType());
+        }
+
         Channel updatedChannel = channelRepository.save(channel);
         return mapToChannelResponse(updatedChannel);
     }
@@ -90,6 +96,7 @@ public class ChannelService {
                 .id(channel.getId())
                 .name(channel.getName())
                 .description(channel.getDescription())
+                .channelType(channel.getChannelType())
                 .createdAt(channel.getCreatedAt())
                 .updatedAt(channel.getUpdatedAt())
                 .build();

@@ -10,8 +10,16 @@ interface Emits {
   (e: 'selectChannel', channel: Channel): void
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const textChannels = computed(() =>
+  props.channels.filter(channel => !channel.channelType || channel.channelType === 'TEXT')
+)
+
+const voiceChannels = computed(() =>
+  props.channels.filter(channel => channel.channelType === 'VOICE')
+)
 
 const handleSelectChannel = (channel: Channel) => {
   emit('selectChannel', channel)
@@ -27,26 +35,53 @@ const handleSelectChannel = (channel: Channel) => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
-      <UButton
-        v-for="channel in channels"
-        :key="channel.id"
-        :variant="selectedChannel?.id === channel.id ? 'soft' : 'ghost'"
-        color="primary"
-        :title="channel.description"
-        class="w-full justify-between mb-1"
-        @click="handleSelectChannel(channel)"
-      >
-        <span class="flex items-center gap-2">
-          <UIcon name="i-lucide-hash" class="text-lg" />
-          {{ channel.name }}
-        </span>
-        <UBadge
-          v-if="channel.unread"
-          color="error"
-          :label="channel.unread.toString()"
-          size="xs"
-        />
-      </UButton>
+      <!-- Text Channels Section -->
+      <div class="mb-4">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2">
+          Text Channels
+        </h3>
+        <UButton
+          v-for="channel in textChannels"
+          :key="channel.id"
+          :variant="selectedChannel?.id === channel.id ? 'soft' : 'ghost'"
+          color="primary"
+          :title="channel.description"
+          class="w-full justify-between mb-1"
+          @click="handleSelectChannel(channel)"
+        >
+          <span class="flex items-center gap-2">
+            <UIcon name="i-lucide-hash" class="text-lg" />
+            {{ channel.name }}
+          </span>
+          <UBadge
+            v-if="channel.unread"
+            color="error"
+            :label="channel.unread.toString()"
+            size="xs"
+          />
+        </UButton>
+      </div>
+
+      <!-- Voice Channels Section -->
+      <div v-if="voiceChannels.length > 0">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2">
+          Voice Channels
+        </h3>
+        <UButton
+          v-for="channel in voiceChannels"
+          :key="channel.id"
+          :variant="selectedChannel?.id === channel.id ? 'soft' : 'ghost'"
+          color="primary"
+          :title="channel.description"
+          class="w-full justify-between mb-1"
+          @click="handleSelectChannel(channel)"
+        >
+          <span class="flex items-center gap-2">
+            <UIcon name="i-lucide-mic" class="text-lg" />
+            {{ channel.name }}
+          </span>
+        </UButton>
+      </div>
     </div>
   </div>
 </template>

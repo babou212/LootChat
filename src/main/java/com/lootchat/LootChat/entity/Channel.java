@@ -26,6 +26,11 @@ public class Channel {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "channel_type", nullable = false)
+    @Builder.Default
+    private ChannelType channelType = ChannelType.TEXT;
+
     @OneToMany(mappedBy = "channel", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Message> messages = new ArrayList<>();

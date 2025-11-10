@@ -59,6 +59,15 @@ NUXT_SESSION_PASSWORD=<your-password>
 
 # Tenor GIFs (optional, for GIF picker in chat input)
 NUXT_PUBLIC_TENOR_API_KEY=<your-tenor-api-key>
+
+# WebRTC TURN (optional, improves connectivity behind NAT/firewalls)
+# Comma-separated list of TURN server URLs. Examples:
+#   turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349
+NUXT_PUBLIC_WEBRTC_TURN_URLS=
+NUXT_PUBLIC_WEBRTC_TURN_USERNAME=
+NUXT_PUBLIC_WEBRTC_TURN_CREDENTIAL=
+# Set to 'relay' to force TURN only or leave default 'all'
+NUXT_PUBLIC_WEBRTC_ICE_TRANSPORT_POLICY=all
 ```
 
 > [!TIP]

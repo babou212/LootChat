@@ -15,12 +15,14 @@ VALUES
     (6, 'charlie_brown', 'charlie@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Charlie', 'Brown', 'https://api.dicebear.com/7.x/avataaars/svg?seed=charlie', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true);
 
 -- Insert channels
-INSERT INTO channels (id, name, description, created_at, updated_at) 
+INSERT INTO channels (id, name, description, channel_type, created_at, updated_at) 
 VALUES 
-    (1, 'general', 'General chat for everyone', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    (2, 'gaming', 'Discussion about gaming and strategies', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    (3, 'help', 'Ask for help and get support', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-    (4, 'off-topic', 'Random discussions and fun', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+    (1, 'general', 'General chat for everyone', 'TEXT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (2, 'gaming', 'Discussion about gaming and strategies', 'TEXT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (3, 'help', 'Ask for help and get support', 'TEXT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (4, 'off-topic', 'Random discussions and fun', 'TEXT', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (5, 'voice-lounge', 'Casual voice chat hangout', 'VOICE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    (6, 'gaming-voice', 'Voice chat for gaming sessions', 'VOICE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 
 -- Insert dummy messages
 INSERT INTO messages (id, content, user_id, channel_id, created_at, updated_at) 

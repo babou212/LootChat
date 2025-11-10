@@ -45,7 +45,13 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY,
-      apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080'
+      apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
+      // WebRTC ICE/TURN configuration (comma-separated TURN URLs, e.g. "turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349")
+      webrtcTurnUrls: process.env.NUXT_PUBLIC_WEBRTC_TURN_URLS || '',
+      webrtcTurnUsername: process.env.NUXT_PUBLIC_WEBRTC_TURN_USERNAME || '',
+      webrtcTurnCredential: process.env.NUXT_PUBLIC_WEBRTC_TURN_CREDENTIAL || '',
+      // Set to 'relay' to force TURN-only; default 'all'
+      webrtcIceTransportPolicy: (process.env.NUXT_PUBLIC_WEBRTC_ICE_TRANSPORT_POLICY || 'all') as 'all' | 'relay'
     }
   },
 

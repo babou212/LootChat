@@ -22,14 +22,10 @@ export const useWebSocket = () => {
           connectHeaders: {
             Authorization: `Bearer ${token}`
           },
-          debug: (str) => {
-            console.log('STOMP Debug:', str)
-          },
           reconnectDelay: 5000,
           heartbeatIncoming: 4000,
           heartbeatOutgoing: 4000,
           onConnect: () => {
-            console.log('WebSocket connected')
             isConnected.value = true
             connectionError.value = null
             resolve()
@@ -47,7 +43,6 @@ export const useWebSocket = () => {
             reject(new Error('WebSocket connection error'))
           },
           onDisconnect: () => {
-            console.log('WebSocket disconnected')
             isConnected.value = false
           }
         })
@@ -118,6 +113,7 @@ export const useWebSocket = () => {
     subscribeToChannel,
     subscribeToAllMessages,
     isConnected: readonly(isConnected),
-    connectionError: readonly(connectionError)
+    connectionError: readonly(connectionError),
+    getClient: () => stompClient
   }
 }
