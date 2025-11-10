@@ -32,7 +32,10 @@
   "devDependencies": {
     "@nuxt/eslint": "^1.9.0",
     "@types/node": "^24.9.1",
+    "cli-real-favicon": "^0.0.9",
     "eslint": "^9.38.0",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.2"
   },
