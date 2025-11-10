@@ -1,22 +1,27 @@
 import { useAuth } from '~/composables/useAuth'
+import type { RouteLocationNormalized } from 'vue-router'
 
-export default defineNuxtRouteMiddleware((to) => {
-  const { isAuthenticated } = useAuth()
+interface PublicRouteMeta { public?: boolean }
 
-  // Public routes that don't require authentication
-  const publicRoutes = ['/login']
+export default defineNuxtRouteMiddleware((to: RouteLocationNormalized) => {
+  const { isAuthenticated, user } = useAuth()
+  const authToken = useCookie<string | null>('auth_token')
 
-  // If route is public, allow access
-  if (publicRoutes.includes(to.path)) {
-    // If already authenticated, redirect to home
-    if (isAuthenticated.value) {
-      return navigateTo('/')
-    }
-    return
+  const publicRoutes = new Set<string>(['/login'])
+  const meta = to.meta as PublicRouteMeta
+  const isPublic = publicRoutes.has(to.path) || meta.public === true
+
+  if (isPublic) return
+
+  if (!isAuthenticated.value && !authToken.value) {
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
 
-  // Protected routes - redirect to login if not authenticated
-  if (!isAuthenticated.value) {
-    return navigateTo('/login')
+  const routeUsername = (to.params?.username as string | undefined) || undefined
+  if (routeUsername) {
+    const currentUsername = user.value?.username
+    if (!currentUsername || currentUsername !== routeUsername) {
+      return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
+    }
   }
 })

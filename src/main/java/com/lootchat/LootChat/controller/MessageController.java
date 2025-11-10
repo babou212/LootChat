@@ -20,7 +20,7 @@ public class MessageController {
 
     @PostMapping
     public ResponseEntity<MessageResponse> createMessage(@RequestBody CreateMessageRequest request) {
-        MessageResponse message = messageService.createMessage(request.getContent(), request.getUserId());
+        MessageResponse message = messageService.createMessage(request.getContent());
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 
@@ -38,7 +38,7 @@ public class MessageController {
 
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<MessageResponse>> getMessagesByUserId(@PathVariable Long userId) {
-        List<MessageResponse> messages = messageService.getMessagesByUserId(userId);
+        List<MessageResponse> messages = messageService.getMessagesForCurrentUser();
         return ResponseEntity.ok(messages);
     }
 

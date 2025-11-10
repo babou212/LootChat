@@ -16,6 +16,7 @@ public class MessageResponse {
     private String content;
     private Long userId;
     private String username;
+    private String avatar;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

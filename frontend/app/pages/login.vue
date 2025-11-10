@@ -7,7 +7,6 @@ definePageMeta({
 })
 
 const { login, loading, error } = useAuth()
-const router = useRouter()
 
 interface LoginForm {
   username: string
@@ -23,7 +22,7 @@ const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
   const result = await login(event.data)
 
   if (result.success) {
-    router.push('/')
+    await navigateTo('/')
   }
 }
 </script>

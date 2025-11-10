@@ -1,5 +1,5 @@
 export interface User {
-  id: number
+  userId: number
   username: string
   email: string
   firstName?: string
@@ -13,9 +13,10 @@ export interface LoginRequest {
 }
 
 export interface AuthResponse {
-  token?: string
-  username?: string
-  email?: string
-  role?: string
+  userId: number
+  token: string
+  username: string
+  email: string
+  role: string
   message: string
 }

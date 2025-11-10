@@ -2,7 +2,6 @@ package com.lootchat.LootChat.controller;
 
 import com.lootchat.LootChat.dto.AuthResponse;
 import com.lootchat.LootChat.dto.LoginRequest;
-import com.lootchat.LootChat.dto.RegisterRequest;
 import com.lootchat.LootChat.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

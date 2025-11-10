@@ -35,6 +35,7 @@ public class AuthService {
 
         return AuthResponse.builder()
                 .token(jwtToken)
+                .userId(String.valueOf(user.getId()))
                 .username(user.getUsername())
                 .email(user.getEmail())
                 .avatar(user.getAvatar())

@@ -1,4 +1,3 @@
-// API configuration for LootChat
 export const API_CONFIG = {
   BASE_URL: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
   AUTH: {
@@ -31,6 +30,7 @@ export interface MessageResponse {
   username: string
   createdAt: string
   updatedAt: string
+  avatar: string
 }
 
 export interface CreateMessageRequest {
