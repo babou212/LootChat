@@ -56,6 +56,9 @@ AI_GATEWAY_API_KEY=<your-vercel-ai-gateway-api-key>
 
 # Password for nuxt-auth-utils (minimum 32 characters)
 NUXT_SESSION_PASSWORD=<your-password>
+
+# Tenor GIFs (optional, for GIF picker in chat input)
+NUXT_PUBLIC_TENOR_API_KEY=<your-tenor-api-key>
 ```
 
 > [!TIP]
