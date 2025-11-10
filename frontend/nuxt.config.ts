@@ -1,8 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  devtools: {
-    enabled: true
-  },
 
   modules: [
     '@nuxt/eslint',
@@ -12,6 +9,9 @@ export default defineNuxtConfig({
     'nuxt-auth-utils',
     'nuxt-charts'
   ],
+  devtools: {
+    enabled: true
+  },
 
   css: ['~/assets/css/main.css'],
 
@@ -22,6 +22,12 @@ export default defineNuxtConfig({
     highlight: {
       // noApiRoute: true
       shikiEngine: 'javascript'
+    }
+  },
+
+  runtimeConfig: {
+    public: {
+      tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY
     }
   },
 
@@ -43,12 +49,6 @@ export default defineNuxtConfig({
         commaDangle: 'never',
         braceStyle: '1tbs'
       }
-    }
-  },
-
-  runtimeConfig: {
-    public: {
-      tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY
     }
   }
 })
