@@ -19,28 +19,11 @@ const state = reactive<LoginForm>({
   password: ''
 })
 
-const toast = useToast()
-
 const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
   const result = await login(event.data)
 
   if (result.success) {
-    toast.add({
-      title: 'Success',
-      description: 'Login successful! Redirecting...',
-      color: 'success'
-    })
-
-    // Redirect to home page after successful login
-    setTimeout(() => {
-      router.push('/')
-    }, 500)
-  } else {
-    toast.add({
-      title: 'Error',
-      description: result.message || 'Login failed. Please try again.',
-      color: 'error'
-    })
+    router.push('/')
   }
 }
 </script>
@@ -75,7 +58,7 @@ const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
             icon="i-lucide-user"
             size="xl"
             :disabled="loading"
-            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200"
+            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full"
           />
         </UFormGroup>
 
@@ -92,7 +75,7 @@ const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
             icon="i-lucide-lock"
             size="xl"
             :disabled="loading"
-            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200"
+            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full pt-3 pb-3"
           />
         </UFormGroup>
 
