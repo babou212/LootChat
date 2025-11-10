@@ -12,20 +12,20 @@
       fill="#9C27B0"
       opacity="0.9"
     />
-    
+
     <!-- Crystal middle facets -->
     <path
       d="M132 120L100 140L132 100L164 140L132 120Z"
       fill="#BA68C8"
       opacity="0.95"
     />
-    
+
     <!-- Crystal top point -->
     <path
       d="M132 20L100 80L132 100L164 80L132 20Z"
       fill="#E1BEE7"
     />
-    
+
     <!-- Left facet highlights -->
     <path
       d="M100 80L80 160L100 140L100 80Z"
@@ -37,7 +37,7 @@
       fill="#8E24AA"
       opacity="0.85"
     />
-    
+
     <!-- Right facet highlights -->
     <path
       d="M164 80L184 160L164 140L164 80Z"
@@ -49,7 +49,7 @@
       fill="#9C27B0"
       opacity="0.75"
     />
-    
+
     <!-- Top facets detail -->
     <path
       d="M132 20L100 80L132 100L132 20Z"
@@ -61,14 +61,14 @@
       fill="#F3E5F5"
       opacity="0.5"
     />
-    
+
     <!-- Center facet -->
     <path
       d="M100 140L132 120L164 140L132 160L100 140Z"
       fill="#BA68C8"
       opacity="0.9"
     />
-    
+
     <!-- Inner glow lines -->
     <line
       x1="132"
@@ -97,7 +97,7 @@
       stroke-width="1.5"
       opacity="0.3"
     />
-    
+
     <!-- Sparkles around crystal -->
     <circle
       cx="60"
@@ -127,7 +127,7 @@
       fill="#CE93D8"
       opacity="0.85"
     />
-    
+
     <!-- Star sparkles -->
     <path
       d="M50 100L52 104L56 104.5L53 107L53.5 111L50 108.5L46.5 111L47 107L44 104.5L48 104L50 100Z"
@@ -149,7 +149,7 @@
       fill="#CE93D8"
       opacity="0.75"
     />
-    
+
     <!-- Energy particles -->
     <circle
       cx="145"
@@ -179,7 +179,7 @@
       fill="#9C27B0"
       opacity="0.6"
     />
-    
+
     <!-- Magical glow aura -->
     <ellipse
       cx="132"
