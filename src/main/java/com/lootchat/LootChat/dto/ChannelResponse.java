@@ -11,14 +11,10 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MessageResponse {
+public class ChannelResponse {
     private Long id;
-    private String content;
-    private Long userId;
-    private String username;
-    private String avatar;
-    private Long channelId;
-    private String channelName;
+    private String name;
+    private String description;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

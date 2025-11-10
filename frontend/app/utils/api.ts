@@ -4,6 +4,14 @@ export const API_CONFIG = {
     LOGIN: '/api/auth/login',
     USER: '/api/auth/user'
   },
+  CHANNELS: {
+    ALL: '/api/channels',
+    BY_ID: (id: number) => `/api/channels/${id}`,
+    BY_NAME: (name: string) => `/api/channels/name/${name}`,
+    CREATE: '/api/channels',
+    UPDATE: (id: number) => `/api/channels/${id}`,
+    DELETE: (id: number) => `/api/channels/${id}`
+  },
   MESSAGES: {
     ALL: '/api/messages',
     BY_ID: (id: number) => `/api/messages/${id}`,
@@ -31,21 +39,45 @@ export interface MessageResponse {
   createdAt: string
   updatedAt: string
   avatar: string
+  channelId: number
+  channelName: string
 }
 
 export interface CreateMessageRequest {
   content: string
   userId: number
+  channelId: number
 }
 
 export interface UpdateMessageRequest {
   content: string
 }
 
+export interface ChannelResponse {
+  id: number
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateChannelRequest {
+  name: string
+  description: string
+}
+
+export interface UpdateChannelRequest {
+  name?: string
+  description?: string
+}
+
 export const messageApi = {
-  async getAllMessages(token: string): Promise<MessageResponse[]> {
+  async getAllMessages(token: string, channelId?: number): Promise<MessageResponse[]> {
     const authFetch = createAuthFetch(token)
-    return await authFetch<MessageResponse[]>(API_CONFIG.MESSAGES.ALL)
+    const url = channelId
+      ? `${API_CONFIG.MESSAGES.ALL}?channelId=${channelId}`
+      : API_CONFIG.MESSAGES.ALL
+    return await authFetch<MessageResponse[]>(url)
   },
 
   async getMessageById(id: number, token: string): Promise<MessageResponse> {
@@ -77,6 +109,46 @@ export const messageApi = {
   async deleteMessage(id: number, token: string): Promise<void> {
     const authFetch = createAuthFetch(token)
     await authFetch(API_CONFIG.MESSAGES.DELETE(id), {
+      method: 'DELETE'
+    })
+  }
+}
+
+export const channelApi = {
+  async getAllChannels(token: string): Promise<ChannelResponse[]> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ChannelResponse[]>(API_CONFIG.CHANNELS.ALL)
+  },
+
+  async getChannelById(id: number, token: string): Promise<ChannelResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ChannelResponse>(API_CONFIG.CHANNELS.BY_ID(id))
+  },
+
+  async getChannelByName(name: string, token: string): Promise<ChannelResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ChannelResponse>(API_CONFIG.CHANNELS.BY_NAME(name))
+  },
+
+  async createChannel(request: CreateChannelRequest, token: string): Promise<ChannelResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ChannelResponse>(API_CONFIG.CHANNELS.CREATE, {
+      method: 'POST',
+      body: request
+    })
+  },
+
+  async updateChannel(id: number, request: UpdateChannelRequest, token: string): Promise<ChannelResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ChannelResponse>(API_CONFIG.CHANNELS.UPDATE(id), {
+      method: 'PUT',
+      body: request
+    })
+  },
+
+  async deleteChannel(id: number, token: string): Promise<void> {
+    const authFetch = createAuthFetch(token)
+    await authFetch(API_CONFIG.CHANNELS.DELETE(id), {
       method: 'DELETE'
     })
   }

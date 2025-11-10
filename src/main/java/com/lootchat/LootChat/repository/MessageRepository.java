@@ -14,4 +14,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findByUserIdOrderByCreatedAtDesc(Long userId);
     
     List<Message> findAllByOrderByCreatedAtDesc();
+    
+    List<Message> findByChannelIdOrderByCreatedAtDesc(Long channelId);
+    
+    List<Message> findByChannelIdAndUserIdOrderByCreatedAtDesc(Long channelId, Long userId);
 }
