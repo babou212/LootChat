@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Channel, Message } from '../../shared/types/chat'
-import { messageApi, type MessageResponse } from '~/utils/api'
+import { messageApi, channelApi, type MessageResponse, type ChannelResponse } from '~/utils/api'
 import MessageList from '~/components/MessageList.vue'
 import UserMenu from '~/components/UserMenu.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
@@ -36,9 +36,21 @@ const addGifToMessage = (gifUrl: string) => {
   showGifPicker.value = false
 }
 
-const selectChannel = (channel: Channel) => {
+const selectChannel = async (channel: Channel) => {
   selectedChannel.value = channel
   channel.unread = 0
+  await fetchMessages()
+}
+
+const convertToChannel = (apiChannel: ChannelResponse): Channel => {
+  return {
+    id: apiChannel.id,
+    name: apiChannel.name,
+    description: apiChannel.description,
+    createdAt: apiChannel.createdAt,
+    updatedAt: apiChannel.updatedAt,
+    unread: 0
+  }
 }
 
 const convertToMessage = (apiMessage: MessageResponse): Message => {
@@ -48,7 +60,24 @@ const convertToMessage = (apiMessage: MessageResponse): Message => {
     username: apiMessage.username,
     content: apiMessage.content,
     timestamp: new Date(apiMessage.createdAt),
-    avatar: apiMessage.avatar
+    avatar: apiMessage.avatar,
+    channelId: apiMessage.channelId,
+    channelName: apiMessage.channelName
+  }
+}
+
+const fetchChannels = async () => {
+  try {
+    const authToken = useCookie<string | null>('auth_token')
+    if (!authToken.value || !user.value) {
+      return navigateTo('/login')
+    }
+
+    const apiChannels = await channelApi.getAllChannels(authToken.value)
+    channels.value = apiChannels.map(convertToChannel)
+  } catch (err) {
+    console.error('Failed to fetch channels:', err)
+    error.value = 'Failed to load channels'
   }
 }
 
@@ -59,7 +88,8 @@ const fetchMessages = async () => {
       return navigateTo('/login')
     }
 
-    const apiMessages = await messageApi.getAllMessages(authToken.value)
+    const channelId = selectedChannel.value?.id
+    const apiMessages = await messageApi.getAllMessages(authToken.value, channelId)
     messages.value = apiMessages.map(convertToMessage)
     loading.value = false
   } catch (err) {
@@ -71,13 +101,14 @@ const fetchMessages = async () => {
 }
 
 const sendMessage = async () => {
-  if (!newMessage.value.trim() || !token.value || !user.value) return
+  if (!newMessage.value.trim() || !token.value || !user.value || !selectedChannel.value) return
 
   try {
     const apiMessage = await messageApi.createMessage(
       {
         content: newMessage.value,
-        userId: user.value.userId
+        userId: user.value.userId,
+        channelId: selectedChannel.value.id
       },
       token.value
     )
@@ -91,7 +122,10 @@ const sendMessage = async () => {
 }
 
 onMounted(async () => {
-  await fetchMessages()
+  await fetchChannels()
+  if (channels.value.length > 0) {
+    await selectChannel(channels.value[0]!)
+  }
 })
 
 watch(channels, (newChannels) => {

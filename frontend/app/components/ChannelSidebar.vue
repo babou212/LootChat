@@ -32,6 +32,7 @@ const handleSelectChannel = (channel: Channel) => {
         :key="channel.id"
         :variant="selectedChannel?.id === channel.id ? 'soft' : 'ghost'"
         color="primary"
+        :title="channel.description"
         class="w-full justify-between mb-1"
         @click="handleSelectChannel(channel)"
       >

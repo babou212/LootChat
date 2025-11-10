@@ -1,8 +1,10 @@
 package com.lootchat.LootChat.service;
 
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.entity.Channel;
 import com.lootchat.LootChat.entity.Message;
 import com.lootchat.LootChat.entity.User;
+import com.lootchat.LootChat.repository.ChannelRepository;
 import com.lootchat.LootChat.repository.MessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
@@ -21,6 +23,7 @@ public class MessageService {
 
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final ChannelRepository channelRepository;
     private final CurrentUserService currentUserService;
 
     @Transactional
@@ -38,9 +41,35 @@ public class MessageService {
         return mapToMessageResponse(savedMessage);
     }
 
+    @Transactional
+    public MessageResponse createMessage(String content, Long channelId) {
+        Long userId = currentUserService.getCurrentUserIdOrThrow();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
+
+        Channel channel = channelRepository.findById(channelId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + channelId));
+
+        Message message = Message.builder()
+                .content(content)
+                .user(user)
+                .channel(channel)
+                .build();
+
+        Message savedMessage = messageRepository.save(message);
+        return mapToMessageResponse(savedMessage);
+    }
+
     @Transactional(readOnly = true)
     public List<MessageResponse> getAllMessages() {
         return messageRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::mapToMessageResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<MessageResponse> getMessagesByChannelId(Long channelId) {
+        return messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId).stream()
                 .map(this::mapToMessageResponse)
                 .collect(Collectors.toList());
     }
@@ -95,6 +124,8 @@ public class MessageService {
                 .userId(message.getUser().getId())
                 .username(message.getUser().getUsername())
                 .avatar(message.getUser().getAvatar())
+                .channelId(message.getChannel() != null ? message.getChannel().getId() : null)
+                .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .build();

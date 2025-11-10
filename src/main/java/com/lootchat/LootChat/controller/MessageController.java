@@ -20,13 +20,24 @@ public class MessageController {
 
     @PostMapping
     public ResponseEntity<MessageResponse> createMessage(@RequestBody CreateMessageRequest request) {
-        MessageResponse message = messageService.createMessage(request.getContent());
+        MessageResponse message;
+        if (request.getChannelId() != null) {
+            message = messageService.createMessage(request.getContent(), request.getChannelId());
+        } else {
+            message = messageService.createMessage(request.getContent());
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 
     @GetMapping
-    public ResponseEntity<List<MessageResponse>> getAllMessages() {
-        List<MessageResponse> messages = messageService.getAllMessages();
+    public ResponseEntity<List<MessageResponse>> getAllMessages(
+            @RequestParam(required = false) Long channelId) {
+        List<MessageResponse> messages;
+        if (channelId != null) {
+            messages = messageService.getMessagesByChannelId(channelId);
+        } else {
+            messages = messageService.getAllMessages();
+        }
         return ResponseEntity.ok(messages);
     }
 

@@ -1,14 +1,15 @@
 package com.lootchat.LootChat.dto;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateMessageRequest {
-    private String content;
-    private Long userId;
-    private Long channelId;
+public class CreateChannelRequest {
+    private String name;
+    private String description;
 }

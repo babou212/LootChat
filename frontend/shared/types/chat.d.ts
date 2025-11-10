@@ -1,7 +1,10 @@
 export interface Channel {
   id: number
   name: string
+  description?: string
   unread?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface Message {
@@ -11,4 +14,6 @@ export interface Message {
   content: string
   timestamp: Date
   avatar?: string
+  channelId?: number
+  channelName?: string
 }
