@@ -4,6 +4,8 @@ import { messageApi, type MessageResponse } from '~/utils/api'
 import MessageList from '~/components/MessageList.vue'
 import UserMenu from '~/components/UserMenu.vue'
 
+definePageMeta({ middleware: 'auth' })
+
 const { token, user } = useAuth()
 
 const channels = ref<Channel[]>([])
@@ -35,7 +37,7 @@ const convertToMessage = (apiMessage: MessageResponse): Message => {
 const fetchMessages = async () => {
   try {
     const authToken = useCookie<string | null>('auth_token')
-    if (!authToken.value) {
+    if (!authToken.value || !user.value) {
       return navigateTo('/login')
     }
 

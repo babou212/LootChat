@@ -1,9 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ middleware: 'auth' })
 const { user } = useAuth()
-
-if (!user.value) {
-  navigateTo('/login')
-}
 </script>
 
 <template>

@@ -3,8 +3,8 @@ import type { RouteLocationNormalized } from 'vue-router'
 
 interface PublicRouteMeta { public?: boolean }
 
-export default defineNuxtRouteMiddleware((to: RouteLocationNormalized) => {
-  const { isAuthenticated, user } = useAuth()
+export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => {
+  const { isAuthenticated, user, restore } = useAuth()
   const authToken = useCookie<string | null>('auth_token')
 
   const publicRoutes = new Set<string>(['/login'])
@@ -13,7 +13,13 @@ export default defineNuxtRouteMiddleware((to: RouteLocationNormalized) => {
 
   if (isPublic) return
 
-  if (!isAuthenticated.value && !authToken.value) {
+  // If we have a token but no authenticated user (e.g., after refresh), try to restore once
+  if (!isAuthenticated.value && authToken.value) {
+    await restore()
+  }
+
+  // After attempting restore, require BOTH user and token to be present
+  if (!isAuthenticated.value) {
     return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }
 
