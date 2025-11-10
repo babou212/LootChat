@@ -1,4 +1,4 @@
-package com.lootchat.LootChat.service;
+package com.lootchat.LootChat.security;
 
 import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,7 +15,10 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+        var user = userRepository.findByUsername(username);
+        if (user == null) {
+            throw new UsernameNotFoundException("User not found: " + username);
+        }
+        return user;
     }
 }

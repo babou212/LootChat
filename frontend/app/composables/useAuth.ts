@@ -1,12 +1,30 @@
 import type { AuthResponse, LoginRequest, User } from '../../shared/types/user'
+import { storeToRefs } from 'pinia'
+import { useAuthStore } from '../../stores/auth'
 
 export const useAuth = () => {
-  const user = useState<User | null>('user', () => null)
-  const token = useState<string | null>('token', () => null)
+  const authStore = useAuthStore()
+  const { user } = storeToRefs(authStore)
   const loading = useState<boolean>('auth-loading', () => false)
   const error = useState<string | null>('auth-error', () => null)
 
+  const authTokenCookie = useCookie('auth_token', {
+    maxAge: 60 * 60 * 24 * 7,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/'
+  })
+
+  const authUserCookie = useCookie<User | null>('auth_user', {
+    maxAge: 60 * 60 * 24 * 7,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/'
+  })
+
   const apiBase = useRuntimeConfig().public.apiBase || 'http://localhost:8080/api/auth'
+
+  const token = computed<string | null>(() => authTokenCookie.value || null)
 
   const login = async (credentials: LoginRequest) => {
     loading.value = true
@@ -19,21 +37,16 @@ export const useAuth = () => {
       })
 
       if (response.token) {
-        token.value = response.token
-        user.value = {
-          id: 0, // Will be fetched from /user endpoint
+        authTokenCookie.value = response.token
+
+        const nextUser: User = {
+          userId: response.userId,
           username: response.username!,
           email: response.email!,
           role: response.role!
         }
-
-        // Store token in localStorage
-        if (import.meta.client) {
-          localStorage.setItem('auth_token', response.token)
-        }
-
-        // Fetch full user details
-        await fetchCurrentUser()
+        authStore.setAuth(nextUser, response.token)
+        authUserCookie.value = nextUser
 
         return { success: true, message: response.message }
       } else {
@@ -51,41 +64,30 @@ export const useAuth = () => {
     }
   }
 
-  const fetchCurrentUser = async () => {
-    if (!token.value) {
-      if (import.meta.client) {
-        token.value = localStorage.getItem('auth_token')
-      }
-    }
-
-    if (!token.value) {
-      return
-    }
-
-    try {
-      const response = await $fetch<User>(`${apiBase}/user`, {
-        headers: {
-          Authorization: `Bearer ${token.value}`
-        }
-      })
-
-      user.value = response
-    } catch {
-      logout()
-    }
-  }
-
   const logout = () => {
-    user.value = null
-    token.value = null
+    authStore.clear()
     error.value = null
+    authTokenCookie.value = null
+    authUserCookie.value = null
+  }
 
-    if (import.meta.client) {
-      localStorage.removeItem('auth_token')
+  /**
+   * Restore auth state from persisted cookies after a hard page refresh.
+   */
+  const restore = async () => {
+    try {
+      if (user.value) return
+      if (!authTokenCookie.value) return
+      if (authUserCookie.value) {
+        authStore.setAuth(authUserCookie.value as User, authTokenCookie.value)
+        return
+      }
+    } catch {
+      authUserCookie.value = null
     }
   }
 
-  const isAuthenticated = computed(() => !!user.value && !!token.value)
+  const isAuthenticated = computed(() => !!user.value && !!authTokenCookie.value)
 
   return {
     user: readonly(user),
@@ -95,6 +97,6 @@ export const useAuth = () => {
     isAuthenticated,
     login,
     logout,
-    fetchCurrentUser
+    restore
   }
 }
