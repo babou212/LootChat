@@ -9,6 +9,7 @@ import com.lootchat.LootChat.repository.MessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -25,6 +26,7 @@ public class MessageService {
     private final UserRepository userRepository;
     private final ChannelRepository channelRepository;
     private final CurrentUserService currentUserService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -38,7 +40,12 @@ public class MessageService {
                 .build();
 
         Message savedMessage = messageRepository.save(message);
-        return mapToMessageResponse(savedMessage);
+        MessageResponse response = mapToMessageResponse(savedMessage);
+        
+        // Broadcast new message to all connected WebSocket clients
+        messagingTemplate.convertAndSend("/topic/messages", response);
+        
+        return response;
     }
 
     @Transactional
@@ -57,7 +64,15 @@ public class MessageService {
                 .build();
 
         Message savedMessage = messageRepository.save(message);
-        return mapToMessageResponse(savedMessage);
+        MessageResponse response = mapToMessageResponse(savedMessage);
+        
+        // Broadcast new message to channel-specific topic
+        messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+        
+        // Also broadcast to the global topic for notifications
+        messagingTemplate.convertAndSend("/topic/messages", response);
+        
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -101,7 +116,18 @@ public class MessageService {
 
         message.setContent(content);
         Message updatedMessage = messageRepository.save(message);
-        return mapToMessageResponse(updatedMessage);
+        MessageResponse response = mapToMessageResponse(updatedMessage);
+        
+        // Broadcast updated message
+        if (updatedMessage.getChannel() != null) {
+            messagingTemplate.convertAndSend("/topic/channels/" + updatedMessage.getChannel().getId() + "/messages", response);
+            // Also broadcast to global topic for notifications
+            messagingTemplate.convertAndSend("/topic/messages", response);
+        } else {
+            messagingTemplate.convertAndSend("/topic/messages", response);
+        }
+        
+        return response;
     }
 
     @Transactional

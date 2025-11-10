@@ -17,14 +17,17 @@
     "@iconify-json/simple-icons": "^1.2.55",
     "@nuxt/ui": "^4.1.0",
     "@nuxtjs/mdc": "^0.18.0",
+    "@pinia/nuxt": "^0.5.1",
+    "@stomp/stompjs": "^7.2.1",
+    "@types/sockjs-client": "^1.5.4",
     "date-fns": "^4.1.0",
     "nuxt": "^4.2.0",
     "nuxt-auth-utils": "^0.5.25",
     "nuxt-charts": "0.2.4",
-    "pinia": "^2.2.4",
-    "@pinia/nuxt": "^0.5.1",
     "pg": "^8.16.3",
-    "shiki-stream": "^0.1.2"
+    "pinia": "^2.2.4",
+    "shiki-stream": "^0.1.2",
+    "sockjs-client": "^1.6.1"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.9.0",

@@ -27,7 +27,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY
+      tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY,
+      apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080'
     }
   },
 

@@ -11,6 +11,14 @@ const props = defineProps<Props>()
 
 const messagesContainer = ref<HTMLElement | null>(null)
 
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}
+
 const formatTime = (date: Date) => {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
@@ -31,12 +39,23 @@ const firstGifFrom = (text: string): string | null => {
 }
 const contentWithoutGifs = (text: string): string => text.replace(new RegExp(gifRegex, 'gi'), '').trim()
 
+// Scroll to bottom when messages change
 watch(() => props.messages.length, () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+  scrollToBottom()
+})
+
+// Scroll to bottom when loading completes
+watch(() => props.loading, (isLoading) => {
+  if (!isLoading && props.messages.length > 0) {
+    scrollToBottom()
+  }
+})
+
+// Scroll to bottom on mount if messages exist
+onMounted(() => {
+  if (props.messages.length > 0) {
+    scrollToBottom()
+  }
 })
 </script>
 
