@@ -23,6 +23,14 @@ const formatTime = (date: Date) => {
   return date.toLocaleDateString()
 }
 
+// Helpers to detect and render GIF URLs embedded in message content
+const gifRegex = /(https?:\/\/\S+?\.gif)(?=\s|$)/i
+const firstGifFrom = (text: string): string | null => {
+  const m = text.match(gifRegex)
+  return m && m[1] ? m[1] as string : null
+}
+const contentWithoutGifs = (text: string): string => text.replace(new RegExp(gifRegex, 'gi'), '').trim()
+
 watch(() => props.messages.length, () => {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -90,8 +98,15 @@ watch(() => props.messages.length, () => {
             </span>
           </div>
           <p class="text-gray-700 dark:text-gray-300">
-            {{ message.content }}
+            {{ contentWithoutGifs(message.content) || message.content }}
           </p>
+          <img
+            v-if="firstGifFrom(message.content)"
+            :src="firstGifFrom(message.content) as string"
+            alt="gif"
+            class="mt-2 rounded max-w-xs"
+            loading="lazy"
+          >
         </div>
       </div>
     </template>

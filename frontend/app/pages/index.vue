@@ -3,6 +3,8 @@ import type { Channel, Message } from '../../shared/types/chat'
 import { messageApi, type MessageResponse } from '~/utils/api'
 import MessageList from '~/components/MessageList.vue'
 import UserMenu from '~/components/UserMenu.vue'
+import EmojiPicker from '~/components/EmojiPicker.vue'
+import type GifPicker from '~/components/GifPicker.vue'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -17,6 +19,22 @@ const messages = ref<Message[]>([])
 const newMessage = ref('')
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+// Emoji & GIF picker state
+const showEmojiPicker = ref(false)
+const showGifPicker = ref(false)
+const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
+
+const addEmoji = (emoji: string) => {
+  newMessage.value += (newMessage.value && !newMessage.value.endsWith(' ') ? ' ' : '') + emoji
+  showEmojiPicker.value = false
+}
+
+const addGifToMessage = (gifUrl: string) => {
+  const spacer = newMessage.value && !newMessage.value.endsWith(' ') ? ' ' : ''
+  newMessage.value = `${newMessage.value}${spacer}${gifUrl}`.trim()
+  showGifPicker.value = false
+}
 
 const selectChannel = (channel: Channel) => {
   selectedChannel.value = channel
@@ -81,6 +99,13 @@ watch(channels, (newChannels) => {
     selectChannel(newChannels[0]!)
   }
 }, { immediate: true })
+
+// Reset GIF picker state when closed
+watch(showGifPicker, (open) => {
+  if (!open && gifPickerRef.value) {
+    gifPickerRef.value.reset()
+  }
+})
 </script>
 
 <template>
@@ -107,7 +132,37 @@ watch(channels, (newChannels) => {
       <MessageList :messages="messages" :loading="loading" :error="error" />
 
       <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-        <form class="flex gap-2" @submit.prevent="sendMessage">
+        <form class="flex items-center gap-2" @submit.prevent="sendMessage">
+          <div class="relative flex items-center gap-1">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-smile"
+              aria-label="Insert emoji"
+              @click="showEmojiPicker = !showEmojiPicker"
+            />
+            <div
+              v-if="showEmojiPicker"
+              class="absolute bottom-full mb-2 left-0 z-20"
+            >
+              <EmojiPicker @select="addEmoji" />
+            </div>
+
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-image"
+              aria-label="Insert GIF"
+              @click="showGifPicker = !showGifPicker"
+            />
+            <div
+              v-if="showGifPicker"
+              class="absolute bottom-full mb-2 left-12 z-20"
+            >
+              <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
+            </div>
+          </div>
+
           <UInput
             v-model="newMessage"
             placeholder="Type a message..."

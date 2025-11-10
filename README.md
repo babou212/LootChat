@@ -134,26 +134,37 @@ LootChat/
 │   │   │   └── service/                  # Business logic services
 │   │   └── resources/
 │   │       ├── application.properties    # Backend configuration
-│   │       ├── static/                   # Static assets placeholder
-│   │       └── templates/                # (If server-side templates used)
+│   │       ├── data.sql                  # SQL initialization scripts
+│   │       ├── static/                   # Static assets
+│   │       └── templates/                # Server-side templates
 │   └── test/                             # Backend tests
+│       └── java/com/lootchat/LootChat/
+│           ├── BCryptTest.java
+│           ├── GeneratePasswordHash.java
+│           └── LootChatApplicationTests.java
 ├── frontend/                    # Nuxt 4 application
 │   ├── package.json
 │   ├── pnpm-lock.yaml
-│   ├── pnpm-workspace.yaml (if present)
+│   ├── pnpm-workspace.yaml
 │   ├── nuxt.config.ts
 │   ├── tsconfig.json
 │   ├── eslint.config.mjs
+│   ├── renovate.json            # Renovate bot configuration
 │   ├── app/
 │   │   ├── app.vue              # Root Vue component
+│   │   ├── app.config.ts        # App-level configuration
+│   │   ├── error.vue            # Error page component
 │   │   ├── assets/
 │   │   │   └── css/
 │   │   │       └── main.css     # Global styles
 │   │   ├── components/
+│   │   │   ├── ChannelSidebar.vue
+│   │   │   ├── EmojiPicker.vue
+│   │   │   ├── GifPicker.vue
 │   │   │   ├── Logo.vue
-│   │   │   └── prose/
-│   │   │       └── PreStream.vue
-│   │   ├── composables/         # Front-end composables (auth, etc.)
+│   │   │   ├── MessageList.vue
+│   │   │   └── UserMenu.vue
+│   │   ├── composables/         # Front-end composables
 │   │   │   └── useAuth.ts
 │   │   ├── layouts/
 │   │   │   └── default.vue
@@ -162,22 +173,27 @@ LootChat/
 │   │   │   └── transitions.global.ts
 │   │   ├── pages/
 │   │   │   ├── index.vue
-│   │   │   └── login.vue
+│   │   │   ├── login.vue
+│   │   │   └── profile.vue
 │   │   ├── plugins/
-│   │   │   └── auth.ts
+│   │   │   └── auth-init.ts
 │   │   └── utils/
 │   │       └── api.ts
 │   ├── server/
+│   │   ├── api/                 # Server API endpoints
 │   │   ├── routes/
 │   │   │   └── auth/            # Auth-related server routes
-│   │   └── api/ (if populated)  # Additional API endpoints
+│   │   └── utils/
 │   ├── shared/
 │   │   └── types/
 │   │       ├── auth.d.ts
+│   │       ├── chat.d.ts
 │   │       └── user.d.ts
+│   ├── stores/
+│   │   └── auth.ts              # Pinia auth store
 │   ├── patches/                 # Local patch overrides
+│   │   └── @nuxt__vite-builder.patch
 │   └── public/                  # Public static assets
-└── (other top-level files as added)
 ```
 
 ## 🔧 Development
