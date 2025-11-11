@@ -3,6 +3,22 @@ const { user, logout } = useAuth()
 const router = useRouter()
 
 const open = ref(false)
+const rootRef = ref<HTMLElement | null>(null)
+
+// Debug: Check user data
+watchEffect(() => {
+  if (user.value) {
+    console.log('UserMenu - Current user data:', user.value)
+    console.log('UserMenu - Avatar:', user.value.avatar)
+  }
+})
+
+// Click-away to close the menu using composable
+useClickAway(
+  rootRef,
+  () => { open.value = false },
+  { active: open }
+)
 
 const goProfile = () => {
   open.value = false
@@ -14,18 +30,37 @@ const doLogout = () => {
   open.value = false
   router.push('/login')
 }
+
+const getInitials = (username: string) => {
+  return username.substring(0, 2).toUpperCase()
+}
 </script>
 
 <template>
-  <div v-if="user" class="relative">
-    <UButton
-      color="neutral"
-      variant="ghost"
-      :label="user.username"
-      icon="i-lucide-user-circle"
-      class="flex items-center gap-2"
+  <div v-if="user" ref="rootRef" class="relative">
+    <button
+      class="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
       @click="open = !open"
-    />
+    >
+      <div class="relative">
+        <div
+          v-if="user.avatar"
+          class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
+        >
+          <img :src="user.avatar" :alt="user.username" class="w-full h-full object-cover">
+        </div>
+        <div
+          v-else
+          class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-semibold"
+        >
+          {{ getInitials(user.username) }}
+        </div>
+      </div>
+      <span class="text-sm font-medium text-gray-900 dark:text-white">
+        {{ user.username }}
+      </span>
+      <UIcon name="i-lucide-chevron-down" class="text-gray-600 dark:text-gray-400" />
+    </button>
 
     <transition name="fade">
       <div

@@ -18,7 +18,13 @@ export const API_CONFIG = {
     BY_USER: (userId: number) => `/api/messages/user/${userId}`,
     CREATE: '/api/messages',
     UPDATE: (id: number) => `/api/messages/${id}`,
-    DELETE: (id: number) => `/api/messages/${id}`
+    DELETE: (id: number) => `/api/messages/${id}`,
+    ADD_REACTION: (messageId: number) => `/api/messages/${messageId}/reactions`,
+    REMOVE_REACTION: (messageId: number) => `/api/messages/${messageId}/reactions`
+  },
+  USERS: {
+    ALL: '/api/users',
+    BY_ID: (id: number) => `/api/users/${id}`
   }
 }
 
@@ -41,6 +47,20 @@ export interface MessageResponse {
   avatar: string
   channelId: number
   channelName: string
+  reactions?: ReactionResponse[]
+}
+
+export interface ReactionResponse {
+  id: number
+  emoji: string
+  userId: number
+  username: string
+  messageId: number
+  createdAt: string
+}
+
+export interface ReactionRequest {
+  emoji: string
 }
 
 export interface CreateMessageRequest {
@@ -114,6 +134,22 @@ export const messageApi = {
     await authFetch(API_CONFIG.MESSAGES.DELETE(id), {
       method: 'DELETE'
     })
+  },
+
+  async addReaction(messageId: number, emoji: string, token: string): Promise<ReactionResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<ReactionResponse>(API_CONFIG.MESSAGES.ADD_REACTION(messageId), {
+      method: 'POST',
+      body: { emoji } as ReactionRequest
+    })
+  },
+
+  async removeReaction(messageId: number, emoji: string, token: string): Promise<void> {
+    const authFetch = createAuthFetch(token)
+    await authFetch(API_CONFIG.MESSAGES.REMOVE_REACTION(messageId), {
+      method: 'DELETE',
+      body: { emoji } as ReactionRequest
+    })
   }
 }
 
@@ -154,5 +190,32 @@ export const channelApi = {
     await authFetch(API_CONFIG.CHANNELS.DELETE(id), {
       method: 'DELETE'
     })
+  }
+}
+
+export interface UserResponse {
+  id: number
+  username: string
+  email: string
+  firstName?: string
+  lastName?: string
+  role: string
+  avatar?: string
+}
+
+export const userApi = {
+  async getAllUsers(token: string): Promise<UserResponse[]> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<UserResponse[]>(API_CONFIG.USERS.ALL)
+  },
+
+  async getUserById(id: number, token: string): Promise<UserResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<UserResponse>(API_CONFIG.USERS.BY_ID(id))
+  },
+
+  async getUserPresence(token: string): Promise<Record<number, boolean>> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<Record<number, boolean>>(`${API_CONFIG.USERS.ALL}/presence`)
   }
 }

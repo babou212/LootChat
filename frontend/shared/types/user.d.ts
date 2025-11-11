@@ -5,6 +5,7 @@ export interface User {
   firstName?: string
   lastName?: string
   role: string
+  avatar?: string
 }
 
 export interface LoginRequest {
@@ -13,10 +14,11 @@ export interface LoginRequest {
 }
 
 export interface AuthResponse {
-  userId: number
+  userId: string | number
   token: string
   username: string
   email: string
   role: string
+  avatar?: string
   message: string
 }

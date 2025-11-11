@@ -1,6 +1,8 @@
 -- Dummy data for LootChat application (Development only)
 -- Note: Passwords are BCrypt encoded version of 'password123'
 
+-- Delete in correct order due to foreign key constraints
+DELETE FROM message_reactions WHERE 1=1;
 DELETE FROM messages WHERE 1=1;
 DELETE FROM channels WHERE 1=1;
 DELETE FROM users WHERE 1=1;
@@ -52,3 +54,4 @@ VALUES
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
 SELECT setval('channels_id_seq', (SELECT MAX(id) FROM channels));
 SELECT setval('messages_id_seq', (SELECT MAX(id) FROM messages));
+SELECT setval('message_reactions_id_seq', (SELECT COALESCE(MAX(id), 1) FROM message_reactions));

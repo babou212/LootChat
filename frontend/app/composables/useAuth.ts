@@ -36,15 +36,21 @@ export const useAuth = () => {
         body: credentials
       })
 
+      console.log('Auth response:', response)
+
       if (response.token) {
         authTokenCookie.value = response.token
 
         const nextUser: User = {
-          userId: response.userId,
+          userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
           username: response.username!,
           email: response.email!,
-          role: response.role!
+          role: response.role!,
+          avatar: response.avatar
         }
+
+        console.log('Storing user:', nextUser)
+
         authStore.setAuth(nextUser, response.token)
         authUserCookie.value = nextUser
 

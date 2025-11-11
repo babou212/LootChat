@@ -6,23 +6,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class MessageResponse {
+public class ReactionResponse {
     private Long id;
-    private String content;
+    private String emoji;
     private Long userId;
     private String username;
-    private String avatar;
-    private Long channelId;
-    private String channelName;
+    private Long messageId;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    @Builder.Default
-    private List<ReactionResponse> reactions = new ArrayList<>();
 }
