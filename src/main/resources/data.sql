@@ -5,6 +5,7 @@
 DELETE FROM message_reactions WHERE 1=1;
 DELETE FROM messages WHERE 1=1;
 DELETE FROM channels WHERE 1=1;
+DELETE FROM invite_tokens WHERE 1=1;
 DELETE FROM users WHERE 1=1;
 
 INSERT INTO users (id, username, email, password, first_name, last_name, avatar, role, created_at, updated_at, is_enabled, is_account_non_expired, is_account_non_locked, is_credentials_non_expired) 

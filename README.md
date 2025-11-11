@@ -6,7 +6,7 @@ A modern chat application built with Spring Boot and Nuxt, featuring real-time m
 
 ### Backend
 
-- **Java 25** with Spring Boot 3.5.7
+- **Java 21** with Spring Boot 3.5.7
 - **Spring Security** with JWT authentication
 - **Spring Data JPA** with PostgreSQL
 - **WebSocket** for real-time communication
@@ -130,6 +130,7 @@ Default credentials (development):
 - **User Authentication**: Secure registration and login with JWT tokens
 - **Real-time Chat**: WebSocket-based instant messaging
 - **User Roles**: Role-based access control
+- **Admin Invites**: Admins can invite users via one time links
 - **Modern UI**: Responsive design with Nuxt UI components
 
 ## 🔧 Development
