@@ -5,7 +5,10 @@ import com.lootchat.LootChat.dto.CreateChannelRequest;
 import com.lootchat.LootChat.dto.UpdateChannelRequest;
 import com.lootchat.LootChat.entity.Channel;
 import com.lootchat.LootChat.entity.ChannelType;
+import com.lootchat.LootChat.entity.Role;
+import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.ChannelRepository;
+import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,10 +23,15 @@ import java.util.stream.Collectors;
 public class ChannelService {
 
     private final ChannelRepository channelRepository;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public ChannelResponse createChannel(CreateChannelRequest request) {
         // Check if channel with the same name already exists
+        User user = currentUserService.getCurrentUserOrThrow();
+        if (user.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin users can create channels");
+        }
         channelRepository.findByName(request.getName()).ifPresent(channel -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Channel with name '" + request.getName() + "' already exists");
         });
@@ -88,6 +96,14 @@ public class ChannelService {
     public void deleteChannel(Long id) {
         Channel channel = channelRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + id));
+        User user = currentUserService.getCurrentUserOrThrow();
+        if (user.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admin users can delete channels");
+        }
+        String name = channel.getName();
+        if ("general".equalsIgnoreCase(name) || "general-voice".equalsIgnoreCase(name)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The '" + name + "' channel cannot be deleted");
+        }
         channelRepository.delete(channel);
     }
 
