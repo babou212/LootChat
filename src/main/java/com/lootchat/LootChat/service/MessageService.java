@@ -176,18 +176,31 @@ public class MessageService {
     public void deleteMessage(Long id) {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
+        // Load current user (includes role)
+        User currentUser = currentUserService.getCurrentUserOrThrow();
 
-        Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
-        if (!message.getUser().getId().equals(currentUserId)) {
+        boolean isOwner = message.getUser().getId().equals(currentUser.getId());
+        boolean isPrivileged = currentUser.getRole() == com.lootchat.LootChat.entity.Role.ADMIN || currentUser.getRole() == com.lootchat.LootChat.entity.Role.MODERATOR;
+        if (!isOwner && !isPrivileged) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot delete this message");
         }
 
-        // Delete associated image file if exists
+        reactionRepository.deleteByMessageId(id);
+
         if (message.getImageFilename() != null) {
             fileStorageService.deleteFile(message.getImageFilename());
         }
-
+        Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
         messageRepository.deleteById(id);
+
+        var deletionPayload = java.util.Map.of(
+                "id", id,
+                "channelId", channelId
+        );
+        messagingTemplate.convertAndSend("/topic/messages/delete", deletionPayload);
+        if (channelId != null) {
+            messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages/delete", deletionPayload);
+        }
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
@@ -222,7 +235,6 @@ public class MessageService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
 
-        // Check if reaction already exists
         if (reactionRepository.findByMessageIdAndUserIdAndEmoji(messageId, userId, emoji).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Reaction already exists");
         }
@@ -236,7 +248,6 @@ public class MessageService {
         MessageReaction savedReaction = reactionRepository.save(reaction);
         ReactionResponse response = mapToReactionResponse(savedReaction);
 
-        // Broadcast reaction via WebSocket
         if (message.getChannel() != null) {
             messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions", response);
         }
@@ -257,7 +268,6 @@ public class MessageService {
 
         reactionRepository.delete(reaction);
 
-        // Broadcast reaction removal via WebSocket
         ReactionResponse response = mapToReactionResponse(reaction);
         if (message.getChannel() != null) {
             messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions/remove", response);

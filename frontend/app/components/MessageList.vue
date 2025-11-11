@@ -13,6 +13,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const authStore = useAuthStore()
+const toast = useToast()
 
 const apiBaseUrl = API_CONFIG.BASE_URL
 
@@ -112,6 +113,63 @@ onUnmounted(() => {
   // Remove keyboard listener
   window.removeEventListener('keydown', handleKeyDown)
 })
+
+const canDelete = (message: Message) => {
+  const current = authStore.user
+  if (!current) return false
+  const isOwner = String(message.userId) === String(current.userId)
+  const isPrivileged = current.role === 'ADMIN' || current.role === 'MODERATOR'
+  return isOwner || isPrivileged
+}
+
+const emit = defineEmits<{
+  (e: 'message-deleted', id: number): void
+}>()
+
+const handleDeleteMessage = (message: Message) => {
+  const token = authStore.token
+  if (!token) return
+
+  const performDelete = async () => {
+    try {
+      await messageApi.deleteMessage(message.id, token)
+      emit('message-deleted', message.id)
+      toast.add({
+        title: 'Message deleted',
+        description: `Removed message by ${message.username}`,
+        color: 'error',
+        icon: 'i-lucide-trash-2'
+      })
+    } catch (err) {
+      console.error('Failed to delete message:', err)
+      toast.add({
+        title: 'Failed to delete',
+        description: 'Please try again.',
+        color: 'warning',
+        icon: 'i-lucide-alert-triangle'
+      })
+    }
+  }
+
+  toast.add({
+    title: 'Delete this message?',
+    description: 'This action cannot be undone.',
+    color: 'error',
+    icon: 'i-lucide-alert-octagon',
+    actions: [
+      {
+        label: 'Cancel',
+        color: 'neutral'
+      },
+      {
+        label: 'Delete',
+        color: 'error',
+        variant: 'solid',
+        onClick: performDelete
+      }
+    ]
+  })
+}
 
 const handleReactionClick = async (messageId: number, emoji: string) => {
   const token = authStore.token
@@ -392,6 +450,16 @@ watch(() => props.loading, (isLoading) => {
                 <EmojiPicker @select="(emoji: string) => handleEmojiSelect(message.id, emoji)" />
               </div>
             </div>
+
+            <button
+              v-if="canDelete(message)"
+              type="button"
+              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
+              title="Delete message"
+              @click="handleDeleteMessage(message)"
+            >
+              <UIcon name="i-lucide-trash-2" class="text-red-600 dark:text-red-300" />
+            </button>
           </div>
         </div>
       </div>
