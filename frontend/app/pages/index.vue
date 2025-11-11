@@ -17,7 +17,7 @@ definePageMeta({ middleware: 'auth' })
 
 const { token, user } = useAuth()
 const authStore = useAuthStore()
-const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, getClient } = useWebSocket()
+const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
 const channels = ref<Channel[]>([])
 
@@ -34,6 +34,8 @@ let allMessagesSubscription: StompSubscription | null = null
 let userPresenceSubscription: StompSubscription | null = null
 let channelReactionSubscription: StompSubscription | null = null
 let channelReactionRemovalSubscription: StompSubscription | null = null
+let channelMessageDeletionSubscription: StompSubscription | null = null
+let globalMessageDeletionSubscription: StompSubscription | null = null
 
 const newMessage = ref('')
 const loading = ref(true)
@@ -127,6 +129,9 @@ const selectChannel = async (channel: Channel) => {
     if (channelReactionRemovalSubscription) {
       channelReactionRemovalSubscription.unsubscribe()
     }
+    if (channelMessageDeletionSubscription) {
+      channelMessageDeletionSubscription.unsubscribe()
+    }
 
     if (token.value) {
       subscription = subscribeToChannel(channel.id, (newMessage) => {
@@ -174,6 +179,12 @@ const selectChannel = async (channel: Channel) => {
           }
         }
       })
+
+      channelMessageDeletionSubscription = subscribeToChannelMessageDeletions(channel.id, (payload) => {
+        if (payload && typeof payload.id === 'number') {
+          messages.value = messages.value.filter(m => m.id !== payload.id)
+        }
+      })
     }
   } else {
     messages.value = []
@@ -188,6 +199,10 @@ const selectChannel = async (channel: Channel) => {
     if (channelReactionRemovalSubscription) {
       channelReactionRemovalSubscription.unsubscribe()
       channelReactionRemovalSubscription = null
+    }
+    if (channelMessageDeletionSubscription) {
+      channelMessageDeletionSubscription.unsubscribe()
+      channelMessageDeletionSubscription = null
     }
   }
 }
@@ -327,6 +342,10 @@ const fetchMessages = async () => {
   }
 }
 
+const removeMessageById = (id: number) => {
+  messages.value = messages.value.filter(m => m.id !== id)
+}
+
 const sendMessage = async () => {
   if ((!newMessage.value.trim() && !selectedImage.value) || !token.value || !user.value || !selectedChannel.value) return
 
@@ -389,6 +408,14 @@ onMounted(async () => {
         }
       })
 
+      globalMessageDeletionSubscription = subscribeToGlobalMessageDeletions((payload) => {
+        if (!payload) return
+        // If the deleted message is in the currently selected channel, remove it from the list
+        if (selectedChannel.value && payload.channelId === selectedChannel.value.id) {
+          messages.value = messages.value.filter(m => m.id !== payload.id)
+        }
+      })
+
       userPresenceSubscription = subscribeToUserPresence((update: UserPresenceUpdate) => {
         console.log('Received presence update:', update)
         const userIndex = users.value.findIndex(u => u.userId === update.userId)
@@ -433,6 +460,12 @@ onUnmounted(() => {
   }
   if (channelReactionRemovalSubscription) {
     channelReactionRemovalSubscription.unsubscribe()
+  }
+  if (channelMessageDeletionSubscription) {
+    channelMessageDeletionSubscription.unsubscribe()
+  }
+  if (globalMessageDeletionSubscription) {
+    globalMessageDeletionSubscription.unsubscribe()
   }
   if (imagePreviewUrl.value) {
     URL.revokeObjectURL(imagePreviewUrl.value)
@@ -488,7 +521,12 @@ watch(users, () => {
       </div>
 
       <template v-if="selectedChannel?.channelType === 'TEXT'">
-        <MessageList :messages="messages" :loading="loading" :error="error" />
+        <MessageList
+          :messages="messages"
+          :loading="loading"
+          :error="error"
+          @message-deleted="removeMessageById"
+        />
 
         <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
           <div

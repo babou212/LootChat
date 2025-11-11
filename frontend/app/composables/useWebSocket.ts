@@ -3,6 +3,11 @@ import SockJS from 'sockjs-client'
 import type { MessageResponse } from '~/utils/api'
 import type { Reaction } from '~/../../shared/types/chat'
 
+interface MessageDeletionPayload {
+  id: number
+  channelId?: number | null
+}
+
 export interface UserPresenceUpdate {
   userId: number
   username: string
@@ -219,6 +224,44 @@ export const useWebSocket = () => {
     return subscription
   }
 
+  const subscribeToGlobalMessageDeletions = (callback: (payload: MessageDeletionPayload) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+    const subscription = stompClient.subscribe(
+      '/topic/messages/delete',
+      (message) => {
+        try {
+          const payload = JSON.parse(message.body) as MessageDeletionPayload
+          callback(payload)
+        } catch (error) {
+          console.error('Error parsing deletion payload:', error)
+        }
+      }
+    )
+    return subscription
+  }
+
+  const subscribeToChannelMessageDeletions = (channelId: number, callback: (payload: MessageDeletionPayload) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+    const subscription = stompClient.subscribe(
+      `/topic/channels/${channelId}/messages/delete`,
+      (message) => {
+        try {
+          const payload = JSON.parse(message.body) as MessageDeletionPayload
+          callback(payload)
+        } catch (error) {
+          console.error('Error parsing channel deletion payload:', error)
+        }
+      }
+    )
+    return subscription
+  }
+
   return {
     connect,
     disconnect,
@@ -229,6 +272,8 @@ export const useWebSocket = () => {
     subscribeToReactionRemovals,
     subscribeToChannelReactions,
     subscribeToChannelReactionRemovals,
+    subscribeToGlobalMessageDeletions,
+    subscribeToChannelMessageDeletions,
     isConnected: readonly(isConnected),
     connectionError: readonly(connectionError),
     getClient: () => stompClient
