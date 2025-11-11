@@ -102,6 +102,29 @@ jwt.secret=your-secret-key
 jwt.expiration=86400000
 ```
 
+### Admin User Setup
+
+On first boot, the application automatically creates a default admin user if no admin exists. Configure the admin credentials via environment variables:
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_EMAIL=admin@lootchat.local
+ADMIN_PASSWORD=ChangeMe123!
+ADMIN_FIRST_NAME=System
+ADMIN_LAST_NAME=Administrator
+```
+
+**⚠️ IMPORTANT**:
+
+- Change the default admin password immediately after first login
+- In production, always set secure credentials via environment variables
+- The admin user is only created once on first boot if no admin exists
+
+Default credentials (development):
+
+- Username: `admin`
+- Password: `admin123` (dev) or `ChangeMe123!` (prod)
+
 ## 🎯 Features
 
 - **User Authentication**: Secure registration and login with JWT tokens

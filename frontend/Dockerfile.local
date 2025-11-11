@@ -1,0 +1,18 @@
+# Alternative Dockerfile that expects pre-built output
+# Build locally first with: pnpm run build
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+
+# Copy the pre-built output
+COPY .output /app/.output
+
+# Expose port
+EXPOSE 3000
+
+# Set environment variables
+ENV HOST=0.0.0.0
+ENV NODE_ENV=production
+
+# Start the application
+CMD ["node", ".output/server/index.mjs"]
