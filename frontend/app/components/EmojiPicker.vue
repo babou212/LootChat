@@ -71,7 +71,7 @@ const selectEmoji = (e: string) => {
         {{ c.label }}
       </button>
     </div>
-    <div class="grid grid-cols-8 gap-1 max-h-48 overflow-auto pr-1">
+    <div class="grid grid-cols-8 gap-1 max-h-48 overflow-auto pr-1 scrollbar-hide">
       <button
         v-for="(e, i) in activeCategory.emojis"
         :key="i"
@@ -84,3 +84,14 @@ const selectEmoji = (e: string) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+</style>

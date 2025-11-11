@@ -1,6 +1,13 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import type { MessageResponse } from '~/utils/api'
+import type { Reaction } from '~/../../shared/types/chat'
+
+export interface UserPresenceUpdate {
+  userId: number
+  username: string
+  status: 'online' | 'offline'
+}
 
 export const useWebSocket = () => {
   const config = useRuntimeConfig()
@@ -107,11 +114,121 @@ export const useWebSocket = () => {
     return subscription
   }
 
+  const subscribeToUserPresence = (callback: (update: UserPresenceUpdate) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+
+    const subscription = stompClient.subscribe(
+      '/topic/user-presence',
+      (message) => {
+        try {
+          const update = JSON.parse(message.body) as UserPresenceUpdate
+          callback(update)
+        } catch (error) {
+          console.error('Error parsing user presence update:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToReactions = (callback: (reaction: Reaction) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+
+    const subscription = stompClient.subscribe(
+      '/topic/reactions',
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as Reaction
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing reaction:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToReactionRemovals = (callback: (reaction: Reaction) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+
+    const subscription = stompClient.subscribe(
+      '/topic/reactions/remove',
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as Reaction
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing reaction removal:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToChannelReactions = (channelId: number, callback: (reaction: Reaction) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+
+    const subscription = stompClient.subscribe(
+      `/topic/channels/${channelId}/reactions`,
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as Reaction
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing channel reaction:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToChannelReactionRemovals = (channelId: number, callback: (reaction: Reaction) => void) => {
+    if (!stompClient || !isConnected.value) {
+      console.error('WebSocket is not connected')
+      return null
+    }
+
+    const subscription = stompClient.subscribe(
+      `/topic/channels/${channelId}/reactions/remove`,
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as Reaction
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing channel reaction removal:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
   return {
     connect,
     disconnect,
     subscribeToChannel,
     subscribeToAllMessages,
+    subscribeToUserPresence,
+    subscribeToReactions,
+    subscribeToReactionRemovals,
+    subscribeToChannelReactions,
+    subscribeToChannelReactionRemovals,
     isConnected: readonly(isConnected),
     connectionError: readonly(connectionError),
     getClient: () => stompClient

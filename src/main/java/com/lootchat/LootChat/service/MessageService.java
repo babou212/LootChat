@@ -1,10 +1,13 @@
 package com.lootchat.LootChat.service;
 
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.dto.ReactionResponse;
 import com.lootchat.LootChat.entity.Channel;
 import com.lootchat.LootChat.entity.Message;
+import com.lootchat.LootChat.entity.MessageReaction;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.ChannelRepository;
+import com.lootchat.LootChat.repository.MessageReactionRepository;
 import com.lootchat.LootChat.repository.MessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
@@ -25,6 +28,7 @@ public class MessageService {
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final ChannelRepository channelRepository;
+    private final MessageReactionRepository reactionRepository;
     private final CurrentUserService currentUserService;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -144,6 +148,11 @@ public class MessageService {
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
+        List<ReactionResponse> reactions = reactionRepository.findByMessageId(message.getId())
+                .stream()
+                .map(this::mapToReactionResponse)
+                .collect(Collectors.toList());
+
         return MessageResponse.builder()
                 .id(message.getId())
                 .content(message.getContent())
@@ -154,6 +163,71 @@ public class MessageService {
                 .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
+                .reactions(reactions)
+                .build();
+    }
+
+    @Transactional
+    public ReactionResponse addReaction(Long messageId, String emoji) {
+        Long userId = currentUserService.getCurrentUserIdOrThrow();
+        
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
+
+        // Check if reaction already exists
+        if (reactionRepository.findByMessageIdAndUserIdAndEmoji(messageId, userId, emoji).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Reaction already exists");
+        }
+
+        MessageReaction reaction = MessageReaction.builder()
+                .emoji(emoji)
+                .user(user)
+                .message(message)
+                .build();
+
+        MessageReaction savedReaction = reactionRepository.save(reaction);
+        ReactionResponse response = mapToReactionResponse(savedReaction);
+
+        // Broadcast reaction via WebSocket
+        if (message.getChannel() != null) {
+            messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions", response);
+        }
+        messagingTemplate.convertAndSend("/topic/reactions", response);
+
+        return response;
+    }
+
+    @Transactional
+    public void removeReaction(Long messageId, String emoji) {
+        Long userId = currentUserService.getCurrentUserIdOrThrow();
+
+        MessageReaction reaction = reactionRepository.findByMessageIdAndUserIdAndEmoji(messageId, userId, emoji)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reaction not found"));
+
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
+
+        reactionRepository.delete(reaction);
+
+        // Broadcast reaction removal via WebSocket
+        ReactionResponse response = mapToReactionResponse(reaction);
+        if (message.getChannel() != null) {
+            messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions/remove", response);
+        }
+        messagingTemplate.convertAndSend("/topic/reactions/remove", response);
+    }
+
+    private ReactionResponse mapToReactionResponse(MessageReaction reaction) {
+        return ReactionResponse.builder()
+                .id(reaction.getId())
+                .emoji(reaction.getEmoji())
+                .userId(reaction.getUser().getId())
+                .username(reaction.getUser().getUsername())
+                .messageId(reaction.getMessage().getId())
+                .createdAt(reaction.getCreatedAt())
                 .build();
     }
 }

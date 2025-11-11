@@ -10,6 +10,15 @@ export interface Channel {
   updatedAt?: string
 }
 
+export interface Reaction {
+  id: number
+  emoji: string
+  userId: number
+  username: string
+  messageId?: number
+  createdAt: Date
+}
+
 export interface Message {
   id: number
   userId: string
@@ -19,6 +28,7 @@ export interface Message {
   avatar?: string
   channelId?: number
   channelName?: string
+  reactions?: Reaction[]
 }
 
 export enum WebRTCSignalType {
