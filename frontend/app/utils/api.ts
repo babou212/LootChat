@@ -4,6 +4,11 @@ export const API_CONFIG = {
     LOGIN: '/api/auth/login',
     USER: '/api/auth/user'
   },
+  INVITES: {
+    CREATE: '/api/invites',
+    VALIDATE: (token: string) => `/api/invites/${token}`,
+    REGISTER: (token: string) => `/api/invites/${token}/register`
+  },
   CHANNELS: {
     ALL: '/api/channels',
     BY_ID: (id: number) => `/api/channels/${id}`,
@@ -242,5 +247,51 @@ export const userApi = {
   async getUserPresence(token: string): Promise<Record<number, boolean>> {
     const authFetch = createAuthFetch(token)
     return await authFetch<Record<number, boolean>>(`${API_CONFIG.USERS.ALL}/presence`)
+  }
+}
+
+// Invite API
+export interface CreateInviteRequest {
+  expiresInHours?: number
+}
+
+export interface InviteCreateResponse {
+  token: string
+  expiresAt: string
+  invitationUrl: string
+}
+
+export interface InviteValidationResponse {
+  valid: boolean
+  reason?: string
+  expiresAt?: string
+}
+
+export interface RegisterWithInviteRequest {
+  username: string
+  email: string
+  password: string
+  firstName?: string
+  lastName?: string
+}
+
+export const inviteApi = {
+  async create(request: CreateInviteRequest, token: string): Promise<InviteCreateResponse> {
+    const authFetch = createAuthFetch(token)
+    return await authFetch<InviteCreateResponse>(API_CONFIG.INVITES.CREATE, {
+      method: 'POST',
+      body: request
+    })
+  },
+
+  async validate(token: string): Promise<InviteValidationResponse> {
+    return await $fetch<InviteValidationResponse>(`${API_CONFIG.BASE_URL}${API_CONFIG.INVITES.VALIDATE(token)}`)
+  },
+
+  async register(token: string, request: RegisterWithInviteRequest): Promise<import('../../shared/types/user').AuthResponse> {
+    return await $fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.INVITES.REGISTER(token)}`, {
+      method: 'POST',
+      body: request
+    })
   }
 }

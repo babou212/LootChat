@@ -252,6 +252,16 @@ watch([isAdmin, token], ([admin, t]) => {
           </div>
         </div>
       </UCard>
+
+      <UCard v-if="isAdmin">
+        <template #header>
+          <h2 class="text-lg font-semibold">
+            Invitations
+          </h2>
+        </template>
+
+        <InviteCreator />
+      </UCard>
     </div>
     <ChannelDeleteConfirm
       v-model:open="showDeleteConfirm"
