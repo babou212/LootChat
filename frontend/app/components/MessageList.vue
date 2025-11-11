@@ -2,7 +2,7 @@
 import type { Message, Reaction } from '../../shared/types/chat'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
-import { messageApi } from '~/utils/api'
+import { messageApi, API_CONFIG } from '~/utils/api'
 import { useAuthStore } from '../../stores/auth'
 
 interface Props {
@@ -14,6 +14,17 @@ interface Props {
 const props = defineProps<Props>()
 const authStore = useAuthStore()
 
+const apiBaseUrl = API_CONFIG.BASE_URL
+
+// Helper function to add token to image URLs
+const getAuthenticatedImageUrl = (imageUrl: string) => {
+  if (!imageUrl) return ''
+  const token = authStore.token
+  if (!token) return `${apiBaseUrl}${imageUrl}`
+  // Add token as query parameter for img tags
+  return `${apiBaseUrl}${imageUrl}?token=${encodeURIComponent(token)}`
+}
+
 const messagesContainer = ref<HTMLElement | null>(null)
 const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
@@ -21,6 +32,26 @@ const openEmojiUpwards = ref(false)
 const emojiAnchorEl = ref<HTMLElement | null>(null)
 const PICKER_HEIGHT_ESTIMATE = 320
 const inFlightReactions = new Set<string>()
+
+// Image lightbox state
+const expandedImage = ref<string | null>(null)
+const expandedImageAlt = ref<string | null>(null)
+
+const openImageModal = (imageUrl: string, altText: string) => {
+  expandedImage.value = imageUrl
+  expandedImageAlt.value = altText
+}
+
+const closeImageModal = () => {
+  expandedImage.value = null
+  expandedImageAlt.value = null
+}
+
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && expandedImage.value) {
+    closeImageModal()
+  }
+}
 
 const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
   if (activeEmojiPicker.value === messageId) {
@@ -66,12 +97,20 @@ onMounted(() => {
   if (messagesContainer.value) {
     messagesContainer.value.addEventListener('scroll', handleMessagesScroll, { passive: true } as AddEventListenerOptions)
   }
+  // Add keyboard listener for escape key
+  window.addEventListener('keydown', handleKeyDown)
+
+  if (props.messages.length > 0) {
+    scrollToBottom()
+  }
 })
 
 onUnmounted(() => {
   if (messagesContainer.value) {
     messagesContainer.value.removeEventListener('scroll', handleMessagesScroll)
   }
+  // Remove keyboard listener
+  window.removeEventListener('keydown', handleKeyDown)
 })
 
 const handleReactionClick = async (messageId: number, emoji: string) => {
@@ -234,12 +273,6 @@ watch(() => props.loading, (isLoading) => {
     scrollToBottom()
   }
 })
-
-onMounted(() => {
-  if (props.messages.length > 0) {
-    scrollToBottom()
-  }
-})
 </script>
 
 <template>
@@ -302,6 +335,16 @@ onMounted(() => {
           <p class="text-gray-700 dark:text-gray-300">
             {{ contentWithoutMedia(message.content) || message.content }}
           </p>
+
+          <img
+            v-if="message.imageUrl"
+            :src="getAuthenticatedImageUrl(message.imageUrl)"
+            :alt="message.imageFilename || 'Uploaded image'"
+            class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
+            loading="lazy"
+            @click="openImageModal(getAuthenticatedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
+          >
+
           <YouTubePlayer
             v-if="firstYouTubeFrom(message.content)"
             :url="firstYouTubeFrom(message.content) as string"
@@ -353,5 +396,28 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <!-- Image Lightbox Modal -->
+    <Teleport to="body">
+      <div
+        v-if="expandedImage"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4 cursor-zoom-out"
+        @click="closeImageModal"
+      >
+        <button
+          aria-label="Close image"
+          class="absolute top-4 right-4 text-white hover:text-gray-300 transition-colors z-50"
+          @click.stop="closeImageModal"
+        >
+          <UIcon name="i-lucide-x" class="text-4xl" />
+        </button>
+        <img
+          :src="expandedImage"
+          :alt="expandedImageAlt || 'Expanded image'"
+          class="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default"
+          @click.stop
+        >
+      </div>
+    </Teleport>
   </div>
 </template>

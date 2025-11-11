@@ -23,7 +23,6 @@ public class WebSocketEventListener {
     private final UserPresenceService userPresenceService;
     private final UserRepository userRepository;
     
-    // Track sessions to usernames
     private final Map<String, String> sessionUsers = new ConcurrentHashMap<>();
 
     @EventListener
@@ -44,11 +43,9 @@ public class WebSocketEventListener {
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             String username = userDetails.getUsername();
             
-            // Only process once per session
             if (!sessionUsers.containsKey(sessionId)) {
                 sessionUsers.put(sessionId, username);
                 
-                // Get user ID from repository
                 var user = userRepository.findByUsername(username);
                 if (user != null) {
                     log.info("User subscribed and marked online: {} (ID: {})", username, user.getId());
@@ -63,11 +60,9 @@ public class WebSocketEventListener {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = headerAccessor.getSessionId();
         
-        // Get username from session map
         String username = sessionUsers.remove(sessionId);
         
         if (username != null) {
-            // Get user ID from repository
             var user = userRepository.findByUsername(username);
             if (user != null) {
                 log.info("User disconnected: {} (ID: {})", username, user.getId());

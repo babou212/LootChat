@@ -13,12 +13,10 @@ export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => 
 
   if (isPublic) return
 
-  // If we have a token but no authenticated user (e.g., after refresh), try to restore once
   if (!isAuthenticated.value && authToken.value) {
     await restore()
   }
 
-  // After attempting restore, require BOTH user and token to be present
   if (!isAuthenticated.value) {
     return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
   }

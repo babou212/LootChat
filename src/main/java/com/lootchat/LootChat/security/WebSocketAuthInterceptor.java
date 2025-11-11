@@ -27,23 +27,29 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {
             String authToken = accessor.getFirstNativeHeader("Authorization");
             
-            if (authToken != null && authToken.startsWith("Bearer ")) {
-                String jwt = authToken.substring(7);
-                String username = jwtService.extractUsername(jwt);
+            if (authToken == null || !authToken.startsWith("Bearer ")) {
+                throw new IllegalArgumentException("Missing or invalid Authorization header");
+            }
+            
+            String jwt = authToken.substring(7);
+            String username = jwtService.extractUsername(jwt);
 
-                if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+            if (username != null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                    if (jwtService.isTokenValid(jwt, userDetails)) {
-                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,
-                                userDetails.getAuthorities()
-                        );
-                        SecurityContextHolder.getContext().setAuthentication(authentication);
-                        accessor.setUser(authentication);
-                    }
+                if (jwtService.isTokenValid(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    accessor.setUser(authentication);
+                } else {
+                    throw new IllegalArgumentException("Invalid JWT token");
                 }
+            } else {
+                throw new IllegalArgumentException("Unable to extract username from token");
             }
         }
 

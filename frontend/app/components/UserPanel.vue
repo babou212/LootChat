@@ -37,7 +37,6 @@ const getInitials = (user: UserPresence) => {
     class="bg-white dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300"
     :class="isCollapsed ? 'w-12' : 'w-64'"
   >
-    <!-- Header with collapse button -->
     <div class="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center px-4">
       <button
         :aria-label="isCollapsed ? 'Expand user panel' : 'Collapse user panel'"
@@ -51,9 +50,7 @@ const getInitials = (user: UserPresence) => {
       </button>
     </div>
 
-    <!-- User lists -->
     <div v-if="!isCollapsed" class="flex-1 overflow-y-auto p-2">
-      <!-- Online Users Section -->
       <div class="mb-4">
         <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2 flex items-center gap-2">
           <span class="w-2 h-2 bg-green-500 rounded-full" />
@@ -88,7 +85,6 @@ const getInitials = (user: UserPresence) => {
         </div>
       </div>
 
-      <!-- Offline Users Section -->
       <div v-if="offlineUsers.length > 0">
         <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2 flex items-center gap-2">
           <span class="w-2 h-2 bg-gray-400 rounded-full" />
@@ -124,7 +120,6 @@ const getInitials = (user: UserPresence) => {
       </div>
     </div>
 
-    <!-- Collapsed state - just show count -->
     <div v-else class="flex-1 flex flex-col items-center pt-4 gap-4">
       <div class="relative">
         <UIcon name="i-lucide-users" class="text-2xl text-gray-600 dark:text-gray-400" />

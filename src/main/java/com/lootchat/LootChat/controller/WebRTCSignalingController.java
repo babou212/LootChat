@@ -2,7 +2,6 @@ package com.lootchat.LootChat.controller;
 
 import com.lootchat.LootChat.dto.WebRTCSignalRequest;
 import com.lootchat.LootChat.dto.WebRTCSignalResponse;
-import com.lootchat.LootChat.dto.WebRTCSignalType;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +29,6 @@ public class WebRTCSignalingController {
             request.getType(), request.getChannelId(), request.getFromUserId(), request.getToUserId());
 
         try {
-            // Get the sender's information
             User fromUser = userRepository.findById(Long.parseLong(request.getFromUserId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
@@ -43,11 +41,9 @@ public class WebRTCSignalingController {
                 .data(request.getData())
                 .build();
 
-            // Handle different signal types
             switch (request.getType()) {
                 case JOIN:
                 case LEAVE:
-                    // Broadcast JOIN/LEAVE to all users in the channel
                     messagingTemplate.convertAndSend(
                         "/topic/channels/" + request.getChannelId() + "/webrtc",
                         response
@@ -59,14 +55,12 @@ public class WebRTCSignalingController {
                 case OFFER:
                 case ANSWER:
                 case ICE_CANDIDATE:
-                    // Send peer-to-peer signals directly to the target user by username
                     if (request.getToUserId() != null && !request.getToUserId().isEmpty()) {
-                        // Get target user's username for Spring's user-specific messaging
                         User toUser = userRepository.findById(Long.parseLong(request.getToUserId()))
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target user not found"));
                         
                         messagingTemplate.convertAndSendToUser(
-                            toUser.getUsername(),  // Use username, not ID
+                            toUser.getUsername(),  
                             "/queue/webrtc/signal",
                             response
                         );

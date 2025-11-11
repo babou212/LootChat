@@ -70,7 +70,6 @@ const toggleSidebar = () => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
-      <!-- Text Channels Section -->
       <div class="mb-4">
         <h3
           v-show="!isCollapsed"
@@ -101,7 +100,6 @@ const toggleSidebar = () => {
         </UButton>
       </div>
 
-      <!-- Voice Channels Section -->
       <div v-if="voiceChannels.length > 0">
         <h3
           v-show="!isCollapsed"

@@ -26,6 +26,8 @@ export interface Message {
   content: string
   timestamp: Date
   avatar?: string
+  imageUrl?: string
+  imageFilename?: string
   channelId?: number
   channelName?: string
   reactions?: Reaction[]

@@ -8,12 +8,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/messages")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "*", allowedHeaders = "*")
 public class MessageController {
 
     private final MessageService messageService;
@@ -26,6 +28,15 @@ public class MessageController {
         } else {
             message = messageService.createMessage(request.getContent());
         }
+        return ResponseEntity.status(HttpStatus.CREATED).body(message);
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<MessageResponse> createMessageWithImage(
+            @RequestParam("channelId") Long channelId,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam("image") MultipartFile image) {
+        MessageResponse message = messageService.createMessageWithImage(content, channelId, image);
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 

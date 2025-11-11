@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,6 +32,7 @@ public class MessageService {
     private final MessageReactionRepository reactionRepository;
     private final CurrentUserService currentUserService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FileStorageService fileStorageService;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -65,6 +67,42 @@ public class MessageService {
                 .content(content)
                 .user(user)
                 .channel(channel)
+                .build();
+
+        Message savedMessage = messageRepository.save(message);
+        MessageResponse response = mapToMessageResponse(savedMessage);
+        
+        // Broadcast new message to channel-specific topic
+        messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+        
+        // Also broadcast to the global topic for notifications
+        messagingTemplate.convertAndSend("/topic/messages", response);
+        
+        return response;
+    }
+
+    @Transactional
+    public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image) {
+        Long userId = currentUserService.getCurrentUserIdOrThrow();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
+
+        Channel channel = channelRepository.findById(channelId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + channelId));
+
+        // Store the image file
+        String imageFilename = fileStorageService.storeFile(image);
+        String imageUrl = "/api/files/images/" + imageFilename;
+
+        // Use empty string if content is null
+        String messageContent = content != null ? content : "";
+
+        Message message = Message.builder()
+                .content(messageContent)
+                .user(user)
+                .channel(channel)
+                .imageUrl(imageUrl)
+                .imageFilename(imageFilename)
                 .build();
 
         Message savedMessage = messageRepository.save(message);
@@ -144,6 +182,11 @@ public class MessageService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot delete this message");
         }
 
+        // Delete associated image file if exists
+        if (message.getImageFilename() != null) {
+            fileStorageService.deleteFile(message.getImageFilename());
+        }
+
         messageRepository.deleteById(id);
     }
 
@@ -159,6 +202,8 @@ public class MessageService {
                 .userId(message.getUser().getId())
                 .username(message.getUser().getUsername())
                 .avatar(message.getUser().getAvatar())
+                .imageUrl(message.getImageUrl())
+                .imageFilename(message.getImageFilename())
                 .channelId(message.getChannel() != null ? message.getChannel().getId() : null)
                 .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
                 .createdAt(message.getCreatedAt())

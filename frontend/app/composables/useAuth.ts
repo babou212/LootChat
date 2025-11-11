@@ -77,9 +77,6 @@ export const useAuth = () => {
     authUserCookie.value = null
   }
 
-  /**
-   * Restore auth state from persisted cookies after a hard page refresh.
-   */
   const restore = async () => {
     try {
       if (user.value) return

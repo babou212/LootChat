@@ -5,15 +5,6 @@ const router = useRouter()
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 
-// Debug: Check user data
-watchEffect(() => {
-  if (user.value) {
-    console.log('UserMenu - Current user data:', user.value)
-    console.log('UserMenu - Avatar:', user.value.avatar)
-  }
-})
-
-// Click-away to close the menu using composable
 useClickAway(
   rootRef,
   () => { open.value = false },
