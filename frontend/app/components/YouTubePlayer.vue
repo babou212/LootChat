@@ -6,7 +6,6 @@ interface Props {
 const props = defineProps<Props>()
 
 const extractVideoId = (url: string): string | null => {
-  // Handle various YouTube URL formats
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
     /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,

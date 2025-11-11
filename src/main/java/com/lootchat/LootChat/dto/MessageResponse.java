@@ -19,6 +19,8 @@ public class MessageResponse {
     private Long userId;
     private String username;
     private String avatar;
+    private String imageUrl;
+    private String imageFilename;
     private Long channelId;
     private String channelName;
     private LocalDateTime createdAt;

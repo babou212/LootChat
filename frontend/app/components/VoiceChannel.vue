@@ -29,7 +29,6 @@ const handleJoinChannel = async () => {
     return
   }
 
-  // Wait briefly for STOMP to finish connecting if needed
   if (!props.stompClient.connected) {
     const waitForConnected = (client: Client, timeoutMs = 3000, intervalMs = 100) => {
       return new Promise<boolean>((resolve) => {
@@ -73,7 +72,6 @@ const handleLeaveChannel = () => {
   error.value = null
 }
 
-// Cleanup on unmount
 onUnmounted(() => {
   if (isConnected.value) {
     handleLeaveChannel()
@@ -84,7 +82,6 @@ onUnmounted(() => {
 <template>
   <div class="flex-1 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-8">
     <div class="max-w-2xl w-full">
-      <!-- Voice Channel Header -->
       <div class="text-center mb-8">
         <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900/30 mb-4">
           <UIcon name="i-lucide-mic" class="text-4xl text-primary-600 dark:text-primary-400" />
@@ -97,7 +94,6 @@ onUnmounted(() => {
         </p>
       </div>
 
-      <!-- Error Message -->
       <UAlert
         v-if="error"
         color="error"
@@ -107,7 +103,6 @@ onUnmounted(() => {
         @close="error = null"
       />
 
-      <!-- Not Connected State -->
       <div v-if="!isConnected" class="text-center">
         <p class="text-gray-600 dark:text-gray-400 mb-2">
           Join this voice channel to start talking with others
@@ -124,9 +119,7 @@ onUnmounted(() => {
         </UButton>
       </div>
 
-      <!-- Connected State -->
       <div v-else class="space-y-6">
-        <!-- Participants List -->
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Participants ({{ participants.length }})
@@ -174,7 +167,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Voice Controls -->
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Voice Controls

@@ -39,6 +39,10 @@ const newMessage = ref('')
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+const selectedImage = ref<File | null>(null)
+const imagePreviewUrl = ref<string | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
 const showEmojiPicker = ref(false)
 const showGifPicker = ref(false)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
@@ -64,6 +68,45 @@ const addGifToMessage = (gifUrl: string) => {
   showGifPicker.value = false
 }
 
+const handleImageSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (file) {
+    const maxSizeInMB = 50
+    const fileSizeInMB = file.size / (1024 * 1024)
+
+    if (fileSizeInMB > maxSizeInMB) {
+      error.value = `File size (${fileSizeInMB.toFixed(2)}MB) exceeds maximum limit of ${maxSizeInMB}MB`
+      if (fileInputRef.value) {
+        fileInputRef.value.value = ''
+      }
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      error.value = 'Please select an image file'
+      if (fileInputRef.value) {
+        fileInputRef.value.value = ''
+      }
+      return
+    }
+    selectedImage.value = file
+    imagePreviewUrl.value = URL.createObjectURL(file)
+    error.value = null
+  }
+}
+
+const removeImage = () => {
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+  }
+  selectedImage.value = null
+  imagePreviewUrl.value = null
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
 const selectChannel = async (channel: Channel) => {
   selectedChannel.value = channel
 
@@ -72,7 +115,6 @@ const selectChannel = async (channel: Channel) => {
     channels.value[channelIndex]!.unread = 0
   }
 
-  // Only fetch messages and subscribe for text channels
   if (channel.channelType === 'TEXT' || !channel.channelType) {
     await fetchMessages()
 
@@ -101,7 +143,6 @@ const selectChannel = async (channel: Channel) => {
         }
       })
 
-      // Subscribe to reactions for this channel
       channelReactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {
         const messageIndex = messages.value.findIndex(m => m.id === reaction.messageId)
         if (messageIndex !== -1) {
@@ -109,7 +150,6 @@ const selectChannel = async (channel: Channel) => {
           if (!message.reactions) {
             message.reactions = []
           }
-          // Check if reaction already exists
           const existingReactionIndex = message.reactions.findIndex(
             r => r.id === reaction.id
           )
@@ -125,7 +165,6 @@ const selectChannel = async (channel: Channel) => {
         }
       })
 
-      // Subscribe to reaction removals for this channel
       channelReactionRemovalSubscription = subscribeToChannelReactionRemovals(channel.id, (reaction) => {
         const messageIndex = messages.value.findIndex(m => m.id === reaction.messageId)
         if (messageIndex !== -1) {
@@ -137,7 +176,6 @@ const selectChannel = async (channel: Channel) => {
       })
     }
   } else {
-    // Clear messages for voice channels
     messages.value = []
     if (subscription) {
       subscription.unsubscribe()
@@ -174,6 +212,8 @@ const convertToMessage = (apiMessage: MessageResponse): Message => {
     content: apiMessage.content,
     timestamp: new Date(apiMessage.createdAt),
     avatar: apiMessage.avatar,
+    imageUrl: apiMessage.imageUrl,
+    imageFilename: apiMessage.imageFilename,
     channelId: apiMessage.channelId,
     channelName: apiMessage.channelName,
     reactions: apiMessage.reactions?.map(r => ({
@@ -210,7 +250,6 @@ const fetchUsers = async () => {
 
     const apiUsers = await userApi.getAllUsers(authToken.value)
 
-    // Fetch current presence state
     let presenceMap: Record<number, boolean> = {}
     try {
       presenceMap = await userApi.getUserPresence(authToken.value)
@@ -232,17 +271,13 @@ const fetchUsers = async () => {
       }
     })
 
-    // Mark current user as online immediately
     if (user.value && user.value.userId) {
       const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
       if (currentUserIndex !== -1) {
         users.value[currentUserIndex]!.status = 'online'
 
-        // Update current user's avatar if they don't have one in their auth data
         const currentUserData = users.value[currentUserIndex]
         if (currentUserData && currentUserData.avatar && !user.value.avatar) {
-          console.log('Updating current user avatar from user list:', currentUserData.avatar)
-          // Update the auth store and cookie with the avatar
           const updatedUser: User = { ...user.value, avatar: currentUserData.avatar }
           authStore.setAuth(updatedUser, token.value!)
           const authUserCookie = useCookie<User | null>('auth_user', {
@@ -254,8 +289,6 @@ const fetchUsers = async () => {
           authUserCookie.value = updatedUser
         }
       } else {
-        // Add current user if not in the list
-        console.log('Adding current user to the list')
         users.value.push({
           userId: user.value.userId,
           username: user.value.username,
@@ -295,22 +328,39 @@ const fetchMessages = async () => {
 }
 
 const sendMessage = async () => {
-  if (!newMessage.value.trim() || !token.value || !user.value || !selectedChannel.value) return
+  if ((!newMessage.value.trim() && !selectedImage.value) || !token.value || !user.value || !selectedChannel.value) return
 
   try {
-    await messageApi.createMessage(
-      {
-        content: newMessage.value,
-        userId: user.value.userId,
-        channelId: selectedChannel.value.id
-      },
-      token.value
-    )
+    error.value = null
+
+    if (selectedImage.value) {
+      await messageApi.createMessageWithImage(
+        selectedChannel.value.id,
+        selectedImage.value,
+        newMessage.value.trim() || null,
+        token.value
+      )
+      removeImage()
+    } else {
+      await messageApi.createMessage(
+        {
+          content: newMessage.value,
+          userId: user.value.userId,
+          channelId: selectedChannel.value.id
+        },
+        token.value
+      )
+    }
 
     newMessage.value = ''
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Failed to send message:', err)
-    error.value = 'Failed to send message'
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    error.value = errorMessage.includes('413')
+      ? 'Image file is too large. Maximum size is 50MB.'
+      : errorMessage.includes('upload')
+        ? 'Failed to upload image. Please try again.'
+        : 'Failed to send message. Please try again.'
   }
 }
 
@@ -322,7 +372,6 @@ onMounted(async () => {
     try {
       await connect(token.value)
 
-      // Mark current user as online after WebSocket connection
       if (user.value && user.value.userId) {
         const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
         if (currentUserIndex !== -1) {
@@ -344,17 +393,12 @@ onMounted(async () => {
         console.log('Received presence update:', update)
         const userIndex = users.value.findIndex(u => u.userId === update.userId)
         if (userIndex !== -1) {
-          // Update status, but ensure current user is always shown as online
           if (user.value && update.userId === user.value.userId) {
             users.value[userIndex]!.status = 'online'
-            console.log(`Current user ${update.username} always shown as online`)
           } else {
             users.value[userIndex]!.status = update.status
-            console.log(`Updated user ${update.username} to ${update.status}`)
           }
         } else {
-          // User not in list, might be a new user
-          console.log(`Adding new user ${update.username}`)
           users.value.push({
             userId: update.userId,
             username: update.username,
@@ -390,6 +434,9 @@ onUnmounted(() => {
   if (channelReactionRemovalSubscription) {
     channelReactionRemovalSubscription.unsubscribe()
   }
+  if (imagePreviewUrl.value) {
+    URL.revokeObjectURL(imagePreviewUrl.value)
+  }
   disconnect()
 })
 
@@ -405,7 +452,6 @@ watch(showGifPicker, (open) => {
   }
 })
 
-// Ensure current user is always shown as online
 watch(users, () => {
   if (user.value && user.value.userId) {
     const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
@@ -441,13 +487,44 @@ watch(users, () => {
         </div>
       </div>
 
-      <!-- Text Channel View -->
       <template v-if="selectedChannel?.channelType === 'TEXT'">
         <MessageList :messages="messages" :loading="loading" :error="error" />
 
         <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+          <div
+            v-if="imagePreviewUrl"
+            class="mb-2 relative inline-block"
+          >
+            <img
+              :src="imagePreviewUrl"
+              alt="Preview"
+              class="max-h-32 rounded-lg shadow-md"
+            >
+            <button
+              type="button"
+              class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
+              @click="removeImage"
+            >
+              ×
+            </button>
+          </div>
+
           <form class="flex items-center gap-2" @submit.prevent="sendMessage">
             <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
+              <input
+                ref="fileInputRef"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="handleImageSelect"
+              >
+              <UButton
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-image-plus"
+                aria-label="Upload image"
+                @click="fileInputRef?.click()"
+              />
               <UButton
                 color="neutral"
                 variant="ghost"
@@ -488,7 +565,7 @@ watch(users, () => {
               type="submit"
               size="lg"
               icon="i-lucide-send"
-              :disabled="!newMessage.trim()"
+              :disabled="!newMessage.trim() && !selectedImage"
             >
               Send
             </UButton>
@@ -496,7 +573,6 @@ watch(users, () => {
         </div>
       </template>
 
-      <!-- Voice Channel View -->
       <VoiceChannel
         v-else-if="selectedChannel?.channelType === 'VOICE'"
         :channel="selectedChannel"
@@ -504,7 +580,6 @@ watch(users, () => {
       />
     </div>
 
-    <!-- User Panel -->
     <UserPanel :users="users" />
   </div>
 </template>

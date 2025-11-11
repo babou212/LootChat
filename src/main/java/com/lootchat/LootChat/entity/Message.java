@@ -21,6 +21,12 @@ public class Message {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @Column(name = "image_url")
+    private String imageUrl;
+
+    @Column(name = "image_filename")
+    private String imageFilename;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

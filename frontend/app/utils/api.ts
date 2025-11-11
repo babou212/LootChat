@@ -45,6 +45,8 @@ export interface MessageResponse {
   createdAt: string
   updatedAt: string
   avatar: string
+  imageUrl?: string
+  imageFilename?: string
   channelId: number
   channelName: string
   reactions?: ReactionResponse[]
@@ -119,6 +121,29 @@ export const messageApi = {
       method: 'POST',
       body: request
     })
+  },
+
+  async createMessageWithImage(channelId: number, image: File, content: string | null, token: string): Promise<MessageResponse> {
+    const formData = new FormData()
+    formData.append('image', image)
+    formData.append('channelId', channelId.toString())
+    if (content) {
+      formData.append('content', content)
+    }
+
+    const response = await fetch(`${API_CONFIG.BASE_URL}/api/messages/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to upload image: ${response.statusText}`)
+    }
+
+    return await response.json()
   },
 
   async updateMessage(id: number, request: UpdateMessageRequest, token: string): Promise<MessageResponse> {

@@ -34,7 +34,6 @@ export const useWebRTC = () => {
     const policy = (publicRuntime.webrtcIceTransportPolicy as 'all' | 'relay' | undefined) || 'all'
 
     if (turnUrlsRaw.trim().length > 0) {
-      // Support comma-separated list
       const turnUrls = turnUrlsRaw
         .split(',')
         .map(u => u.trim())
@@ -54,13 +53,11 @@ export const useWebRTC = () => {
     return cfg
   }
 
-  // Queue ICE candidates until remote description is set
   const pendingCandidates = ref<Map<string, RTCIceCandidateInit[]>>(new Map())
 
   const createPeerConnection = async (userId: string): Promise<RTCPeerConnection> => {
     const pc = new RTCPeerConnection(getRTCConfiguration())
 
-    // Add local tracks to peer connection
     if (localStream.value) {
       localStream.value.getTracks().forEach((track) => {
         if (localStream.value) {
@@ -69,12 +66,10 @@ export const useWebRTC = () => {
       })
     }
 
-    // Handle incoming tracks
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams
 
       if (remoteStream) {
-        // Create an audio element to play the remote stream
         const audio = new Audio()
         audio.srcObject = remoteStream
         audio.autoplay = true
@@ -90,7 +85,6 @@ export const useWebRTC = () => {
       }
     }
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate && currentChannelId.value && user.value) {
         sendSignal({
@@ -109,7 +103,6 @@ export const useWebRTC = () => {
       }
     }
 
-    // Handle connection state changes
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         removePeer(userId)
@@ -137,11 +130,9 @@ export const useWebRTC = () => {
     const myId = user.value.userId.toString()
 
     const shouldInitiateOffer = (peerId: string) => {
-      // Deterministic offerer to avoid glare: lower numeric id initiates
       try {
         return BigInt(myId) < BigInt(peerId)
       } catch {
-        // Fallback to string comparison if not numeric
         return myId < peerId
       }
     }
@@ -149,7 +140,6 @@ export const useWebRTC = () => {
     try {
       switch (type) {
         case 'JOIN':
-          // Add new participant
           if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
             participants.value.push({
               userId: fromUserId,
@@ -159,7 +149,6 @@ export const useWebRTC = () => {
             })
           }
 
-          // If this is a broadcast JOIN (no toUserId), acknowledge directly back so newcomer gets us in their list
           if (!signal.toUserId && currentChannelId.value && fromUserId !== myId) {
             sendSignal({
               channelId: currentChannelId.value,
@@ -169,14 +158,12 @@ export const useWebRTC = () => {
             })
           }
 
-          // Only one side should initiate offer to avoid glare
           if (currentChannelId.value && fromUserId !== myId && shouldInitiateOffer(fromUserId)) {
             await createOffer(fromUserId)
           }
           break
 
         case 'LEAVE':
-          // Remove participant
           participants.value = participants.value.filter((p: VoiceParticipant) => p.userId !== fromUserId)
           removePeer(fromUserId)
           break
@@ -238,7 +225,6 @@ export const useWebRTC = () => {
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
 
-      // Flush any pending ICE candidates queued before remote description was set
       const queued = pendingCandidates.value.get(userId) || []
       for (const c of queued) {
         try {
@@ -269,7 +255,6 @@ export const useWebRTC = () => {
       if (peer) {
         await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
 
-        // Flush any pending ICE candidates queued before remote description was set
         const queued = pendingCandidates.value.get(userId) || []
         for (const c of queued) {
           try {
@@ -291,7 +276,6 @@ export const useWebRTC = () => {
       if (peer && peer.connection.remoteDescription) {
         await peer.connection.addIceCandidate(new RTCIceCandidate(candidate))
       } else {
-        // Queue candidate until remote description is set
         const list = pendingCandidates.value.get(userId) || []
         list.push(candidate)
         pendingCandidates.value.set(userId, list)
@@ -316,7 +300,6 @@ export const useWebRTC = () => {
     if (!user.value) return
 
     try {
-      // Get user media
       localStream.value = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -328,7 +311,6 @@ export const useWebRTC = () => {
       currentChannelId.value = channelId
       stompClient = client
 
-      // Add self to participants list
       participants.value.push({
         userId: user.value.userId.toString(),
         username: user.value.username,
@@ -336,19 +318,16 @@ export const useWebRTC = () => {
         isSpeaking: false
       })
 
-      // Subscribe to WebRTC signals for this channel
       client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
 
-      // Subscribe to personal queue for direct signals
       client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
 
-      // Send JOIN signal to notify others
       sendSignal({
         channelId,
         type: 'JOIN' as WebRTCSignalType,
@@ -363,26 +342,22 @@ export const useWebRTC = () => {
   const leaveVoiceChannel = () => {
     if (!user.value || !currentChannelId.value) return
 
-    // Send LEAVE signal
     sendSignal({
       channelId: currentChannelId.value,
       type: 'LEAVE' as WebRTCSignalType,
       fromUserId: user.value.userId.toString()
     })
 
-    // Cleanup
     if (signalSubscription) {
       signalSubscription.unsubscribe()
       signalSubscription = null
     }
 
-    // Close all peer connections
     peers.value.forEach((peer, userId) => {
       removePeer(userId)
     })
     peers.value.clear()
 
-    // Stop local stream
     if (localStream.value) {
       localStream.value.getTracks().forEach(track => track.stop())
       localStream.value = null
@@ -400,7 +375,6 @@ export const useWebRTC = () => {
         audioTrack.enabled = !audioTrack.enabled
         isMuted.value = !audioTrack.enabled
 
-        // Update participant mute state
         const userId = user.value.userId.toString()
         const selfParticipant = participants.value.find(p => p.userId === userId)
         if (selfParticipant) {
@@ -413,12 +387,10 @@ export const useWebRTC = () => {
   const toggleDeafen = () => {
     isDeafened.value = !isDeafened.value
 
-    // If deafening, also mute
     if (isDeafened.value && !isMuted.value) {
       toggleMute()
     }
 
-    // Mute/unmute all remote streams
     peers.value.forEach((peer) => {
       if (peer.stream) {
         peer.stream.getAudioTracks().forEach((track) => {
