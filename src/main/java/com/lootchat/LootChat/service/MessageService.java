@@ -1,17 +1,18 @@
 package com.lootchat.LootChat.service;
 
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.dto.PaginationRequest;
 import com.lootchat.LootChat.dto.ReactionResponse;
-import com.lootchat.LootChat.entity.Channel;
-import com.lootchat.LootChat.entity.Message;
-import com.lootchat.LootChat.entity.MessageReaction;
-import com.lootchat.LootChat.entity.User;
+import com.lootchat.LootChat.entity.*;
 import com.lootchat.LootChat.repository.ChannelRepository;
 import com.lootchat.LootChat.repository.MessageReactionRepository;
 import com.lootchat.LootChat.repository.MessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
+import com.lootchat.LootChat.util.PaginationUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -122,6 +123,23 @@ public class MessageService {
         return messageRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::mapToMessageResponse)
                 .collect(Collectors.toList());
+    }
+
+    public PagingResult<MessageResponse> findAllPaginatedMessages(PaginationRequest request) {
+        final Pageable pageable = PaginationUtils.getPagable(request);
+        final Page<Message> messageAttributes = messageRepository.findAll(pageable);
+        final List<MessageResponse> entitiesDto = messageAttributes.stream()
+                .map(this::mapToMessageResponse)
+                .toList();
+
+        return new PagingResult<>(
+                entitiesDto,
+                messageAttributes.getTotalPages(),
+                messageAttributes.getTotalElements(),
+                messageAttributes.getSize(),
+                messageAttributes.getNumber(),
+                messageAttributes.isEmpty()
+        );
     }
 
     @Transactional(readOnly = true)
