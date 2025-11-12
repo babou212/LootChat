@@ -1,6 +1,6 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import type { MessageResponse } from '~/utils/api'
+import type { MessageResponse } from '~/api/messageApi'
 import type { Reaction } from '~/../../shared/types/chat'
 
 interface MessageDeletionPayload {

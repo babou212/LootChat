@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { inviteApi } from '~/utils/api'
-import type { RegisterWithInviteRequest } from '~/utils/api'
+import { inviteApi } from '~/api/inviteApi'
+import type { RegisterWithInviteRequest } from '~/api/inviteApi'
 import { useAuth } from '~/composables/useAuth'
 
 definePageMeta({ layout: false })

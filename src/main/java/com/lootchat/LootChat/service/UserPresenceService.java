@@ -1,10 +1,12 @@
 package com.lootchat.LootChat.service;
 
-import com.lootchat.LootChat.dto.UserPresenceUpdate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lootchat.LootChat.dto.UserPresenceEvent;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -15,8 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @RequiredArgsConstructor
 public class UserPresenceService {
-    private final SimpMessagingTemplate messagingTemplate;
+    
+    private static final Logger log = LoggerFactory.getLogger(UserPresenceService.class);
+    
     private final UserRepository userRepository;
+    private final KafkaProducerService kafkaProducerService;
+    private final ObjectMapper objectMapper;
     
     // Maps username to their online status
     private final Map<String, Boolean> userPresence = new ConcurrentHashMap<>();
@@ -54,12 +60,14 @@ public class UserPresenceService {
     }
     
     private void broadcastPresenceUpdate(Long userId, String username, String status) {
-        UserPresenceUpdate update = UserPresenceUpdate.builder()
-                .userId(userId)
-                .username(username)
-                .status(status)
-                .build();
-        
-        messagingTemplate.convertAndSend("/topic/user-presence", update);
+        try {
+            UserPresenceEvent event = new UserPresenceEvent(userId, username, status);
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaProducerService.send(null, null, payload);
+            log.debug("Published user presence update to Kafka: userId={}, username={}, status={}", 
+                userId, username, status);
+        } catch (Exception e) {
+            log.error("Failed to publish user presence to Kafka", e);
+        }
     }
 }

@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Channel, Message } from '../../shared/types/chat'
-import { messageApi, channelApi, userApi, type MessageResponse, type ChannelResponse, type UserResponse } from '~/utils/api'
+import { messageApi } from '~/api/messageApi'
+import { channelApi } from '~/api/channelApi'
+import { userApi } from '~/api/userApi'
+import type { MessageResponse } from '~/api/messageApi'
+import type { ChannelResponse } from '~/api/channelApi'
+import type { UserResponse } from '~/api/userApi'
 import MessageList from '~/components/MessageList.vue'
 import VoiceChannel from '~/components/VoiceChannel.vue'
 import UserMenu from '~/components/UserMenu.vue'
