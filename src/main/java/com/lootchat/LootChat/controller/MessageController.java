@@ -2,9 +2,12 @@ package com.lootchat.LootChat.controller;
 
 import com.lootchat.LootChat.dto.CreateMessageRequest;
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.dto.PaginationRequest;
 import com.lootchat.LootChat.dto.UpdateMessageRequest;
+import com.lootchat.LootChat.entity.PagingResult;
 import com.lootchat.LootChat.service.MessageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,6 +52,18 @@ public class MessageController {
         } else {
             messages = messageService.getAllMessages();
         }
+        return ResponseEntity.ok(messages);
+    }
+
+    @GetMapping("/paginated")
+    public ResponseEntity<PagingResult<MessageResponse>> findAllPaginatedMessages(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) Sort.Direction direction
+            ) {
+        final PaginationRequest request = new PaginationRequest(page, size, sortField, direction);
+        final PagingResult<MessageResponse> messages = messageService.findAllPaginatedMessages(request);
         return ResponseEntity.ok(messages);
     }
 
