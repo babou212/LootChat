@@ -3,7 +3,7 @@ import type { Message, Reaction } from '../../shared/types/chat'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
 import { messageApi } from '~/api/messageApi'
-import { API_CONFIG } from '~/utils/apiConfig'
+import { API_CONFIG } from '~/api/apiConfig'
 import { useAuthStore } from '../../stores/auth'
 
 interface Props {

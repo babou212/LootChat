@@ -1,4 +1,4 @@
-import { API_CONFIG } from '../utils/apiConfig'
+import { API_CONFIG } from './apiConfig'
 
 export const createAuthFetch = (token: string) => {
   return $fetch.create({

@@ -1,4 +1,4 @@
-import { API_CONFIG } from '../utils/apiConfig'
+import { API_CONFIG } from './apiConfig'
 
 export interface CreateInviteRequest {
   expiresInHours?: number
