@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { channelApi, type ChannelResponse } from '~/utils/api'
+import { channelApi } from '~/api/channelApi'
+import type { ChannelResponse } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
 import ChannelCreate from '~/components/ChannelCreate.vue'
 import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'

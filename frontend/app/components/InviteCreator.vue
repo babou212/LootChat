@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { inviteApi, type CreateInviteRequest, type InviteCreateResponse } from '~/utils/api'
+import { inviteApi } from '~/api/inviteApi'
+import type { CreateInviteRequest, InviteCreateResponse } from '~/api/inviteApi'
 import { useAuth } from '~/composables/useAuth'
 
 const { token, user } = useAuth()

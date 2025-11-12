@@ -21,6 +21,10 @@ A modern chat application built with Spring Boot and Nuxt, featuring real-time m
 
 - **PostgreSQL** (containerized via Docker Compose)
 
+### Messaging
+
+- **Apache Kafka** (containerized via Docker Compose)
+
 ## 📋 Prerequisites
 
 - Java 25 JDK
@@ -71,6 +75,24 @@ chmod +x gradlew
 
 The backend API will be available at `http://localhost:8080`
 
+#### Kafka (Local)
+
+The repo includes a single-node Kafka broker via Docker Compose. When running the backend locally, Spring Boot will connect to `localhost:9092` by default. To override, set:
+
+```env
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+```
+
+Publish a test message via the backend endpoint:
+
+```bash
+curl -X POST http://localhost:8080/api/kafka/publish \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"hello from LootChat"}'
+```
+
+This sends to the default topic `lootchat.chat.messages`. Check backend logs for consumer output.
+
 ### 4. Frontend Setup
 
 Navigate to the frontend directory and install dependencies:
@@ -100,6 +122,11 @@ spring.datasource.password=postgres
 # JWT Secret (Change in production!)
 jwt.secret=your-secret-key
 jwt.expiration=86400000
+
+# Kafka
+spring.kafka.bootstrap-servers=localhost:9092
+spring.kafka.consumer.group-id=lootchat-dev-group
+app.kafka.topics.chat=lootchat.chat.messages
 ```
 
 ### Admin User Setup

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { channelApi, type CreateChannelRequest } from '~/utils/api'
+import { channelApi } from '~/api/channelApi'
+import type { CreateChannelRequest } from '~/api/channelApi'
 
 const props = defineProps<{
   token: string | null

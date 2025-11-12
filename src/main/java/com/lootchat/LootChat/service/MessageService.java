@@ -1,5 +1,7 @@
 package com.lootchat.LootChat.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lootchat.LootChat.dto.*;
 import com.lootchat.LootChat.dto.MessageResponse;
 import com.lootchat.LootChat.dto.ReactionResponse;
 import com.lootchat.LootChat.entity.Channel;
@@ -12,7 +14,8 @@ import com.lootchat.LootChat.repository.MessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -26,13 +29,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MessageService {
 
+    private static final Logger log = LoggerFactory.getLogger(MessageService.class);
+
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
     private final ChannelRepository channelRepository;
     private final MessageReactionRepository reactionRepository;
     private final CurrentUserService currentUserService;
-    private final SimpMessagingTemplate messagingTemplate;
     private final FileStorageService fileStorageService;
+    private final KafkaProducerService kafkaProducerService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -48,8 +54,7 @@ public class MessageService {
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
-        // Broadcast new message to all connected WebSocket clients
-        messagingTemplate.convertAndSend("/topic/messages", response);
+        publishMessageToKafka(savedMessage.getId(), content, null, userId);
         
         return response;
     }
@@ -72,11 +77,7 @@ public class MessageService {
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
-        // Broadcast new message to channel-specific topic
-        messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
-        
-        // Also broadcast to the global topic for notifications
-        messagingTemplate.convertAndSend("/topic/messages", response);
+        publishMessageToKafka(savedMessage.getId(), content, channelId, userId);
         
         return response;
     }
@@ -90,11 +91,9 @@ public class MessageService {
         Channel channel = channelRepository.findById(channelId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + channelId));
 
-        // Store the image file
         String imageFilename = fileStorageService.storeFile(image);
         String imageUrl = "/api/files/images/" + imageFilename;
 
-        // Use empty string if content is null
         String messageContent = content != null ? content : "";
 
         Message message = Message.builder()
@@ -108,13 +107,55 @@ public class MessageService {
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
-        // Broadcast new message to channel-specific topic
-        messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
-        
-        // Also broadcast to the global topic for notifications
-        messagingTemplate.convertAndSend("/topic/messages", response);
+        publishMessageToKafka(savedMessage.getId(), messageContent, channelId, userId);
         
         return response;
+    }
+
+    private void publishMessageToKafka(Long messageId, String content, Long channelId, Long userId) {
+        try {
+            ChatMessageEvent event = new ChatMessageEvent(messageId, content, channelId, userId);
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaProducerService.send(null, null, payload);
+            log.debug("Published message to Kafka: messageId={}, channelId={}, userId={}", messageId, channelId, userId);
+        } catch (Exception e) {
+            log.error("Failed to publish message to Kafka", e);
+        }
+    }
+
+    private void publishMessageUpdateToKafka(Long messageId, String content, Long channelId) {
+        try {
+            MessageUpdateEvent event = new MessageUpdateEvent(messageId, content, channelId);
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaProducerService.send(null, null, payload);
+            log.debug("Published message update to Kafka: messageId={}, channelId={}", messageId, channelId);
+        } catch (Exception e) {
+            log.error("Failed to publish message update to Kafka", e);
+        }
+    }
+
+    private void publishMessageDeleteToKafka(Long messageId, Long channelId) {
+        try {
+            MessageDeleteEvent event = new MessageDeleteEvent(messageId, channelId);
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaProducerService.send(null, null, payload);
+            log.debug("Published message delete to Kafka: messageId={}, channelId={}", messageId, channelId);
+        } catch (Exception e) {
+            log.error("Failed to publish message delete to Kafka", e);
+        }
+    }
+
+    private void publishReactionToKafka(Long reactionId, Long messageId, Long channelId, String action, 
+                                       String emoji, Long userId, String username) {
+        try {
+            ReactionEvent event = new ReactionEvent(reactionId, messageId, channelId, action, emoji, userId, username);
+            String payload = objectMapper.writeValueAsString(event);
+            kafkaProducerService.send(null, null, payload);
+            log.debug("Published reaction {} to Kafka: reactionId={}, messageId={}, channelId={}", 
+                action, reactionId, messageId, channelId);
+        } catch (Exception e) {
+            log.error("Failed to publish reaction to Kafka", e);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -160,14 +201,8 @@ public class MessageService {
         Message updatedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(updatedMessage);
         
-        // Broadcast updated message
-        if (updatedMessage.getChannel() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + updatedMessage.getChannel().getId() + "/messages", response);
-            // Also broadcast to global topic for notifications
-            messagingTemplate.convertAndSend("/topic/messages", response);
-        } else {
-            messagingTemplate.convertAndSend("/topic/messages", response);
-        }
+        publishMessageUpdateToKafka(updatedMessage.getId(), content, 
+            updatedMessage.getChannel() != null ? updatedMessage.getChannel().getId() : null);
         
         return response;
     }
@@ -176,7 +211,7 @@ public class MessageService {
     public void deleteMessage(Long id) {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
-        // Load current user (includes role)
+
         User currentUser = currentUserService.getCurrentUserOrThrow();
 
         boolean isOwner = message.getUser().getId().equals(currentUser.getId());
@@ -193,14 +228,7 @@ public class MessageService {
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
         messageRepository.deleteById(id);
 
-        var deletionPayload = java.util.Map.of(
-                "id", id,
-                "channelId", channelId
-        );
-        messagingTemplate.convertAndSend("/topic/messages/delete", deletionPayload);
-        if (channelId != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages/delete", deletionPayload);
-        }
+        publishMessageDeleteToKafka(id, channelId);
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
@@ -248,10 +276,9 @@ public class MessageService {
         MessageReaction savedReaction = reactionRepository.save(reaction);
         ReactionResponse response = mapToReactionResponse(savedReaction);
 
-        if (message.getChannel() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions", response);
-        }
-        messagingTemplate.convertAndSend("/topic/reactions", response);
+        Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
+        publishReactionToKafka(savedReaction.getId(), messageId, channelId, "add", 
+            emoji, userId, user.getUsername());
 
         return response;
     }
@@ -266,13 +293,16 @@ public class MessageService {
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
 
+        Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
+        Long reactionId = reaction.getId();
+        String reactionEmoji = reaction.getEmoji();
+        Long reactionUserId = reaction.getUser().getId();
+        String reactionUsername = reaction.getUser().getUsername();
+        
         reactionRepository.delete(reaction);
 
-        ReactionResponse response = mapToReactionResponse(reaction);
-        if (message.getChannel() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/reactions/remove", response);
-        }
-        messagingTemplate.convertAndSend("/topic/reactions/remove", response);
+        publishReactionToKafka(reactionId, messageId, channelId, "remove", 
+            reactionEmoji, reactionUserId, reactionUsername);
     }
 
     private ReactionResponse mapToReactionResponse(MessageReaction reaction) {

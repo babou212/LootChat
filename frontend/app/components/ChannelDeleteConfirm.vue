@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { channelApi } from '~/utils/api'
+import { channelApi } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
 
 const props = defineProps<{

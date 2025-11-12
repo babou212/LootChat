@@ -37,7 +37,6 @@ public class InviteService {
     int minutes = 10; // default fixed expiry: 10 minutes
 
         String token;
-        // Ensure uniqueness
         int attempts = 0;
         do {
             token = UUID.randomUUID().toString();
