@@ -1,5 +1,6 @@
 package com.lootchat.LootChat.controller;
 
+import com.lootchat.LootChat.dto.ChangePasswordRequest;
 import com.lootchat.LootChat.dto.UserResponse;
 import com.lootchat.LootChat.service.UserPresenceService;
 import com.lootchat.LootChat.service.UserService;
@@ -30,5 +31,11 @@ public class UserController {
     @GetMapping("/presence")
     public ResponseEntity<Map<Long, Boolean>> getUserPresence() {
         return ResponseEntity.ok(userPresenceService.getAllUserPresence());
+    }
+
+    @PutMapping("/password")
+    public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest request) {
+        userService.changePassword(request);
+        return ResponseEntity.ok().build();
     }
 }
