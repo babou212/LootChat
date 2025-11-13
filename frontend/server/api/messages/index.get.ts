@@ -11,7 +11,11 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const query = getQuery(event)
   const channelIdRaw = query.channelId
+  const pageRaw = query.page
+  const sizeRaw = query.size
   let channelIdParam: string | undefined
+  let pageParam: string | undefined
+  let sizeParam: string | undefined
 
   if (typeof channelIdRaw === 'string' && channelIdRaw.trim() !== '') {
     if (/^\d+$/.test(channelIdRaw)) {
@@ -21,9 +25,27 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  if (typeof pageRaw === 'string' && pageRaw.trim() !== '') {
+    if (/^\d+$/.test(pageRaw)) {
+      pageParam = pageRaw
+    }
+  }
+
+  if (typeof sizeRaw === 'string' && sizeRaw.trim() !== '') {
+    if (/^\d+$/.test(sizeRaw)) {
+      sizeParam = sizeRaw
+    }
+  }
+
   const url = new URL(`${config.public.apiUrl}/api/messages`)
   if (channelIdParam) {
     url.searchParams.set('channelId', channelIdParam)
+  }
+  if (pageParam) {
+    url.searchParams.set('page', pageParam)
+  }
+  if (sizeParam) {
+    url.searchParams.set('size', sizeParam)
   }
 
   try {

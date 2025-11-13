@@ -20,6 +20,10 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -186,6 +190,19 @@ public class MessageService {
         return messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId).stream()
                 .map(this::mapToMessageResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<MessageResponse> getMessagesByChannelIdPaginated(Long channelId, int page, int size) {
+        // Sort descending to get newest first, but return them in ascending order for display
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Message> messagePage = messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId, pageable);
+        List<MessageResponse> messages = messagePage.getContent().stream()
+                .map(this::mapToMessageResponse)
+                .collect(Collectors.toList());
+        // Reverse the list so oldest message in the page is first
+        java.util.Collections.reverse(messages);
+        return messages;
     }
 
     @Transactional(readOnly = true)
