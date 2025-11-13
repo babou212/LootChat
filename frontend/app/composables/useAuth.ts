@@ -1,4 +1,4 @@
-import type { AuthResponse, LoginRequest, User } from '../../shared/types/user'
+import type { LoginRequest, User } from '../../shared/types/user'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../../stores/auth'
 
@@ -8,61 +8,32 @@ export const useAuth = () => {
   const loading = useState<boolean>('auth-loading', () => false)
   const error = useState<string | null>('auth-error', () => null)
 
-  const authTokenCookie = useCookie('auth_token', {
-    maxAge: 60 * 60 * 24 * 7,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/'
-  })
-
-  const authUserCookie = useCookie<User | null>('auth_user', {
-    maxAge: 60 * 60 * 24 * 7,
-    sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/'
-  })
-
-  const apiBase = useRuntimeConfig().public.apiBase || 'http://localhost:8080/api/auth'
-
-  const token = computed<string | null>(() => authTokenCookie.value || null)
-
   const login = async (credentials: LoginRequest) => {
     loading.value = true
     error.value = null
 
     try {
-      const response = await $fetch<AuthResponse>(`${apiBase}/login`, {
+      // Call server API route which handles httpOnly cookies
+      const response = await $fetch<{ success: boolean, user: User }>('/api/auth/login', {
         method: 'POST',
-        body: credentials
+        body: credentials,
+        // CSRF protection is handled automatically by Nuxt
+        credentials: 'include'
       })
 
-      console.log('Auth response:', response)
+      if (response.success && response.user) {
+        // Update store with user data (token is in httpOnly cookie)
+        authStore.setUser(response.user)
 
-      if (response.token) {
-        authTokenCookie.value = response.token
-
-        const nextUser: User = {
-          userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
-          username: response.username!,
-          email: response.email!,
-          role: response.role!,
-          avatar: response.avatar
-        }
-
-        console.log('Storing user:', nextUser)
-
-        authStore.setAuth(nextUser, response.token)
-        authUserCookie.value = nextUser
-
-        return { success: true, message: response.message }
+        return { success: true }
       } else {
-        error.value = response.message
-        return { success: false, message: response.message }
+        error.value = 'Login failed'
+        return { success: false, message: 'Login failed' }
       }
     } catch (err: unknown) {
       const errorMessage = err && typeof err === 'object' && 'data' in err
-        ? ((err as { data?: { message?: string } }).data?.message || 'Login failed')
-        : 'Login failed'
+        ? ((err as { data?: { message?: string } }).data?.message || 'Invalid credentials')
+        : 'Invalid credentials'
       error.value = errorMessage
       return { success: false, message: error.value }
     } finally {
@@ -70,31 +41,48 @@ export const useAuth = () => {
     }
   }
 
-  const logout = () => {
-    authStore.clear()
-    error.value = null
-    authTokenCookie.value = null
-    authUserCookie.value = null
+  const logout = async () => {
+    loading.value = true
+    try {
+      // Call server API to clear session
+      await $fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+
+      authStore.clear()
+      error.value = null
+    } catch (err) {
+      console.error('Logout error:', err)
+      // Clear local state even if server call fails
+      authStore.clear()
+    } finally {
+      loading.value = false
+    }
   }
 
   const restore = async () => {
     try {
       if (user.value) return
-      if (!authTokenCookie.value) return
-      if (authUserCookie.value) {
-        authStore.setAuth(authUserCookie.value as User, authTokenCookie.value)
-        return
+
+      // Fetch session from server
+      const response = await $fetch<{ user: User }>('/api/auth/session', {
+        credentials: 'include'
+      })
+
+      if (response.user) {
+        authStore.setUser(response.user)
       }
     } catch {
-      authUserCookie.value = null
+      // Session doesn't exist or is invalid
+      authStore.clear()
     }
   }
 
-  const isAuthenticated = computed(() => !!user.value && !!authTokenCookie.value)
+  const isAuthenticated = computed(() => !!user.value)
 
   return {
     user: readonly(user),
-    token: readonly(token),
     loading: readonly(loading),
     error: readonly(error),
     isAuthenticated,

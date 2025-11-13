@@ -43,6 +43,10 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    session: {
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      password: process.env.NUXT_SESSION_PASSWORD || ''
+    },
     public: {
       tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY,
       apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
@@ -64,6 +68,17 @@ export default defineNuxtConfig({
   nitro: {
     experimental: {
       openAPI: true
+    },
+    routeRules: {
+      '/**': {
+        headers: {
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'X-XSS-Protection': '1; mode=block',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+          'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+        }
+      }
     }
   },
 

@@ -9,6 +9,17 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   kafka:
     image: confluentinc/cp-kafka
     container_name: kafka
@@ -36,6 +47,11 @@ services:
     restart: unless-stopped
     networks:
       - lootchat-network
+
+  # Local backend (if added later) should use:
+  # environment:
+  #   - SPRING_DATA_REDIS_HOST=localhost
+  #   - SPRING_DATA_REDIS_PORT=6379
 
 networks:
   lootchat-network:

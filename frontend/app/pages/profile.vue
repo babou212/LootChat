@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { channelApi } from '~/api/channelApi'
 import type { ChannelResponse } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
 import ChannelCreate from '~/components/ChannelCreate.vue'
@@ -7,7 +6,7 @@ import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
-const { user, token } = useAuth()
+const { user } = useAuth()
 
 const isAdmin = computed(() => user.value?.role === 'ADMIN')
 
@@ -28,11 +27,9 @@ const voiceChannels = computed(() =>
 )
 
 const fetchChannels = async () => {
-  if (!token.value) return
-
   channelsLoading.value = true
   try {
-    const apiChannels = await channelApi.getAllChannels(token.value)
+    const apiChannels = await $fetch<ChannelResponse[]>('/api/channels')
     channels.value = apiChannels.map((ch: ChannelResponse): Channel => ({
       id: ch.id,
       name: ch.name,
@@ -75,8 +72,8 @@ onMounted(() => {
   }
 })
 
-watch([isAdmin, token], ([admin, t]) => {
-  if (admin && t) {
+watch(isAdmin, (admin) => {
+  if (admin) {
     fetchChannels()
   }
 })
@@ -151,7 +148,6 @@ watch([isAdmin, token], ([admin, t]) => {
             </h2>
             <ChannelCreate
               v-model:open="showCreate"
-              :token="token"
               @created="fetchChannels()"
               @error="error = $event"
             />
@@ -267,7 +263,6 @@ watch([isAdmin, token], ([admin, t]) => {
     <ChannelDeleteConfirm
       v-model:open="showDeleteConfirm"
       :channel="channelToDelete"
-      :token="token"
       @deleted="handleDeleted"
       @error="error = $event"
     />

@@ -16,6 +16,10 @@ import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,8 +43,10 @@ public class MessageService {
     private final FileStorageService fileStorageService;
     private final KafkaProducerService kafkaProducerService;
     private final ObjectMapper objectMapper;
+    private final CacheManager cacheManager;
 
     @Transactional
+    @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
     public MessageResponse createMessage(String content) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
@@ -60,6 +66,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public MessageResponse createMessage(String content, Long channelId) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
@@ -83,6 +93,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
@@ -159,6 +173,7 @@ public class MessageService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "messagesAll", key = "'all'")
     public List<MessageResponse> getAllMessages() {
         return messageRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(this::mapToMessageResponse)
@@ -166,6 +181,7 @@ public class MessageService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "channelMessages", key = "'channel:' + #channelId")
     public List<MessageResponse> getMessagesByChannelId(Long channelId) {
         return messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId).stream()
                 .map(this::mapToMessageResponse)
@@ -173,6 +189,7 @@ public class MessageService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "message", key = "'id:' + #id")
     public MessageResponse getMessageById(Long id) {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Message not found with id: " + id));
@@ -188,6 +205,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "message", key = "'id:' + #id", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public MessageResponse updateMessage(Long id, String content) {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
@@ -200,6 +221,13 @@ public class MessageService {
         message.setContent(content);
         Message updatedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(updatedMessage);
+        // Evict channel cache for this message's channel if applicable
+        if (updatedMessage.getChannel() != null && updatedMessage.getChannel().getId() != null) {
+            var cache = cacheManager.getCache("channelMessages");
+            if (cache != null) {
+                cache.evict("channel:" + updatedMessage.getChannel().getId());
+            }
+        }
         
         publishMessageUpdateToKafka(updatedMessage.getId(), content, 
             updatedMessage.getChannel() != null ? updatedMessage.getChannel().getId() : null);
@@ -208,6 +236,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "message", key = "'id:' + #id", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public void deleteMessage(Long id) {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
@@ -229,6 +261,12 @@ public class MessageService {
         messageRepository.deleteById(id);
 
         publishMessageDeleteToKafka(id, channelId);
+        if (channelId != null) {
+            var cache = cacheManager.getCache("channelMessages");
+            if (cache != null) {
+                cache.evict("channel:" + channelId);
+            }
+        }
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
@@ -254,6 +292,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "message", key = "'id:' + #messageId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public ReactionResponse addReaction(Long messageId, String emoji) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         
@@ -277,6 +319,12 @@ public class MessageService {
         ReactionResponse response = mapToReactionResponse(savedReaction);
 
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
+        if (channelId != null) {
+            var cache = cacheManager.getCache("channelMessages");
+            if (cache != null) {
+                cache.evict("channel:" + channelId);
+            }
+        }
         publishReactionToKafka(savedReaction.getId(), messageId, channelId, "add", 
             emoji, userId, user.getUsername());
 
@@ -284,6 +332,10 @@ public class MessageService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "message", key = "'id:' + #messageId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "messagesAll", key = "'all'", beforeInvocation = false)
+    })
     public void removeReaction(Long messageId, String emoji) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
 
@@ -294,6 +346,12 @@ public class MessageService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
 
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
+        if (channelId != null) {
+            var cache = cacheManager.getCache("channelMessages");
+            if (cache != null) {
+                cache.evict("channel:" + channelId);
+            }
+        }
         Long reactionId = reaction.getId();
         String reactionEmoji = reaction.getEmoji();
         Long reactionUserId = reaction.getUser().getId();

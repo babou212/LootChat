@@ -1,4 +1,4 @@
-import { API_CONFIG } from './apiConfig'
+// import { API_CONFIG } from './apiConfig' // no longer needed: using server proxy routes
 
 export interface CreateInviteRequest {
   expiresInHours?: number
@@ -25,21 +25,22 @@ export interface RegisterWithInviteRequest {
 }
 
 export const inviteApi = {
-  async create(request: CreateInviteRequest, token: string): Promise<InviteCreateResponse> {
-    const { createAuthFetch } = await import('./authApi')
-    const authFetch = createAuthFetch(token)
-    return await authFetch<InviteCreateResponse>(API_CONFIG.INVITES.CREATE, {
+  async create(request: CreateInviteRequest, _token: string): Promise<InviteCreateResponse> {
+    // Use server proxy route to include session automatically; token param retained for backward compatibility
+    return await $fetch<InviteCreateResponse>('/api/invites', {
       method: 'POST',
       body: request
     })
   },
 
   async validate(token: string): Promise<InviteValidationResponse> {
-    return await $fetch<InviteValidationResponse>(`${API_CONFIG.BASE_URL}${API_CONFIG.INVITES.VALIDATE(token)}`)
+    // Route through Nuxt server for consistent headers / CORS
+    return await $fetch<InviteValidationResponse>(`/api/invites/${token}`)
   },
 
   async register(token: string, request: RegisterWithInviteRequest): Promise<import('../../shared/types/user').AuthResponse> {
-    return await $fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.INVITES.REGISTER(token)}`, {
+    // Route through Nuxt server proxy
+    return await $fetch(`/api/invites/${token}/register`, {
       method: 'POST',
       body: request
     })

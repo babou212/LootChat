@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { channelApi } from '~/api/channelApi'
 import type { CreateChannelRequest } from '~/api/channelApi'
-
-const props = defineProps<{
-  token: string | null
-}>()
 
 const emit = defineEmits<{
   (e: 'created'): void
@@ -43,7 +38,6 @@ const close = () => {
 }
 
 const submit = async () => {
-  if (!props.token) return
   if (nameError.value) {
     emit('error', nameError.value)
     return
@@ -56,7 +50,10 @@ const submit = async () => {
       description: state.description.trim(),
       channelType: state.channelType
     }
-    await channelApi.createChannel(payload, props.token)
+    await $fetch('/api/channels', {
+      method: 'POST',
+      body: payload
+    })
     emit('created')
     reset()
     close()

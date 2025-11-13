@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { inviteApi } from '~/api/inviteApi'
 import type { CreateInviteRequest, InviteCreateResponse } from '~/api/inviteApi'
 import { useAuth } from '~/composables/useAuth'
 
-const { token, user } = useAuth()
+const { user } = useAuth()
 const loading = ref(false)
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 const createdInvite = ref<InviteCreateResponse | null>(null)
-const canCreate = computed(() => user.value?.role === 'ADMIN' && !!token.value)
+const canCreate = computed(() => user.value?.role === 'ADMIN')
 
 const createInvite = async () => {
-  if (!canCreate.value || !token.value) return
+  if (!canCreate.value) return
   loading.value = true
   error.value = null
   success.value = null
   createdInvite.value = null
   try {
     const request: CreateInviteRequest = {}
-    const resp = await inviteApi.create(request, token.value)
+    const resp = await $fetch<InviteCreateResponse>('/api/invites', {
+      method: 'POST',
+      body: request
+    })
     createdInvite.value = resp
     success.value = 'Invite created successfully'
   } catch (e) {

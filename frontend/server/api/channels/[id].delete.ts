@@ -1,0 +1,29 @@
+export default defineEventHandler(async (event) => {
+  const session = await getUserSession(event)
+
+  if (!session || !session.token) {
+    throw createError({
+      statusCode: 401,
+      message: 'Not authenticated'
+    })
+  }
+
+  const config = useRuntimeConfig()
+  const channelId = getRouterParam(event, 'id')
+
+  try {
+    await $fetch(`${config.public.apiUrl}/api/channels/${channelId}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${session.token}`
+      }
+    })
+    return { success: true }
+  } catch (error: unknown) {
+    console.error('Failed to delete channel:', error)
+    throw createError({
+      statusCode: 500,
+      message: 'Failed to delete channel'
+    })
+  }
+})

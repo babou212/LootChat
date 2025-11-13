@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { channelApi } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
 
 const props = defineProps<{
   open: boolean
   channel: Channel | null
-  token: string | null
 }>()
 
 const emit = defineEmits<{
@@ -19,7 +17,7 @@ const loading = ref(false)
 const close = () => emit('update:open', false)
 
 const confirm = async () => {
-  if (!props.token || !props.channel) return
+  if (!props.channel) return
 
   const name = props.channel.name.toLowerCase()
   if (name === 'general' || name === 'general-voice') {
@@ -30,7 +28,9 @@ const confirm = async () => {
 
   loading.value = true
   try {
-    await channelApi.deleteChannel(props.channel.id, props.token)
+    await $fetch(`/api/channels/${props.channel.id}`, {
+      method: 'DELETE'
+    })
     emit('deleted', props.channel.id)
     close()
   } catch {

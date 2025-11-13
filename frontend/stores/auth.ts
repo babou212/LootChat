@@ -3,25 +3,25 @@ import type { User } from '../shared/types/user'
 
 interface AuthState {
   user: User | null
-  token: string | null
 }
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
-    user: null,
-    token: null
+    user: null
   }),
   getters: {
-    isAuthenticated: (state: AuthState): boolean => !!state.user && !!state.token
+    isAuthenticated: (state: AuthState): boolean => !!state.user
   },
   actions: {
-    setAuth(user: User, token: string) {
+    setUser(user: User) {
       this.user = user
-      this.token = token
+    },
+    // Deprecated: kept for backward compatibility
+    setAuth(user: User, _token: string) {
+      this.user = user
     },
     clear() {
       this.user = null
-      this.token = null
     }
   }
 })
