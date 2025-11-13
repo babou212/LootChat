@@ -1,4 +1,6 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -13,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   try {
-    const reaction = await $fetch(`${config.public.apiUrl}/api/messages/${messageId}/reactions`, {
+    const reaction: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/messages/${messageId}/reactions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

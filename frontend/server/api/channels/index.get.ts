@@ -1,4 +1,6 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -11,14 +13,13 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
 
   try {
-    const channels = await $fetch(`${config.public.apiUrl}/api/channels`, {
+    const channels: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/channels`, {
       headers: {
         Authorization: `Bearer ${session.token}`
       }
     })
     return channels
-  } catch (error: unknown) {
-    console.error('Failed to fetch channels:', error)
+  } catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to fetch channels'

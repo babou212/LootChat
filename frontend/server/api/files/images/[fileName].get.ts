@@ -1,4 +1,11 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+interface RawLikeResponse {
+  headers: { get(name: string): string | null }
+  _data: unknown
+}
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const fileName = getRouterParam(event, 'fileName')
 
   if (!fileName) {
@@ -8,7 +15,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Get user session
   const session = await getUserSession(event)
   if (!session?.token) {
     throw createError({
@@ -21,14 +27,12 @@ export default defineEventHandler(async (event) => {
   const backendUrl = config.public.apiUrl || 'http://backend:8080'
 
   try {
-    // Proxy the request to the backend with authentication
-    const response = await $fetch.raw(`${backendUrl}/api/files/images/${fileName}`, {
+    const response = (await $fetch.raw(`${backendUrl}/api/files/images/${fileName}`, {
       headers: {
         Authorization: `Bearer ${session.token}`
       }
-    })
+    })) as unknown as RawLikeResponse
 
-    // Forward the response headers
     const headers = response.headers
     if (headers.get('content-type')) {
       setResponseHeader(event, 'Content-Type', headers.get('content-type')!)
@@ -40,10 +44,8 @@ export default defineEventHandler(async (event) => {
       setResponseHeader(event, 'Cache-Control', headers.get('cache-control')!)
     }
 
-    // Return the image data
-    return response._data
-  } catch (error: unknown) {
-    console.error('Failed to fetch image:', error)
+    return response._data as unknown
+  } catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to fetch image'

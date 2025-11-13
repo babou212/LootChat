@@ -83,16 +83,6 @@ The repo includes a single-node Kafka broker via Docker Compose. When running th
 KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 ```
 
-Publish a test message via the backend endpoint:
-
-```bash
-curl -X POST http://localhost:8080/api/kafka/publish \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"hello from LootChat"}'
-```
-
-This sends to the default topic `lootchat.chat.messages`. Check backend logs for consumer output.
-
 ### 4. Frontend Setup
 
 Navigate to the frontend directory and install dependencies:

@@ -19,8 +19,7 @@ export default defineEventHandler(async (event) => {
       }
     })
     return { success: true }
-  } catch (error: unknown) {
-    console.error('Failed to delete channel:', error)
+  } catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to delete channel'

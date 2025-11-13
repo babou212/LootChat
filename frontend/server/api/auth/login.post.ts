@@ -14,7 +14,6 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const body = await readBody(event)
 
-  // Validate and sanitize input with Zod
   let credentials
   try {
     credentials = loginSchema.parse(body)
@@ -34,7 +33,6 @@ export default defineEventHandler(async (event) => {
   const { username, password } = credentials
 
   try {
-    // Call backend API
     const response = await $fetch<{
       userId: string | number
       token: string
@@ -58,7 +56,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Store session using nuxt-auth-utils
     await setUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -82,9 +79,6 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: unknown) {
-    // Don't expose backend errors
-    console.error('Login error:', error)
-
     const statusCode = error && typeof error === 'object' && 'statusCode' in error
       ? (error as { statusCode?: number }).statusCode || 401
       : 401

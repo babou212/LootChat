@@ -93,7 +93,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannel = (channelId: number, callback: (message: MessageResponse) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -114,7 +114,7 @@ export const useWebSocket = () => {
 
   const subscribeToAllMessages = (callback: (message: MessageResponse) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -135,7 +135,7 @@ export const useWebSocket = () => {
 
   const subscribeToUserPresence = (callback: (update: UserPresenceUpdate) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -156,7 +156,7 @@ export const useWebSocket = () => {
 
   const subscribeToReactions = (callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -177,7 +177,7 @@ export const useWebSocket = () => {
 
   const subscribeToReactionRemovals = (callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -198,7 +198,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelReactions = (channelId: number, callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -219,7 +219,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelReactionRemovals = (channelId: number, callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -240,7 +240,7 @@ export const useWebSocket = () => {
 
   const subscribeToGlobalMessageDeletions = (callback: (payload: MessageDeletionPayload) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
     const subscription = stompClient.subscribe(
@@ -259,7 +259,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelMessageDeletions = (channelId: number, callback: (payload: MessageDeletionPayload) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
     const subscription = stompClient.subscribe(

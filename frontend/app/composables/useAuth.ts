@@ -13,16 +13,13 @@ export const useAuth = () => {
     error.value = null
 
     try {
-      // Call server API route which handles httpOnly cookies
       const response = await $fetch<{ success: boolean, user: User }>('/api/auth/login', {
         method: 'POST',
         body: credentials,
-        // CSRF protection is handled automatically by Nuxt
         credentials: 'include'
       })
 
       if (response.success && response.user) {
-        // Update store with user data (token is in httpOnly cookie)
         authStore.setUser(response.user)
 
         return { success: true }
@@ -44,7 +41,6 @@ export const useAuth = () => {
   const logout = async () => {
     loading.value = true
     try {
-      // Call server API to clear session
       await $fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
@@ -54,7 +50,6 @@ export const useAuth = () => {
       error.value = null
     } catch (err) {
       console.error('Logout error:', err)
-      // Clear local state even if server call fails
       authStore.clear()
     } finally {
       loading.value = false
@@ -65,7 +60,6 @@ export const useAuth = () => {
     try {
       if (user.value) return
 
-      // Fetch session from server
       const response = await $fetch<{ user: User }>('/api/auth/session', {
         credentials: 'include'
       })
@@ -74,7 +68,6 @@ export const useAuth = () => {
         authStore.setUser(response.user)
       }
     } catch {
-      // Session doesn't exist or is invalid
       authStore.clear()
     }
   }

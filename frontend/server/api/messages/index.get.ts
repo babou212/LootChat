@@ -14,7 +14,6 @@ export default defineEventHandler(async (event) => {
   let channelIdParam: string | undefined
 
   if (typeof channelIdRaw === 'string' && channelIdRaw.trim() !== '') {
-    // basic numeric validation; backend expects a number id
     if (/^\d+$/.test(channelIdRaw)) {
       channelIdParam = channelIdRaw
     } else {
@@ -22,7 +21,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  // Build URL with optional channelId
   const url = new URL(`${config.public.apiUrl}/api/messages`)
   if (channelIdParam) {
     url.searchParams.set('channelId', channelIdParam)

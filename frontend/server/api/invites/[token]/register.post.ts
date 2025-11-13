@@ -1,11 +1,12 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const { token } = event.context.params as { token: string }
   const config = useRuntimeConfig()
   const body = await readBody(event)
 
-  // Registration should typically be unauthenticated; do not enforce session.
   try {
-    const response = await $fetch(`${config.public.apiUrl}/api/invites/${token}/register`, {
+    const response: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/invites/${token}/register`, {
       method: 'POST',
       body
     })

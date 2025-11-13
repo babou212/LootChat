@@ -17,16 +17,14 @@ import type { User } from '../../shared/types/user'
 
 definePageMeta({
   middleware: 'auth',
-  ssr: false // Disable SSR to prevent hydration mismatches with dynamic chat content
+  ssr: false
 })
 
 const { user } = useAuth()
 const authStore = useAuthStore()
 
-// Token ref for WebSocket and API calls (fetched from session)
 const token = ref<string | null>(null)
 
-// Get token from server session when needed for WebSocket and API calls
 const getAuthToken = async (): Promise<string | null> => {
   try {
     const response = await $fetch<{ token: string }>('/api/auth/token')

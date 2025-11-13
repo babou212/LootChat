@@ -1,4 +1,6 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -19,12 +21,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // Create a new FormData object to forward to backend
     const backendFormData = new FormData()
 
     for (const part of formData) {
       if (part.filename) {
-        // It's a file - convert Buffer to ArrayBuffer
         const arrayBuffer = part.data.buffer.slice(
           part.data.byteOffset,
           part.data.byteOffset + part.data.byteLength
@@ -32,12 +32,11 @@ export default defineEventHandler(async (event) => {
         const blob = new Blob([arrayBuffer], { type: part.type })
         backendFormData.append(part.name || 'image', blob, part.filename)
       } else {
-        // It's a regular field
         backendFormData.append(part.name || 'field', part.data.toString())
       }
     }
 
-    const message = await $fetch(`${config.public.apiUrl}/api/messages/upload`, {
+    const message: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/messages/upload`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

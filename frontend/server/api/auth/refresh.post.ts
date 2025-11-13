@@ -11,7 +11,6 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
 
   try {
-    // Call backend to refresh token
     const response = await $fetch<{
       token: string
       userId: string | number
@@ -33,7 +32,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Update session with new token
     await replaceUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -50,10 +48,7 @@ export default defineEventHandler(async (event) => {
     return {
       success: true
     }
-  } catch (error: unknown) {
-    console.error('Token refresh error:', error)
-
-    // Clear invalid session
+  } catch {
     await clearUserSession(event)
 
     throw createError({

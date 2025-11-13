@@ -1,8 +1,9 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const { token } = event.context.params as { token: string }
   const config = useRuntimeConfig()
 
-  // Attempt to include auth if present (may not be required for validation)
   let authHeader: Record<string, string> = {}
   try {
     const session = await getUserSession(event)
@@ -14,7 +15,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const inviteValidation = await $fetch(`${config.public.apiUrl}/api/invites/${token}`, {
+    const inviteValidation: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/invites/${token}`, {
       headers: {
         ...authHeader
       }
