@@ -3,6 +3,7 @@ import type { ChannelResponse } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
 import ChannelCreate from '~/components/ChannelCreate.vue'
 import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'
+import PasswordChange from '~/components/PasswordChange.vue'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
@@ -139,6 +140,8 @@ watch(isAdmin, (admin) => {
           </div>
         </div>
       </UCard>
+
+      <PasswordChange />
 
       <UCard v-if="isAdmin">
         <template #header>

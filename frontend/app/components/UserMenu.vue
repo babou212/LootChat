@@ -16,10 +16,10 @@ const goProfile = () => {
   router.push('/profile')
 }
 
-const doLogout = () => {
-  logout()
+const doLogout = async () => {
   open.value = false
-  router.push('/login')
+  await logout()
+  await navigateTo('/login', { replace: true })
 }
 
 const getInitials = (username: string) => {

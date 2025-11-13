@@ -11,6 +11,12 @@ export interface UserResponse {
   avatar?: string
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}
+
 export const userApi = {
   async getAllUsers(token: string): Promise<UserResponse[]> {
     const authFetch = createAuthFetch(token)
@@ -25,5 +31,13 @@ export const userApi = {
   async getUserPresence(token: string): Promise<Record<number, boolean>> {
     const authFetch = createAuthFetch(token)
     return await authFetch<Record<number, boolean>>(`${API_CONFIG.USERS.ALL}/presence`)
+  },
+
+  async changePassword(request: ChangePasswordRequest, token: string): Promise<void> {
+    const authFetch = createAuthFetch(token)
+    await authFetch(`${API_CONFIG.USERS.ALL}/password`, {
+      method: 'PUT',
+      body: request
+    })
   }
 }

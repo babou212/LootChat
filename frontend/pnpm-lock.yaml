@@ -13,9 +13,6 @@ importers:
 
   .:
     dependencies:
-      '@ai-sdk/gateway':
-        specifier: ^2.0.2
-        version: 2.0.2(zod@4.1.12)
       '@iconify-json/logos':
         specifier: ^1.2.9
         version: 1.2.9
@@ -58,9 +55,6 @@ importers:
       pinia:
         specifier: ^2.2.4
         version: 2.3.1(typescript@5.9.3)(vue@3.5.22(typescript@5.9.3))
-      shiki-stream:
-        specifier: ^0.1.2
-        version: 0.1.2(vue@3.5.22(typescript@5.9.3))
       sockjs-client:
         specifier: ^1.6.1
         version: 1.6.1
@@ -5607,17 +5601,6 @@ packages:
   shell-quote@1.8.3:
     resolution: {integrity: sha512-ObmnIF4hXNg1BqhnHmgbDETF8dLPCggZWBjkQfhZpbszZnYur5DUljTcCHii5LC3J5E0yeO/1LIMyH+UvHQgyw==}
     engines: {node: '>= 0.4'}
-
-  shiki-stream@0.1.2:
-    resolution: {integrity: sha512-VtzJT2Sn2vwFoJEhKv71/M6Cl7e/m6p0vIVDgJsYKUpV7E+0zayJsuVuU2ltiSEeWUrqncHSPx8i/xKrRqK6Mw==}
-    peerDependencies:
-      react: ^19.0.0
-      vue: ^3.2.0
-    peerDependenciesMeta:
-      react:
-        optional: true
-      vue:
-        optional: true
 
   shiki@3.13.0:
     resolution: {integrity: sha512-aZW4l8Og16CokuCLf8CF8kq+KK2yOygapU5m3+hoGw0Mdosc6fPitjM+ujYarppj5ZIKGyPDPP1vqmQhr+5/0g==}
@@ -13020,12 +13003,6 @@ snapshots:
   shebang-regex@3.0.0: {}
 
   shell-quote@1.8.3: {}
-
-  shiki-stream@0.1.2(vue@3.5.22(typescript@5.9.3)):
-    dependencies:
-      '@shikijs/core': 3.13.0
-    optionalDependencies:
-      vue: 3.5.22(typescript@5.9.3)
 
   shiki@3.13.0:
     dependencies:

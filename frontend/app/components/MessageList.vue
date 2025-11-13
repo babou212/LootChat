@@ -403,7 +403,7 @@ watch(() => props.loading, (isLoading) => {
 <template>
   <div
     ref="messagesContainer"
-    class="flex-1 overflow-y-auto p-6 space-y-4"
+    class="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide"
   >
     <div
       v-if="loadingMore"
@@ -563,3 +563,16 @@ watch(() => props.loading, (isLoading) => {
     </Teleport>
   </div>
 </template>
+
+<style scoped>
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+</style>
