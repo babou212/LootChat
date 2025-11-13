@@ -3,22 +3,36 @@ import type { RouteLocationNormalized } from 'vue-router'
 
 interface PublicRouteMeta { public?: boolean }
 
+const isAllowedRedirect = (path: string): boolean => {
+  if (!path) return false
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) {
+    return false
+  }
+  return path.startsWith('/')
+}
+
 export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => {
   const { isAuthenticated, user, restore } = useAuth()
-  const authToken = useCookie<string | null>('auth_token')
 
   const publicRoutes = new Set<string>(['/login'])
   const meta = to.meta as PublicRouteMeta
   const isPublic = publicRoutes.has(to.path) || meta.public === true
 
-  if (isPublic) return
+  if (isPublic) {
+    if (isAuthenticated.value && to.path === '/login') {
+      return navigateTo('/')
+    }
+    return
+  }
 
-  if (!isAuthenticated.value && authToken.value) {
+  if (!isAuthenticated.value) {
     await restore()
   }
 
   if (!isAuthenticated.value) {
-    return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
+    const redirectPath = to.fullPath
+    const safeRedirect = isAllowedRedirect(redirectPath) ? redirectPath : '/'
+    return navigateTo({ path: '/login', query: { redirect: safeRedirect } })
   }
 
   const routeUsername = (to.params?.username as string | undefined) || undefined

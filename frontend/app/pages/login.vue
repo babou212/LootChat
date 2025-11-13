@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '#ui/types'
+import { z } from 'zod'
 
 definePageMeta({
   layout: false,
@@ -8,17 +9,24 @@ definePageMeta({
 
 const { login, loading, error } = useAuth()
 
-interface LoginForm {
-  username: string
-  password: string
-}
+const schema = z.object({
+  username: z.string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(50, 'Username must be less than 50 characters')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores and hyphens'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(255, 'Password is too long')
+})
 
-const state = reactive<LoginForm>({
+type Schema = z.output<typeof schema>
+
+const state = reactive<Schema>({
   username: '',
   password: ''
 })
 
-const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
+const onSubmit = async (event: FormSubmitEvent<Schema>) => {
   const result = await login(event.data)
 
   if (result.success) {
@@ -44,7 +52,12 @@ const onSubmit = async (event: FormSubmitEvent<LoginForm>) => {
         </div>
       </template>
 
-      <UForm :state="state" class="space-y-6" @submit="onSubmit">
+      <UForm
+        :state="state"
+        :schema="schema"
+        class="space-y-6"
+        @submit="onSubmit"
+      >
         <UFormGroup
           label="Username"
           name="username"

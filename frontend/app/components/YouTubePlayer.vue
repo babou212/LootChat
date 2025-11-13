@@ -23,8 +23,9 @@ const extractVideoId = (url: string): string | null => {
 }
 
 const videoId = computed(() => extractVideoId(props.url))
+// Use privacy-enhanced mode to reduce third-party cookies/warnings
 const embedUrl = computed(() =>
-  videoId.value ? `https://www.youtube.com/embed/${videoId.value}` : null
+  videoId.value ? `https://www.youtube-nocookie.com/embed/${videoId.value}?rel=0&modestbranding=1&playsinline=1` : null
 )
 </script>
 
@@ -35,7 +36,7 @@ const embedUrl = computed(() =>
         :src="embedUrl"
         class="absolute inset-0 w-full h-full"
         frameborder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        loading="lazy"
         allowfullscreen
       />
     </div>

@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import type { Channel, Message } from '../../shared/types/chat'
-import { messageApi } from '~/api/messageApi'
-import { channelApi } from '~/api/channelApi'
-import { userApi } from '~/api/userApi'
 import type { MessageResponse } from '~/api/messageApi'
 import type { ChannelResponse } from '~/api/channelApi'
 import type { UserResponse } from '~/api/userApi'
@@ -18,10 +15,27 @@ import type { UserPresenceUpdate } from '~/composables/useWebSocket'
 import { useAuthStore } from '../../stores/auth'
 import type { User } from '../../shared/types/user'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({
+  middleware: 'auth',
+  ssr: false
+})
 
-const { token, user } = useAuth()
+const { user } = useAuth()
 const authStore = useAuthStore()
+
+const token = ref<string | null>(null)
+
+const getAuthToken = async (): Promise<string | null> => {
+  try {
+    const response = await $fetch<{ token: string }>('/api/auth/token')
+    token.value = response.token
+    return response.token
+  } catch {
+    token.value = null
+    return null
+  }
+}
+
 const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
 const channels = ref<Channel[]>([])
@@ -123,6 +137,8 @@ const selectChannel = async (channel: Channel) => {
   }
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
+    // Clear existing messages before loading new channel messages for visual feedback
+    messages.value = []
     await fetchMessages()
 
     if (subscription) {
@@ -248,12 +264,11 @@ const convertToMessage = (apiMessage: MessageResponse): Message => {
 
 const fetchChannels = async () => {
   try {
-    const authToken = useCookie<string | null>('auth_token')
-    if (!authToken.value || !user.value) {
+    if (!user.value) {
       return navigateTo('/login')
     }
 
-    const apiChannels = await channelApi.getAllChannels(authToken.value)
+    const apiChannels = await $fetch<ChannelResponse[]>('/api/channels')
     channels.value = apiChannels.map(convertToChannel)
   } catch (err) {
     console.error('Failed to fetch channels:', err)
@@ -263,18 +278,17 @@ const fetchChannels = async () => {
 
 const fetchUsers = async () => {
   try {
-    const authToken = useCookie<string | null>('auth_token')
-    if (!authToken.value || !user.value) {
+    if (!user.value) {
       return navigateTo('/login')
     }
 
-    const apiUsers = await userApi.getAllUsers(authToken.value)
+    const apiUsers = await $fetch<UserResponse[]>('/api/users')
 
     let presenceMap: Record<number, boolean> = {}
     try {
-      presenceMap = await userApi.getUserPresence(authToken.value)
+      presenceMap = await $fetch<Record<number, boolean>>('/api/users/presence')
     } catch {
-      console.log('Failed to fetch initial presence, will rely on WebSocket updates')
+      // ignore errors for now
     }
 
     users.value = apiUsers.map((apiUser: UserResponse): UserPresence => {
@@ -299,14 +313,7 @@ const fetchUsers = async () => {
         const currentUserData = users.value[currentUserIndex]
         if (currentUserData && currentUserData.avatar && !user.value.avatar) {
           const updatedUser: User = { ...user.value, avatar: currentUserData.avatar }
-          authStore.setAuth(updatedUser, token.value!)
-          const authUserCookie = useCookie<User | null>('auth_user', {
-            maxAge: 60 * 60 * 24 * 7,
-            sameSite: 'strict',
-            secure: process.env.NODE_ENV === 'production',
-            path: '/'
-          })
-          authUserCookie.value = updatedUser
+          authStore.setUser(updatedUser)
         }
       } else {
         users.value.push({
@@ -321,20 +328,21 @@ const fetchUsers = async () => {
         })
       }
     }
-  } catch (err) {
-    console.error('Failed to fetch users:', err)
+  } catch {
+    // ignore errors for now
   }
 }
 
 const fetchMessages = async () => {
   try {
-    const authToken = useCookie<string | null>('auth_token')
-    if (!authToken.value || !user.value) {
+    if (!user.value) {
       return navigateTo('/login')
     }
 
     const channelId = selectedChannel.value?.id
-    const apiMessages = await messageApi.getAllMessages(authToken.value, channelId)
+    const apiMessages = await $fetch<MessageResponse[]>('/api/messages', {
+      query: channelId ? { channelId } : undefined
+    })
     messages.value = apiMessages
       .map(convertToMessage)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
@@ -352,28 +360,33 @@ const removeMessageById = (id: number) => {
 }
 
 const sendMessage = async () => {
-  if ((!newMessage.value.trim() && !selectedImage.value) || !token.value || !user.value || !selectedChannel.value) return
+  if ((!newMessage.value.trim() && !selectedImage.value) || !user.value || !selectedChannel.value) return
 
   try {
     error.value = null
 
     if (selectedImage.value) {
-      await messageApi.createMessageWithImage(
-        selectedChannel.value.id,
-        selectedImage.value,
-        newMessage.value.trim() || null,
-        token.value
-      )
+      const formData = new FormData()
+      formData.append('image', selectedImage.value)
+      formData.append('channelId', selectedChannel.value.id.toString())
+      if (newMessage.value.trim()) {
+        formData.append('content', newMessage.value.trim())
+      }
+
+      await $fetch('/api/messages/upload', {
+        method: 'POST',
+        body: formData
+      })
       removeImage()
     } else {
-      await messageApi.createMessage(
-        {
+      await $fetch('/api/messages', {
+        method: 'POST',
+        body: {
           content: newMessage.value,
           userId: user.value.userId,
           channelId: selectedChannel.value.id
-        },
-        token.value
-      )
+        }
+      })
     }
 
     newMessage.value = ''
@@ -388,7 +401,15 @@ const sendMessage = async () => {
   }
 }
 
+// Add client-side ready check
+const isClient = ref(false)
+
 onMounted(async () => {
+  isClient.value = true
+
+  // Fetch auth token from session
+  await getAuthToken()
+
   await fetchChannels()
   await fetchUsers()
 
@@ -422,7 +443,6 @@ onMounted(async () => {
       })
 
       userPresenceSubscription = subscribeToUserPresence((update: UserPresenceUpdate) => {
-        console.log('Received presence update:', update)
         const userIndex = users.value.findIndex(u => u.userId === update.userId)
         if (userIndex !== -1) {
           if (user.value && update.userId === user.value.userId) {
@@ -482,7 +502,7 @@ watch(channels, (newChannels) => {
   if (newChannels.length > 0 && !selectedChannel.value) {
     selectChannel(newChannels[0]!)
   }
-}, { immediate: true })
+})
 
 watch(showGifPicker, (open) => {
   if (!open && gifPickerRef.value) {
@@ -495,134 +515,135 @@ watch(users, () => {
     const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
     if (currentUserIndex !== -1 && users.value[currentUserIndex]!.status !== 'online') {
       users.value[currentUserIndex]!.status = 'online'
-      console.log('Ensured current user is marked as online')
     }
   }
 }, { deep: true })
 </script>
 
 <template>
-  <div class="fixed inset-0 flex bg-gray-50 dark:bg-gray-900">
-    <ChannelSidebar
-      :channels="channels"
-      :selected-channel="selectedChannel"
-      @select-channel="selectChannel"
-    />
+  <ClientOnly>
+    <div v-if="isClient" class="fixed inset-0 flex bg-gray-50 dark:bg-gray-900">
+      <ChannelSidebar
+        :channels="channels"
+        :selected-channel="selectedChannel"
+        @select-channel="selectChannel"
+      />
 
-    <div class="flex-1 flex flex-col min-w-0">
-      <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
-        <div class="flex items-center gap-2">
-          <UIcon
-            :name="selectedChannel?.channelType === 'VOICE' ? 'i-lucide-mic' : 'i-lucide-hash'"
-            class="text-xl text-gray-600 dark:text-gray-400"
-          />
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
-            {{ selectedChannel?.name || 'Select a channel' }}
-          </h1>
-        </div>
-        <div class="ml-auto">
-          <UserMenu />
-        </div>
-      </div>
-
-      <template v-if="selectedChannel?.channelType === 'TEXT'">
-        <MessageList
-          :messages="messages"
-          :loading="loading"
-          :error="error"
-          @message-deleted="removeMessageById"
-        />
-
-        <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-          <div
-            v-if="imagePreviewUrl"
-            class="mb-2 relative inline-block"
-          >
-            <img
-              :src="imagePreviewUrl"
-              alt="Preview"
-              class="max-h-32 rounded-lg shadow-md"
-            >
-            <button
-              type="button"
-              class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
-              @click="removeImage"
-            >
-              ×
-            </button>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
+          <div class="flex items-center gap-2">
+            <UIcon
+              :name="selectedChannel?.channelType === 'VOICE' ? 'i-lucide-mic' : 'i-lucide-hash'"
+              class="text-xl text-gray-600 dark:text-gray-400"
+            />
+            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
+              {{ selectedChannel?.name || 'Select a channel' }}
+            </h1>
           </div>
+          <div class="ml-auto">
+            <UserMenu />
+          </div>
+        </div>
 
-          <form class="flex items-center gap-2" @submit.prevent="sendMessage">
-            <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
-              <input
-                ref="fileInputRef"
-                type="file"
-                accept="image/*"
-                class="hidden"
-                @change="handleImageSelect"
-              >
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-image-plus"
-                aria-label="Upload image"
-                @click="fileInputRef?.click()"
-              />
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-smile"
-                aria-label="Insert emoji"
-                @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
-              />
-              <div
-                v-if="showEmojiPicker"
-                class="absolute bottom-full mb-2 left-0 z-20"
-              >
-                <EmojiPicker @select="addEmoji" />
-              </div>
+        <template v-if="selectedChannel?.channelType === 'TEXT'">
+          <MessageList
+            :messages="messages"
+            :loading="loading"
+            :error="error"
+            @message-deleted="removeMessageById"
+          />
 
-              <UButton
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-image"
-                aria-label="Insert GIF"
-                @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
-              />
-              <div
-                v-if="showGifPicker"
-                class="absolute bottom-full mb-2 left-0 z-20"
+          <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+            <div
+              v-if="imagePreviewUrl"
+              class="mb-2 relative inline-block"
+            >
+              <img
+                :src="imagePreviewUrl"
+                alt="Preview"
+                class="max-h-32 rounded-lg shadow-md"
               >
-                <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
-              </div>
+              <button
+                type="button"
+                class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
+                @click="removeImage"
+              >
+                ×
+              </button>
             </div>
 
-            <UInput
-              v-model="newMessage"
-              placeholder="Type a message..."
-              size="lg"
-              class="flex-1"
-              :ui="{ base: 'w-full' }"
-            />
-            <UButton
-              type="submit"
-              size="lg"
-              icon="i-lucide-send"
-              :disabled="!newMessage.trim() && !selectedImage"
-            >
-              Send
-            </UButton>
-          </form>
-        </div>
-      </template>
+            <form class="flex items-center gap-2" @submit.prevent="sendMessage">
+              <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="handleImageSelect"
+                >
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-image-plus"
+                  aria-label="Upload image"
+                  @click="fileInputRef?.click()"
+                />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-smile"
+                  aria-label="Insert emoji"
+                  @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
+                />
+                <div
+                  v-if="showEmojiPicker"
+                  class="absolute bottom-full mb-2 left-0 z-20"
+                >
+                  <EmojiPicker @select="addEmoji" />
+                </div>
 
-      <VoiceChannel
-        v-else-if="selectedChannel?.channelType === 'VOICE'"
-        :channel="selectedChannel"
-        :stomp-client="stompClient"
-      />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-image"
+                  aria-label="Insert GIF"
+                  @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
+                />
+                <div
+                  v-if="showGifPicker"
+                  class="absolute bottom-full mb-2 left-0 z-20"
+                >
+                  <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
+                </div>
+              </div>
+
+              <UInput
+                v-model="newMessage"
+                placeholder="Type a message..."
+                size="lg"
+                class="flex-1"
+                :ui="{ base: 'w-full' }"
+              />
+              <UButton
+                type="submit"
+                size="lg"
+                icon="i-lucide-send"
+                :disabled="!newMessage.trim() && !selectedImage"
+              >
+                Send
+              </UButton>
+            </form>
+          </div>
+        </template>
+
+        <VoiceChannel
+          v-else-if="selectedChannel?.channelType === 'VOICE'"
+          :channel="selectedChannel"
+          :stomp-client="stompClient"
+        />
+      </div>
+
+      <UserPanel :users="users" />
     </div>
-
-    <UserPanel :users="users" />
-  </div>
+  </ClientOnly>
 </template>

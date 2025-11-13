@@ -18,6 +18,22 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lootchat-network
+
   backend:
     build: .
     container_name: lootchat-backend
@@ -38,11 +54,15 @@ services:
       - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-System}
       - ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-Administrator}
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
     volumes:
       - backend-uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - lootchat-network
     restart: on-failure
@@ -54,8 +74,10 @@ services:
       - "3000:3000"
     environment:
       - NUXT_SESSION_PASSWORD=${NUXT_SESSION_PASSWORD}
-      - NUXT_PUBLIC_API_URL=http://localhost:8080
+      - NUXT_PUBLIC_API_URL=http://backend:8080
       - NUXT_PUBLIC_TENOR_API_KEY=${NUXT_PUBLIC_TENOR_API_KEY}
+    depends_on:
+      - backend
     networks:
       - lootchat-network
 
@@ -96,3 +118,5 @@ volumes:
     name: lootchat-postgres-data
   backend-uploads:
     name: lootchat-backend-uploads
+  redis-data:
+    name: lootchat-redis-data

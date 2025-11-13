@@ -2,8 +2,7 @@
 import type { Message, Reaction } from '../../shared/types/chat'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
-import { messageApi } from '~/api/messageApi'
-import { API_CONFIG } from '~/api/apiConfig'
+import type { ReactionResponse } from '~/api/messageApi'
 import { useAuthStore } from '../../stores/auth'
 
 interface Props {
@@ -16,15 +15,15 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
 
-const apiBaseUrl = API_CONFIG.BASE_URL
-
-// Helper function to add token to image URLs
+// Helper function to get image URLs
+// Images are proxied through our server to include authentication
 const getAuthenticatedImageUrl = (imageUrl: string) => {
   if (!imageUrl) return ''
-  const token = authStore.token
-  if (!token) return `${apiBaseUrl}${imageUrl}`
-  // Add token as query parameter for img tags
-  return `${apiBaseUrl}${imageUrl}?token=${encodeURIComponent(token)}`
+  // Extract just the filename from the backend URL
+  // Backend returns URLs like /api/files/images/filename.jpg
+  const filename = imageUrl.split('/').pop()
+  // Use our server proxy route which handles authentication
+  return `/api/files/images/${filename}`
 }
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -99,7 +98,7 @@ onMounted(() => {
   if (messagesContainer.value) {
     messagesContainer.value.addEventListener('scroll', handleMessagesScroll, { passive: true } as AddEventListenerOptions)
   }
-  // Add keyboard listener for escape key
+
   window.addEventListener('keydown', handleKeyDown)
 
   if (props.messages.length > 0) {
@@ -128,12 +127,12 @@ const emit = defineEmits<{
 }>()
 
 const handleDeleteMessage = (message: Message) => {
-  const token = authStore.token
-  if (!token) return
-
   const performDelete = async () => {
     try {
-      await messageApi.deleteMessage(message.id, token)
+      // Use server API route instead of direct backend call
+      await $fetch(`/api/messages/${message.id}`, {
+        method: 'DELETE'
+      })
       emit('message-deleted', message.id)
       toast.add({
         title: 'Message deleted',
@@ -173,9 +172,8 @@ const handleDeleteMessage = (message: Message) => {
 }
 
 const handleReactionClick = async (messageId: number, emoji: string) => {
-  const token = authStore.token
   const currentUser = authStore.user
-  if (!token || !currentUser) return
+  if (!currentUser) return
 
   const message = props.messages.find(m => m.id === messageId)
   if (!message) return
@@ -194,7 +192,11 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
     const removed = message.reactions[existingIndex]!
     message.reactions.splice(existingIndex, 1)
     try {
-      await messageApi.removeReaction(messageId, emoji, token)
+      // Use server API route instead of direct backend call
+      await $fetch(`/api/messages/${messageId}/reactions`, {
+        method: 'DELETE',
+        body: { emoji }
+      })
     } catch (error) {
       console.error('Error removing reaction:', error)
       message.reactions.splice(existingIndex, 0, removed)
@@ -216,7 +218,11 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
   message.reactions.push(tempReaction)
 
   try {
-    const serverReaction = await messageApi.addReaction(messageId, emoji, token)
+    // Use server API route instead of direct backend call
+    const serverReaction = await $fetch<ReactionResponse>(`/api/messages/${messageId}/reactions`, {
+      method: 'POST',
+      body: { emoji }
+    })
     const serverIdx = message.reactions.findIndex(r => r.id === serverReaction.id)
     const tempIdx = message.reactions.findIndex(r => r.id === tempId)
     if (serverIdx !== -1 && tempIdx !== -1) {

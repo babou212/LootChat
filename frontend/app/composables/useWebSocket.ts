@@ -16,7 +16,20 @@ export interface UserPresenceUpdate {
 
 export const useWebSocket = () => {
   const config = useRuntimeConfig()
-  const apiBaseUrl = config.public.apiUrl || 'http://localhost:8080'
+
+  // For WebSocket connections from the browser, we need to use the host's URL
+  // Server-side API calls can use the Docker service name, but browser WebSocket must use localhost
+  const getWebSocketUrl = () => {
+    if (import.meta.client) {
+      // Running in browser - use window.location for WebSocket
+      const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
+      const host = window.location.hostname
+      const port = '8080' // Backend port
+      return `${protocol}//${host}:${port}`
+    }
+    // Server-side (shouldn't be used for WebSocket, but fallback)
+    return config.public.apiUrl || 'http://localhost:8080'
+  }
 
   let stompClient: Client | null = null
   const isConnected = ref(false)
@@ -25,8 +38,9 @@ export const useWebSocket = () => {
   const connect = (token: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       try {
+        const wsUrl = getWebSocketUrl()
         // Create SockJS instance
-        const socket = new SockJS(`${apiBaseUrl}/ws`)
+        const socket = new SockJS(`${wsUrl}/ws`)
 
         // Create STOMP client
         stompClient = new Client({
@@ -79,7 +93,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannel = (channelId: number, callback: (message: MessageResponse) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -100,7 +114,7 @@ export const useWebSocket = () => {
 
   const subscribeToAllMessages = (callback: (message: MessageResponse) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -121,7 +135,7 @@ export const useWebSocket = () => {
 
   const subscribeToUserPresence = (callback: (update: UserPresenceUpdate) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -142,7 +156,7 @@ export const useWebSocket = () => {
 
   const subscribeToReactions = (callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -163,7 +177,7 @@ export const useWebSocket = () => {
 
   const subscribeToReactionRemovals = (callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -184,7 +198,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelReactions = (channelId: number, callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -205,7 +219,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelReactionRemovals = (channelId: number, callback: (reaction: Reaction) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
 
@@ -226,7 +240,7 @@ export const useWebSocket = () => {
 
   const subscribeToGlobalMessageDeletions = (callback: (payload: MessageDeletionPayload) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
     const subscription = stompClient.subscribe(
@@ -245,7 +259,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannelMessageDeletions = (channelId: number, callback: (payload: MessageDeletionPayload) => void) => {
     if (!stompClient || !isConnected.value) {
-      console.error('WebSocket is not connected')
+      // console.error('WebSocket is not connected')
       return null
     }
     const subscription = stompClient.subscribe(
