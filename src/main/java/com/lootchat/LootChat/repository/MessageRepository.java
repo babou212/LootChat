@@ -1,6 +1,8 @@
 package com.lootchat.LootChat.repository;
 
 import com.lootchat.LootChat.entity.Message;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -19,6 +21,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findAllByOrderByCreatedAtDesc();
     
     List<Message> findByChannelIdOrderByCreatedAtDesc(Long channelId);
+    
+    Page<Message> findByChannelIdOrderByCreatedAtDesc(Long channelId, Pageable pageable);
     
     List<Message> findByChannelIdAndUserIdOrderByCreatedAtDesc(Long channelId, Long userId);
     

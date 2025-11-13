@@ -43,6 +43,10 @@ const channels = ref<Channel[]>([])
 const selectedChannel = ref<Channel | null>(null)
 
 const messages = ref<Message[]>([])
+const currentPage = ref(0)
+const pageSize = 30
+const hasMoreMessages = ref(true)
+const loadingMoreMessages = ref(false)
 
 const users = ref<UserPresence[]>([])
 
@@ -135,6 +139,11 @@ const selectChannel = async (channel: Channel) => {
   if (channelIndex !== -1) {
     channels.value[channelIndex]!.unread = 0
   }
+
+  // Reset pagination state
+  currentPage.value = 0
+  hasMoreMessages.value = true
+  loadingMoreMessages.value = false
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
     // Clear existing messages before loading new channel messages for visual feedback
@@ -333,26 +342,65 @@ const fetchUsers = async () => {
   }
 }
 
-const fetchMessages = async () => {
+const fetchMessages = async (append = false) => {
   try {
     if (!user.value) {
       return navigateTo('/login')
     }
 
     const channelId = selectedChannel.value?.id
+    if (!channelId) {
+      messages.value = []
+      return
+    }
+
+    if (!append) {
+      loading.value = true
+      currentPage.value = 0
+    } else {
+      loadingMoreMessages.value = true
+    }
+
+    const page = append ? currentPage.value + 1 : 0
     const apiMessages = await $fetch<MessageResponse[]>('/api/messages', {
-      query: channelId ? { channelId } : undefined
+      query: {
+        channelId,
+        page,
+        size: pageSize
+      }
     })
-    messages.value = apiMessages
+
+    if (apiMessages.length < pageSize) {
+      hasMoreMessages.value = false
+    }
+
+    const convertedMessages = apiMessages
       .map(convertToMessage)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+    if (append) {
+      // When loading older messages, prepend them
+      messages.value = [...convertedMessages, ...messages.value]
+      currentPage.value = page
+    } else {
+      // Initial load or channel change
+      messages.value = convertedMessages
+      hasMoreMessages.value = apiMessages.length === pageSize
+    }
+
     loading.value = false
+    loadingMoreMessages.value = false
   } catch (err) {
     console.error('Failed to fetch messages:', err)
     error.value = 'Failed to load messages'
-  } finally {
     loading.value = false
+    loadingMoreMessages.value = false
   }
+}
+
+const loadMoreMessages = async () => {
+  if (!hasMoreMessages.value || loadingMoreMessages.value) return
+  await fetchMessages(true)
 }
 
 const removeMessageById = (id: number) => {
@@ -550,7 +598,10 @@ watch(users, () => {
             :messages="messages"
             :loading="loading"
             :error="error"
+            :has-more="hasMoreMessages"
+            :loading-more="loadingMoreMessages"
             @message-deleted="removeMessageById"
+            @load-more="loadMoreMessages"
           />
 
           <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">

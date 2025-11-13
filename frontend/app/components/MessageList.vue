@@ -9,6 +9,8 @@ interface Props {
   messages: Message[]
   loading: boolean
   error: string | null
+  hasMore?: boolean
+  loadingMore?: boolean
 }
 
 const props = defineProps<Props>()
@@ -88,9 +90,32 @@ const closeEmojiPicker = () => {
 
 useClickAway(emojiPickerRef, closeEmojiPicker)
 
+const isLoadingMore = ref(false)
+const lastScrollTop = ref(0)
+const previousScrollHeight = ref(0)
+
 const handleMessagesScroll = () => {
   if (activeEmojiPicker.value !== null) {
     closeEmojiPicker()
+  }
+
+  const container = messagesContainer.value
+  if (!container) return
+
+  const currentScrollTop = container.scrollTop
+  const scrollingUp = currentScrollTop < lastScrollTop.value
+  lastScrollTop.value = currentScrollTop
+
+  // Check if we're near the top (within 100px)
+  if (scrollingUp && currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
+    // Store current scroll height before loading more
+    previousScrollHeight.value = container.scrollHeight
+    isLoadingMore.value = true
+    emit('load-more')
+    // Reset the flag after a short delay to allow the parent to update
+    setTimeout(() => {
+      isLoadingMore.value = false
+    }, 500)
   }
 }
 
@@ -100,10 +125,6 @@ onMounted(() => {
   }
 
   window.addEventListener('keydown', handleKeyDown)
-
-  if (props.messages.length > 0) {
-    scrollToBottom()
-  }
 })
 
 onUnmounted(() => {
@@ -124,6 +145,7 @@ const canDelete = (message: Message) => {
 
 const emit = defineEmits<{
   (e: 'message-deleted', id: number): void
+  (e: 'load-more'): void
 }>()
 
 const handleDeleteMessage = (message: Message) => {
@@ -329,13 +351,51 @@ const contentWithoutMedia = (text: string): string => {
     .trim()
 }
 
-watch(() => props.messages.length, () => {
-  scrollToBottom()
+// Only scroll to bottom on initial load, not on every message change
+const hasInitiallyScrolled = ref(false)
+
+watch(() => props.messages.length, (newLength, oldLength) => {
+  // Reset scroll state when messages are cleared (channel change)
+  if (newLength === 0 && oldLength > 0) {
+    hasInitiallyScrolled.value = false
+    previousScrollHeight.value = 0
+    return
+  }
+
+  nextTick(() => {
+    if (!messagesContainer.value) return
+    const container = messagesContainer.value
+
+    // Initial load - scroll to bottom
+    if (oldLength === 0 && newLength > 0) {
+      scrollToBottom()
+      hasInitiallyScrolled.value = true
+      return
+    }
+
+    // Loading older messages (prepending) - maintain scroll position
+    if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
+      const newScrollHeight = container.scrollHeight
+      const heightDifference = newScrollHeight - previousScrollHeight.value
+      container.scrollTop = container.scrollTop + heightDifference
+      previousScrollHeight.value = 0
+      return
+    }
+
+    // New messages arriving (appending) - scroll to bottom only if user is near bottom
+    if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
+      if (isNearBottom) {
+        scrollToBottom()
+      }
+    }
+  })
 })
 
 watch(() => props.loading, (isLoading) => {
-  if (!isLoading && props.messages.length > 0) {
+  if (!isLoading && props.messages.length > 0 && !hasInitiallyScrolled.value) {
     scrollToBottom()
+    hasInitiallyScrolled.value = true
   }
 })
 </script>
@@ -345,6 +405,13 @@ watch(() => props.loading, (isLoading) => {
     ref="messagesContainer"
     class="flex-1 overflow-y-auto p-6 space-y-4"
   >
+    <div
+      v-if="loadingMore"
+      class="flex justify-center py-2"
+    >
+      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
+    </div>
+
     <div
       v-if="loading"
       class="h-full"

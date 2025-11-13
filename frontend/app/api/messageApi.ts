@@ -40,10 +40,20 @@ export interface UpdateMessageRequest {
 }
 
 export const messageApi = {
-  async getAllMessages(token: string, channelId?: number): Promise<MessageResponse[]> {
+  async getAllMessages(token: string, channelId?: number, page?: number, size?: number): Promise<MessageResponse[]> {
     const authFetch = createAuthFetch(token)
-    const url = channelId
-      ? `${API_CONFIG.MESSAGES.ALL}?channelId=${channelId}`
+    const params = new URLSearchParams()
+    if (channelId !== undefined) {
+      params.append('channelId', channelId.toString())
+    }
+    if (page !== undefined) {
+      params.append('page', page.toString())
+    }
+    if (size !== undefined) {
+      params.append('size', size.toString())
+    }
+    const url = params.toString()
+      ? `${API_CONFIG.MESSAGES.ALL}?${params.toString()}`
       : API_CONFIG.MESSAGES.ALL
     return await authFetch<MessageResponse[]>(url)
   },
