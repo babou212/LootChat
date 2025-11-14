@@ -35,13 +35,29 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
    docker compose -f compose-production.yaml up -d
    ```
 
+3. **Configure Email (Optional)**
+
+   Copy `.env.example` to `.env` and set your SMTP credentials:
+
+   ```bash
+   MAIL_HOST=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USERNAME=your-email@gmail.com
+   MAIL_PASSWORD=your-app-password
+   ```
+
+   For Gmail, create an [App Password](https://support.google.com/accounts/answer/185833).
+
+---
+
 ## 📝 Features
 
-- Registration/login
+- Registration/login with email confirmation
 - Real-time chat
 - Channel & user management
 - Admin invites
 - Responsive, modern UI
+- Email notifications
 
 ---
 
