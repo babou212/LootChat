@@ -27,6 +27,7 @@ public class InviteService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final CurrentUserService currentUserService;
+    private final EmailService emailService;
 
     public InviteTokenCreateResponse createInvite(CreateInviteTokenRequest request, String publicBaseUrl) {
         User creator = currentUserService.getCurrentUserOrThrow();
@@ -56,7 +57,6 @@ public class InviteService {
         inviteTokenRepository.save(invite);
 
         String url = publicBaseUrl.endsWith("/") ? publicBaseUrl.substring(0, publicBaseUrl.length() - 1) : publicBaseUrl;
-        // Registration page path in frontend: /invite/<token>
         String invitationUrl = url + "/invite/" + token;
 
         return InviteTokenCreateResponse.builder()
@@ -132,6 +132,8 @@ public class InviteService {
         invite.setUsedAt(LocalDateTime.now());
         invite.setUsedBy(newUser);
         inviteTokenRepository.save(invite);
+
+        emailService.sendWelcomeEmail(newUser.getEmail(), newUser.getUsername());
 
         String jwtToken = jwtService.generateToken(newUser);
 
