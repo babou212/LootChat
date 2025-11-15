@@ -7,9 +7,11 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
 
   try {
     const apiUrl = config.apiUrl || config.public.apiUrl
-    console.log('Registering with invite:', token, 'to URL:', `${apiUrl}/api/invites/${token}/register`)
+    const fullUrl = `${apiUrl}/api/invites/${token}/register`
+    console.log('Registering with invite:', token, 'to URL:', fullUrl)
+    console.log('Request body:', JSON.stringify(body))
 
-    const response: unknown = await $fetch<unknown>(`${apiUrl}/api/invites/${token}/register`, {
+    const response: unknown = await $fetch<unknown>(fullUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -17,9 +19,10 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       },
       body
     })
+    console.log('Registration successful:', response)
     return response
   } catch (error: unknown) {
-    console.error('Registration error:', error)
+    console.error('Registration error details:', JSON.stringify(error, null, 2))
     let status = 500
     let message = 'Failed to register with invite'
     if (typeof error === 'object' && error) {
@@ -29,6 +32,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       const data = maybe.data as { message?: string } | undefined
       status = statusCode || response?.status || status
       message = data?.message || message
+      console.error('Parsed error - Status:', status, 'Message:', message)
     }
     throw createError({ statusCode: status, message })
   }
