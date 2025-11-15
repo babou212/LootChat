@@ -18,14 +18,13 @@ export const useWebSocket = () => {
   const config = useRuntimeConfig()
 
   // For WebSocket connections from the browser, we need to use the host's URL
-  // Server-side API calls can use the Docker service name, but browser WebSocket must use localhost
+  // WebSocket should go through nginx proxy, not directly to backend
   const getWebSocketUrl = () => {
     if (import.meta.client) {
-      // Running in browser - use window.location for WebSocket
+      // Running in browser - use same host as the page (nginx will proxy to backend)
       const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:'
-      const host = window.location.hostname
-      const port = '8080' // Backend port
-      return `${protocol}//${host}:${port}`
+      const host = window.location.host // includes port if non-standard
+      return `${protocol}//${host}`
     }
     // Server-side (shouldn't be used for WebSocket, but fallback)
     return config.public.apiUrl || 'http://localhost:8080'
