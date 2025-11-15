@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import { inviteApi } from '~/api/inviteApi'
 import type { RegisterWithInviteRequest } from '~/api/inviteApi'
 import { useAuth } from '~/composables/useAuth'
@@ -10,6 +11,19 @@ interface InviteValidation {
   reason?: string
   expiresAt?: string
 }
+
+const passwordSchema = z.string()
+  .min(12, 'Password must be at least 12 characters long')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/\d/, 'Password must contain at least one number')
+  .regex(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/, 'Password must contain at least one special character')
+  .refine(
+    (password) => {
+      return !/(.)\1{2,}/.test(password)
+    },
+    'Password cannot contain more than 2 consecutive identical characters'
+  )
 
 const route = useRoute()
 const token = route.params.token as string
@@ -28,29 +42,32 @@ const form = reactive<RegisterWithInviteRequest>({
   firstName: '',
   lastName: ''
 })
-const showPassword = ref(false)
-const passwordError = ref<string | null>(null)
 
-const validatePassword = (password: string): string | null => {
-  if (password.length < 8) {
-    return 'Password must be at least 8 characters long'
+const showPassword = ref(false)
+const passwordErrors = ref<string[]>([])
+
+const validatePassword = (password: string): string[] => {
+  if (!password) return []
+
+  const result = passwordSchema.safeParse(password)
+  if (result.success) {
+    return []
   }
-  if (!/\d/.test(password)) {
-    return 'Password must contain at least one number'
-  }
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?]/.test(password)) {
-    return 'Password must contain at least one special character'
-  }
-  return null
+
+  return result.error.issues.map((err: { message: string }) => err.message)
 }
 
 const handlePasswordChange = () => {
-  if (form.password) {
-    passwordError.value = validatePassword(form.password)
-  } else {
-    passwordError.value = null
-  }
+  passwordErrors.value = validatePassword(form.password)
 }
+
+const isFormValid = computed(() => {
+  return validation.value?.valid
+    && form.username
+    && form.email
+    && form.password
+    && passwordErrors.value.length === 0
+})
 
 onMounted(async () => {
   try {
@@ -65,9 +82,9 @@ onMounted(async () => {
 const register = async () => {
   if (!validation.value?.valid) return
 
-  const pwdError = validatePassword(form.password)
-  if (pwdError) {
-    passwordError.value = pwdError
+  const errors = validatePassword(form.password)
+  if (errors.length > 0) {
+    passwordErrors.value = errors
     return
   }
 
@@ -188,11 +205,18 @@ const register = async () => {
               @input="handlePasswordChange"
             />
             <UCheckbox v-model="showPassword" label="Show password" class="mt-2" />
-            <p v-if="passwordError" class="text-xs text-red-500 dark:text-red-400">
-              {{ passwordError }}
-            </p>
+            <div v-if="passwordErrors.length > 0" class="space-y-1 mt-2">
+              <p
+                v-for="(err, idx) in passwordErrors"
+                :key="idx"
+                class="text-xs text-red-500 dark:text-red-400 flex items-start gap-1"
+              >
+                <UIcon name="i-lucide-alert-circle" class="shrink-0 mt-0.5" />
+                <span>{{ err }}</span>
+              </p>
+            </div>
             <p v-else class="text-xs text-gray-500 dark:text-gray-400">
-              Must be at least 8 characters with one number and one special character
+              Must be at least 12 characters with uppercase, lowercase, number, and special character
             </p>
           </div>
 
@@ -232,7 +256,7 @@ const register = async () => {
           <UButton
             type="submit"
             :loading="submitting"
-            :disabled="submitting || !validation?.valid"
+            :disabled="submitting || !isFormValid"
             icon="i-lucide-user-plus"
             color="primary"
             block

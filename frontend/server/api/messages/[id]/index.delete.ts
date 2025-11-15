@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const messageId = getRouterParam(event, 'id')
 
   try {
-    await $fetch(`${config.public.apiUrl}/api/messages/${messageId}`, {
+    await $fetch(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${session.token}`

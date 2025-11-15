@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   try {
-    const response = await fetch(`${config.public.apiUrl}/api/users/password`, {
+    const response = await fetch(`${config.apiUrl || config.public.apiUrl}/api/users/password`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${session.token}`,

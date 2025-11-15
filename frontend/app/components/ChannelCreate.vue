@@ -110,14 +110,33 @@ const submit = async () => {
               />
             </UFormGroup>
 
-            <UFormGroup label="Type">
-              <URadioGroup
-                v-model="state.channelType"
-                :options="[
-                  { label: 'Text', value: 'TEXT' },
-                  { label: 'Voice', value: 'VOICE' }
-                ]"
-              />
+            <UFormGroup label="Type" required>
+              <div class="flex gap-4 pt-2">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input
+                    v-model="state.channelType"
+                    type="radio"
+                    value="TEXT"
+                    class="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                  >
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-hash" class="text-gray-600 dark:text-gray-400" />
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Text Channel</span>
+                  </div>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input
+                    v-model="state.channelType"
+                    type="radio"
+                    value="VOICE"
+                    class="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                  >
+                  <div class="flex items-center gap-2">
+                    <UIcon name="i-lucide-mic" class="text-gray-600 dark:text-gray-400" />
+                    <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Voice Channel</span>
+                  </div>
+                </label>
+              </div>
             </UFormGroup>
           </div>
 

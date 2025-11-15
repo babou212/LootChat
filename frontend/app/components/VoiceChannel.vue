@@ -60,7 +60,13 @@ const handleJoinChannel = async () => {
     isConnected.value = true
   } catch (err) {
     console.error('Failed to join voice channel:', err)
-    error.value = 'Failed to join voice channel. Please check your microphone permissions.'
+
+    // Update error message with the actual error from the composable
+    if (err instanceof Error) {
+      error.value = err.message
+    } else {
+      error.value = 'Failed to join voice channel. Please check your microphone permissions.'
+    }
   } finally {
     isConnecting.value = false
   }
@@ -104,19 +110,22 @@ onUnmounted(() => {
       />
 
       <div v-if="!isConnected" class="text-center">
-        <p class="text-gray-600 dark:text-gray-400 mb-2">
-          Join this voice channel to start talking with others
-        </p>
-        <UButton
-          size="xl"
-          color="primary"
-          icon="i-lucide-phone-call"
-          :loading="isConnecting"
-          :disabled="isConnecting"
-          @click="handleJoinChannel"
-        >
-          {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
-        </UButton>
+        <div class="space-y-4">
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
+            Join this voice channel to start talking with others
+          </p>
+
+          <UButton
+            size="lg"
+            color="primary"
+            icon="i-lucide-phone-call"
+            :loading="isConnecting"
+            :disabled="isConnecting"
+            @click="handleJoinChannel"
+          >
+            {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
+          </UButton>
+        </div>
       </div>
 
       <div v-else class="space-y-6">

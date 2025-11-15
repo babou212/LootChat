@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   try {
-    await $fetch(`${config.public.apiUrl}/api/messages/${messageId}/reactions`, {
+    await $fetch(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}/reactions`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${session.token}`

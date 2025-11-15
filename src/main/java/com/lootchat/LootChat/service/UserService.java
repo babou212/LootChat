@@ -40,24 +40,28 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        // Verify current password
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect");
         }
 
-        // Verify new password and confirm password match
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password and confirm password do not match");
         }
 
-        // Validate new password strength
-        if (request.getNewPassword().length() < 8) {
+        if (request.getNewPassword().length() < 12) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be at least 8 characters long");
         }
 
-        // Update password
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+    }
+
+    public boolean usernameExists(String username) {
+        return userRepository.existsByUsername(username);
+    }
+
+    public boolean emailExists(String email) {
+        return userRepository.existsByEmail(email);
     }
 
     private UserResponse mapToUserResponse(User user) {

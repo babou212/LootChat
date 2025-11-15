@@ -45,10 +45,19 @@ export default defineNuxtConfig({
   runtimeConfig: {
     session: {
       maxAge: 60 * 60 * 24 * 7, // 7 days
-      password: process.env.NUXT_SESSION_PASSWORD || ''
+      password: process.env.NUXT_SESSION_PASSWORD || '',
+      cookie: {
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        path: '/'
+      }
     },
+    // Server-side API URL (internal Docker network)
+    apiUrl: process.env.NUXT_API_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
     public: {
       tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY,
+      // Client-side API URL (external/public)
       apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
       // WebRTC ICE/TURN configuration (comma-separated TURN URLs, e.g. "turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349")
       webrtcTurnUrls: process.env.NUXT_PUBLIC_WEBRTC_TURN_URLS || '',
