@@ -14,7 +14,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const body = await readBody(event)
 
   try {
-    const invite: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/invites`, {
+    const invite: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/invites`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

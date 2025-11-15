@@ -36,7 +36,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       }
     }
 
-    const message: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/messages/upload`, {
+    const message: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/messages/upload`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

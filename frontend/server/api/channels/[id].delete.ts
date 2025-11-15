@@ -12,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const channelId = getRouterParam(event, 'id')
 
   try {
-    await $fetch(`${config.public.apiUrl}/api/channels/${channelId}`, {
+    await $fetch(`${config.apiUrl || config.public.apiUrl}/api/channels/${channelId}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${session.token}`

@@ -10,11 +10,12 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     })
   }
 
-  const config = useRuntimeConfig()
   const body = await readBody(event)
 
   try {
-    const channel: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/channels`, {
+    const config = useRuntimeConfig()
+    const apiUrl = config.apiUrl || config.public.apiUrl
+    const channel: unknown = await $fetch<unknown>(`${apiUrl}/api/channels`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

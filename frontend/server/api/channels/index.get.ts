@@ -13,7 +13,8 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const config = useRuntimeConfig()
 
   try {
-    const channels: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/channels`, {
+    const apiUrl = config.apiUrl || config.public.apiUrl
+    const channels: unknown = await $fetch<unknown>(`${apiUrl}/api/channels`, {
       headers: {
         Authorization: `Bearer ${session.token}`
       }

@@ -10,10 +10,10 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     })
   }
 
-  const config = useRuntimeConfig()
-
   try {
-    const presence: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/users/presence`, {
+    const config = useRuntimeConfig()
+    const apiUrl = config.apiUrl || config.public.apiUrl
+    const presence: unknown = await $fetch<unknown>(`${apiUrl}/api/users/presence`, {
       headers: {
         Authorization: `Bearer ${session.token}`
       }

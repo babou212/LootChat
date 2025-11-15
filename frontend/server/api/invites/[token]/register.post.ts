@@ -6,7 +6,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const body = await readBody(event)
 
   try {
-    const response: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/invites/${token}/register`, {
+    const response: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/invites/${token}/register`, {
       method: 'POST',
       body
     })

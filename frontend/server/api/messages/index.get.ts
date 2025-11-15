@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const url = new URL(`${config.public.apiUrl}/api/messages`)
+  const url = new URL(`${config.apiUrl || config.public.apiUrl}/api/messages`)
   if (channelIdParam) {
     url.searchParams.set('channelId', channelIdParam)
   }

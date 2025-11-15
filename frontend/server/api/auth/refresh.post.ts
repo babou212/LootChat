@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
       email: string
       role: string
       avatar?: string
-    }>(`${config.public.apiUrl}/api/auth/refresh`, {
+    }>(`${config.apiUrl || config.public.apiUrl}/api/auth/refresh`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`

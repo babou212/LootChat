@@ -15,7 +15,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   }
 
   try {
-    const inviteValidation: unknown = await $fetch<unknown>(`${config.public.apiUrl}/api/invites/${token}`, {
+    const inviteValidation: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/invites/${token}`, {
       headers: {
         ...authHeader
       }
