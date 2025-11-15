@@ -1,4 +1,20 @@
-export default defineEventHandler(async (event) => {
+import type { H3Event } from 'h3'
+
+interface MessageResponse {
+  id: number
+  content: string
+  userId: number
+  username: string
+  createdAt: string
+  updatedAt: string
+  avatar: string
+  imageUrl?: string
+  imageFilename?: string
+  channelId: number
+  channelName: string
+}
+
+export default defineEventHandler(async (event: H3Event): Promise<MessageResponse> => {
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -20,7 +36,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const response = await $fetch(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}`, {
+    const response: MessageResponse = await $fetch<MessageResponse>(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${session.token}`,
