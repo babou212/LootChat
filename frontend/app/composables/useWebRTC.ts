@@ -100,12 +100,16 @@ export const useWebRTC = () => {
     pc.oniceconnectionstatechange = () => {
       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
         removePeer(userId)
+      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        console.log(`Successfully connected to peer ${userId}`)
       }
     }
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         removePeer(userId)
+      } else if (pc.connectionState === 'connected') {
+        console.log(`Peer connection established with user ${userId}`)
       }
     }
 
@@ -140,6 +144,7 @@ export const useWebRTC = () => {
     try {
       switch (type) {
         case 'JOIN':
+          // Add participant to the list if not already present
           if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
             participants.value.push({
               userId: fromUserId,
@@ -149,17 +154,36 @@ export const useWebRTC = () => {
             })
           }
 
-          if (!signal.toUserId && currentChannelId.value && fromUserId !== myId) {
+          // Skip self-messages
+          if (fromUserId === myId) break
+
+          // If this is a broadcast JOIN (no toUserId), it's a new peer announcing themselves
+          if (!signal.toUserId && currentChannelId.value) {
+            // Respond with our own direct JOIN to the new peer
             sendSignal({
               channelId: currentChannelId.value,
               type: 'JOIN' as WebRTCSignalType,
               fromUserId: myId,
               toUserId: fromUserId
             })
-          }
 
-          if (currentChannelId.value && fromUserId !== myId && shouldInitiateOffer(fromUserId)) {
-            await createOffer(fromUserId)
+            // Create offer if we should initiate (lower ID initiates)
+            const existingPeer = peers.value.get(fromUserId)
+            if (shouldInitiateOffer(fromUserId) && !existingPeer) {
+              console.log(`Creating offer to new peer ${fromUserId} (broadcast JOIN)`)
+              await createOffer(fromUserId)
+            }
+          } else if (signal.toUserId === myId && currentChannelId.value) {
+            // If this is a direct JOIN response (has toUserId matching us)
+            const existingPeer = peers.value.get(fromUserId)
+            // If we should initiate and don't have a peer connection yet, create offer
+            if (shouldInitiateOffer(fromUserId) && !existingPeer) {
+              console.log(`Creating offer to peer ${fromUserId} (direct JOIN response)`)
+              await createOffer(fromUserId)
+            } else if (!shouldInitiateOffer(fromUserId) && !existingPeer) {
+              // If they should initiate, we wait for their offer
+              console.log(`Waiting for offer from peer ${fromUserId} (they should initiate)`)
+            }
           }
           break
 
@@ -193,6 +217,7 @@ export const useWebRTC = () => {
 
   const createOffer = async (userId: string) => {
     try {
+      console.log(`Creating peer connection and offer for user ${userId}`)
       const pc = await createPeerConnection(userId)
       peers.value.set(userId, { connection: pc })
 
@@ -200,6 +225,7 @@ export const useWebRTC = () => {
       await pc.setLocalDescription(offer)
 
       if (currentChannelId.value && user.value) {
+        console.log(`Sending offer to user ${userId}`)
         sendSignal({
           channelId: currentChannelId.value,
           type: 'OFFER' as WebRTCSignalType,
@@ -209,14 +235,23 @@ export const useWebRTC = () => {
         })
       }
     } catch (error) {
-      console.error('Error creating offer:', error)
+      console.error(`Error creating offer for user ${userId}:`, error)
     }
   }
 
   const handleOffer = async (userId: string, offer: RTCSessionDescriptionInit) => {
     try {
+      console.log(`Received offer from user ${userId}`)
       let pc = peers.value.get(userId)?.connection
-      if (!pc) {
+
+      if (pc) {
+        if (pc.signalingState !== 'stable') {
+          console.warn(`Received offer from ${userId} but peer connection is in ${pc.signalingState} state. Recreating connection.`)
+          removePeer(userId)
+          pc = await createPeerConnection(userId)
+          peers.value.set(userId, { connection: pc })
+        }
+      } else {
         pc = await createPeerConnection(userId)
         peers.value.set(userId, { connection: pc })
       }
@@ -236,6 +271,7 @@ export const useWebRTC = () => {
       pendingCandidates.value.delete(userId)
 
       if (currentChannelId.value && user.value) {
+        console.log(`Sending answer to user ${userId}`)
         sendSignal({
           channelId: currentChannelId.value,
           type: 'ANSWER' as WebRTCSignalType,
@@ -245,15 +281,22 @@ export const useWebRTC = () => {
         })
       }
     } catch (error) {
-      console.error('Error handling offer:', error)
+      console.error(`Error handling offer from user ${userId}:`, error)
     }
   }
 
   const handleAnswer = async (userId: string, answer: RTCSessionDescriptionInit) => {
     try {
+      console.log(`Received answer from user ${userId}`)
       const peer = peers.value.get(userId)
       if (peer) {
+        if (peer.connection.signalingState !== 'have-local-offer') {
+          console.warn(`Received answer from ${userId} but peer connection is in ${peer.connection.signalingState} state, expected 'have-local-offer'`)
+          return
+        }
+
         await peer.connection.setRemoteDescription(new RTCSessionDescription(answer))
+        console.log(`Successfully set remote description for answer from user ${userId}`)
 
         const queued = pendingCandidates.value.get(userId) || []
         for (const c of queued) {
@@ -264,9 +307,11 @@ export const useWebRTC = () => {
           }
         }
         pendingCandidates.value.delete(userId)
+      } else {
+        console.warn(`Received answer from ${userId} but no peer connection exists`)
       }
     } catch (error) {
-      console.error('Error handling answer:', error)
+      console.error(`Error handling answer from user ${userId}:`, error)
     }
   }
 
@@ -340,6 +385,7 @@ export const useWebRTC = () => {
       })
     } catch (error) {
       console.error('Error joining voice channel:', error)
+      throw error
     }
   }
 

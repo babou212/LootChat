@@ -25,12 +25,14 @@ const error = ref<string | null>(null)
 
 const handleJoinChannel = async () => {
   if (!props.stompClient) {
-    error.value = 'WebSocket not connected - client is null'
+    error.value = 'WebSocket connection not established. Please wait a moment and try again.'
+    console.error('STOMP client is null - WebSocket connection may not be ready')
     return
   }
 
   if (!props.stompClient.connected) {
-    const waitForConnected = (client: Client, timeoutMs = 3000, intervalMs = 100) => {
+    // Wait for connection to be established
+    const waitForConnected = (client: Client, timeoutMs = 5000, intervalMs = 100) => {
       return new Promise<boolean>((resolve) => {
         const start = Date.now()
         const timer = setInterval(() => {
@@ -45,9 +47,13 @@ const handleJoinChannel = async () => {
       })
     }
 
+    isConnecting.value = true
+    error.value = null
+
     const ok = await waitForConnected(props.stompClient)
     if (!ok) {
-      error.value = 'WebSocket not connected - client not in connected state'
+      error.value = 'WebSocket connection timeout. Please refresh the page and try again.'
+      isConnecting.value = false
       return
     }
   }
@@ -109,6 +115,18 @@ onUnmounted(() => {
         @close="error = null"
       />
 
+      <UAlert
+        v-if="!stompClient"
+        color="warning"
+        icon="i-lucide-wifi-off"
+        title="Connecting to server..."
+        class="mb-6"
+      >
+        <template #description>
+          Please wait while we establish a connection. If this persists, try refreshing the page.
+        </template>
+      </UAlert>
+
       <div v-if="!isConnected" class="text-center">
         <div class="space-y-4">
           <p class="text-gray-600 dark:text-gray-400 mb-4">
@@ -120,7 +138,7 @@ onUnmounted(() => {
             color="primary"
             icon="i-lucide-phone-call"
             :loading="isConnecting"
-            :disabled="isConnecting"
+            :disabled="isConnecting || !stompClient"
             @click="handleJoinChannel"
           >
             {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
