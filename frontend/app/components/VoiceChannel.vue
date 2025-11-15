@@ -22,72 +22,6 @@ const {
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const error = ref<string | null>(null)
-const permissionStatus = ref<'prompt' | 'granted' | 'denied'>('prompt')
-const testingMicrophone = ref(false)
-
-const testMicrophoneAccess = async () => {
-  testingMicrophone.value = true
-  error.value = null
-
-  try {
-    // Test direct microphone access
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-
-    // Success - stop the stream immediately
-    stream.getTracks().forEach(track => track.stop())
-
-    error.value = null
-    permissionStatus.value = 'granted'
-
-    // Show success message
-    const successMsg = 'Microphone access granted! You can now join the voice channel.'
-    console.log(successMsg)
-
-    // Optionally show a success alert
-    setTimeout(() => {
-      error.value = null
-    }, 3000)
-  } catch (err) {
-    console.error('Microphone test failed:', err)
-
-    if (err instanceof Error) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        error.value = 'Microphone permission denied. Please click the camera/microphone icon in your browser address bar and allow access.'
-        permissionStatus.value = 'denied'
-      } else if (err.name === 'NotFoundError') {
-        error.value = 'No microphone found. Please connect a microphone and try again.'
-      } else if (err.name === 'NotReadableError') {
-        error.value = 'Microphone is already in use by another application.'
-      } else {
-        error.value = `Microphone access failed: ${err.message}`
-      }
-    }
-  } finally {
-    testingMicrophone.value = false
-  }
-}
-
-const checkMicrophonePermission = async () => {
-  try {
-    if (!navigator.permissions || !navigator.permissions.query) {
-      // Permissions API not supported, assume we need to request
-      return
-    }
-
-    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-    permissionStatus.value = result.state as 'prompt' | 'granted' | 'denied'
-
-    result.onchange = () => {
-      permissionStatus.value = result.state as 'prompt' | 'granted' | 'denied'
-    }
-  } catch (err) {
-    console.warn('Could not check microphone permission:', err)
-  }
-}
-
-onMounted(() => {
-  checkMicrophonePermission()
-})
 
 const handleJoinChannel = async () => {
   if (!props.stompClient) {
@@ -124,8 +58,6 @@ const handleJoinChannel = async () => {
   try {
     await joinVoiceChannel(props.channel.id, props.stompClient)
     isConnected.value = true
-    // Recheck permission status after successful join
-    await checkMicrophonePermission()
   } catch (err) {
     console.error('Failed to join voice channel:', err)
 
@@ -135,9 +67,6 @@ const handleJoinChannel = async () => {
     } else {
       error.value = 'Failed to join voice channel. Please check your microphone permissions.'
     }
-
-    // Recheck permission status after failure
-    await checkMicrophonePermission()
   } finally {
     isConnecting.value = false
   }
@@ -181,60 +110,21 @@ onUnmounted(() => {
       />
 
       <div v-if="!isConnected" class="text-center">
-        <UAlert
-          v-if="permissionStatus === 'denied'"
-          color="warning"
-          icon="i-lucide-alert-triangle"
-          title="Microphone Permission Denied"
-          class="mb-6 text-left"
-        >
-          <template #description>
-            <div class="space-y-2">
-              <p>You have denied microphone access. To use voice chat:</p>
-              <ol class="list-decimal list-inside space-y-1 text-sm">
-                <li>Click the <strong>lock icon</strong> (🔒) or <strong>camera/microphone icon</strong> in your browser's address bar</li>
-                <li>Find the <strong>Microphone</strong> setting</li>
-                <li>Change it to <strong>Allow</strong></li>
-                <li>Click the "Test Microphone" button below to verify</li>
-              </ol>
-            </div>
-          </template>
-        </UAlert>
-
         <div class="space-y-4">
-          <div>
-            <p class="text-gray-600 dark:text-gray-400 mb-2">
-              Join this voice channel to start talking with others
-            </p>
-            <p v-if="permissionStatus === 'prompt'" class="text-sm text-gray-500 dark:text-gray-500 mb-4">
-              You will be asked to allow microphone access
-            </p>
-          </div>
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
+            Join this voice channel to start talking with others
+          </p>
 
-          <div class="flex flex-col sm:flex-row gap-3 justify-center">
-            <UButton
-              size="lg"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-mic-2"
-              :loading="testingMicrophone"
-              :disabled="testingMicrophone"
-              @click="testMicrophoneAccess"
-            >
-              {{ testingMicrophone ? 'Testing...' : 'Test Microphone' }}
-            </UButton>
-
-            <UButton
-              size="lg"
-              color="primary"
-              icon="i-lucide-phone-call"
-              :loading="isConnecting"
-              :disabled="isConnecting"
-              @click="handleJoinChannel"
-            >
-              {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
-            </UButton>
-          </div>
+          <UButton
+            size="lg"
+            color="primary"
+            icon="i-lucide-phone-call"
+            :loading="isConnecting"
+            :disabled="isConnecting"
+            @click="handleJoinChannel"
+          >
+            {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
+          </UButton>
         </div>
       </div>
 
