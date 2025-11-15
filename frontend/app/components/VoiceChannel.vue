@@ -22,6 +22,29 @@ const {
 const isConnected = ref(false)
 const isConnecting = ref(false)
 const error = ref<string | null>(null)
+const permissionStatus = ref<'prompt' | 'granted' | 'denied'>('prompt')
+
+const checkMicrophonePermission = async () => {
+  try {
+    if (!navigator.permissions || !navigator.permissions.query) {
+      // Permissions API not supported, assume we need to request
+      return
+    }
+
+    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+    permissionStatus.value = result.state as 'prompt' | 'granted' | 'denied'
+
+    result.onchange = () => {
+      permissionStatus.value = result.state as 'prompt' | 'granted' | 'denied'
+    }
+  } catch (err) {
+    console.warn('Could not check microphone permission:', err)
+  }
+}
+
+onMounted(() => {
+  checkMicrophonePermission()
+})
 
 const handleJoinChannel = async () => {
   if (!props.stompClient) {
@@ -104,15 +127,38 @@ onUnmounted(() => {
       />
 
       <div v-if="!isConnected" class="text-center">
+        <UAlert
+          v-if="permissionStatus === 'denied'"
+          color="warning"
+          icon="i-lucide-alert-triangle"
+          title="Microphone Permission Denied"
+          class="mb-6 text-left"
+        >
+          <template #description>
+            <div class="space-y-2">
+              <p>You have denied microphone access. To use voice chat:</p>
+              <ol class="list-decimal list-inside space-y-1 text-sm">
+                <li>Click the <strong>lock icon</strong> (🔒) or <strong>info icon</strong> (ⓘ) in your browser's address bar</li>
+                <li>Find the <strong>Microphone</strong> setting</li>
+                <li>Change it to <strong>Allow</strong></li>
+                <li>Refresh the page and try again</li>
+              </ol>
+            </div>
+          </template>
+        </UAlert>
+
         <p class="text-gray-600 dark:text-gray-400 mb-2">
           Join this voice channel to start talking with others
+        </p>
+        <p v-if="permissionStatus === 'prompt'" class="text-sm text-gray-500 dark:text-gray-500 mb-4">
+          You will be asked to allow microphone access
         </p>
         <UButton
           size="xl"
           color="primary"
           icon="i-lucide-phone-call"
           :loading="isConnecting"
-          :disabled="isConnecting"
+          :disabled="isConnecting || permissionStatus === 'denied'"
           @click="handleJoinChannel"
         >
           {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}

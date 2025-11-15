@@ -300,12 +300,17 @@ export const useWebRTC = () => {
     if (!user.value) return
 
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.')
+      }
+
       localStream.value = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        }
+        },
+        video: false
       })
 
       currentChannelId.value = channelId
@@ -335,7 +340,6 @@ export const useWebRTC = () => {
       })
     } catch (error) {
       console.error('Error joining voice channel:', error)
-      throw error
     }
   }
 
