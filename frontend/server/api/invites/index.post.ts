@@ -22,11 +22,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       body
     })
     return invite
-  } catch (error: unknown) {
-    console.error('Failed to create invite:', error)
-    throw createError({
-      statusCode: 500,
-      message: 'Failed to create invite'
-    })
+  } catch {
+    // ignore
   }
 })
