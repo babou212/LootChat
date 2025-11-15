@@ -24,7 +24,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   }
 
   const config = useRuntimeConfig()
-  const backendUrl = config.public.apiUrl || 'http://backend:8080'
+  const backendUrl = config.apiUrl || config.public.apiUrl
 
   try {
     const response = (await $fetch.raw(`${backendUrl}/api/files/images/${fileName}`, {
@@ -45,7 +45,8 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     }
 
     return response._data as unknown
-  } catch {
+  } catch (error: unknown) {
+    console.error('Failed to fetch image:', fileName, error)
     throw createError({
       statusCode: 500,
       message: 'Failed to fetch image'
