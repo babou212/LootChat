@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
     const config = useRuntimeConfig()
     // Use internal API URL for server-side requests
     const apiUrl = config.apiUrl || config.public.apiUrl
-    
+
     const response = await $fetch<{
       userId: string | number
       token: string

@@ -14,8 +14,11 @@ export const useAuthenticatedFetch = async (event: H3Event) => {
     })
   }
 
+  const config = useRuntimeConfig()
+  const apiUrl = config.apiUrl || config.public.apiUrl
+
   return $fetch.create({
-    baseURL: getServerApiUrl(),
+    baseURL: apiUrl,
     headers: {
       Authorization: `Bearer ${session.token}`
     }
