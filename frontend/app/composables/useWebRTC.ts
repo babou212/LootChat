@@ -144,7 +144,6 @@ export const useWebRTC = () => {
     try {
       switch (type) {
         case 'JOIN':
-          // Add participant to the list if not already present
           if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
             participants.value.push({
               userId: fromUserId,
@@ -154,12 +153,9 @@ export const useWebRTC = () => {
             })
           }
 
-          // Skip self-messages
           if (fromUserId === myId) break
 
-          // If this is a broadcast JOIN (no toUserId), it's a new peer announcing themselves
           if (!signal.toUserId && currentChannelId.value) {
-            // Respond with our own direct JOIN to the new peer
             sendSignal({
               channelId: currentChannelId.value,
               type: 'JOIN' as WebRTCSignalType,
@@ -167,21 +163,17 @@ export const useWebRTC = () => {
               toUserId: fromUserId
             })
 
-            // Create offer if we should initiate (lower ID initiates)
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
               console.log(`Creating offer to new peer ${fromUserId} (broadcast JOIN)`)
               await createOffer(fromUserId)
             }
           } else if (signal.toUserId === myId && currentChannelId.value) {
-            // If this is a direct JOIN response (has toUserId matching us)
             const existingPeer = peers.value.get(fromUserId)
-            // If we should initiate and don't have a peer connection yet, create offer
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
               console.log(`Creating offer to peer ${fromUserId} (direct JOIN response)`)
               await createOffer(fromUserId)
             } else if (!shouldInitiateOffer(fromUserId) && !existingPeer) {
-              // If they should initiate, we wait for their offer
               console.log(`Waiting for offer from peer ${fromUserId} (they should initiate)`)
             }
           }

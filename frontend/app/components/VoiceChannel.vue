@@ -31,7 +31,6 @@ const handleJoinChannel = async () => {
   }
 
   if (!props.stompClient.connected) {
-    // Wait for connection to be established
     const waitForConnected = (client: Client, timeoutMs = 5000, intervalMs = 100) => {
       return new Promise<boolean>((resolve) => {
         const start = Date.now()
@@ -67,7 +66,6 @@ const handleJoinChannel = async () => {
   } catch (err) {
     console.error('Failed to join voice channel:', err)
 
-    // Update error message with the actual error from the composable
     if (err instanceof Error) {
       error.value = err.message
     } else {
