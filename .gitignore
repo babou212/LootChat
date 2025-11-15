@@ -41,3 +41,7 @@ out/
 
 ### uploads ###
 uploads/
+
+### certbot ###
+certbot/conf/
+certbot/www/
