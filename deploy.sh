@@ -5,6 +5,20 @@
 
 set -e
 
+# Cleanup function to restore nginx config on failure
+cleanup() {
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "Error: Script failed. Restoring nginx configuration..."
+        if [ -f "nginx/conf.d/lootchat.conf.backup" ]; then
+            mv nginx/conf.d/lootchat.conf.backup nginx/conf.d/lootchat.conf
+            echo "Nginx configuration restored from backup."
+        fi
+    fi
+}
+
+trap cleanup EXIT
+
 echo "LootChat Self-Deploy Setup"
 echo "=============================="
 echo ""
@@ -39,9 +53,20 @@ echo "   Email: $ADMIN_EMAIL"
 echo ""
 
 echo "Creating directories..."
-mkdir -p certbot/www certbot/conf nginx/conf.d
+mkdir -p certbot/www certbot/conf
 
 echo "Configuring nginx..."
+# Check if nginx config template exists
+if [ ! -f "nginx/conf.d/lootchat.conf" ]; then
+    echo "Error: nginx/conf.d/lootchat.conf not found!"
+    echo "Please ensure the nginx configuration files are present."
+    exit 1
+fi
+
+# Create backup of original config
+cp nginx/conf.d/lootchat.conf nginx/conf.d/lootchat.conf.backup
+
+# Create a configured copy of the nginx config
 sed "s/\${DOMAIN}/$DOMAIN/g" nginx/conf.d/lootchat.conf > nginx/conf.d/lootchat.conf.tmp
 mv nginx/conf.d/lootchat.conf.tmp nginx/conf.d/lootchat.conf
 
@@ -82,14 +107,13 @@ EOF
     sleep 5
     
     echo "Step 2: Requesting SSL certificate from Let's Encrypt..."
-    docker compose -f compose-selfdeploy.yaml run --rm certbot certonly \
-        --webroot \
-        --webroot-path=/var/www/certbot \
+    docker compose -f compose-selfdeploy.yaml run --rm --entrypoint "\
+        certbot certonly --webroot -w /var/www/certbot \
         --email $ADMIN_EMAIL \
         --agree-tos \
         --no-eff-email \
         -d $DOMAIN \
-        -d www.$DOMAIN
+        -d www.$DOMAIN" certbot
     
     echo "SSL certificate obtained!"
     echo ""
@@ -110,6 +134,12 @@ fi
 echo ""
 echo "Deployment complete!"
 echo ""
+
+# Clean up backup on success
+if [ -f "nginx/conf.d/lootchat.conf.backup" ]; then
+    rm nginx/conf.d/lootchat.conf.backup
+fi
+
 echo "Your LootChat instance is now running at:"
 echo "   https://$DOMAIN"
 echo ""

@@ -294,7 +294,6 @@ For issues and questions:
 - Check the logs first
 - Review this documentation
 - Open an issue on GitHub
-- Join the community chat (once deployed!)
 
 ## License
 

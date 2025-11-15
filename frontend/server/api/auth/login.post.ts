@@ -11,7 +11,6 @@ const loginSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
   const body = await readBody(event)
 
   let credentials
@@ -33,6 +32,10 @@ export default defineEventHandler(async (event) => {
   const { username, password } = credentials
 
   try {
+    const config = useRuntimeConfig()
+    // Use internal API URL for server-side requests
+    const apiUrl = config.apiUrl || config.public.apiUrl
+    
     const response = await $fetch<{
       userId: string | number
       token: string
@@ -41,7 +44,7 @@ export default defineEventHandler(async (event) => {
       role: string
       avatar?: string
       message: string
-    }>(`${config.public.apiUrl}/api/auth/login`, {
+    }>(`${apiUrl}/api/auth/login`, {
       method: 'POST',
       body: {
         username,

@@ -97,8 +97,10 @@ services:
       dockerfile: Dockerfile
     container_name: lootchat-frontend
     environment:
+      - NODE_ENV=production
       - NUXT_SESSION_PASSWORD=${NUXT_SESSION_PASSWORD}
       - NUXT_PUBLIC_API_URL=https://${DOMAIN}
+      - NUXT_API_URL=http://backend:8080
       - NUXT_PUBLIC_TENOR_API_KEY=${NUXT_PUBLIC_TENOR_API_KEY}
     depends_on:
       - backend
