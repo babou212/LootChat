@@ -48,7 +48,9 @@ export default defineNuxtConfig({
       password: process.env.NUXT_SESSION_PASSWORD || '',
       cookie: {
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        path: '/'
       }
     },
     // Server-side API URL (internal Docker network)
