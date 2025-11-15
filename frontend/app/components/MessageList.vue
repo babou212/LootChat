@@ -2,6 +2,7 @@
 import type { Message, Reaction } from '../../shared/types/chat'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
+import MessageEditor from '~/components/MessageEditor.vue'
 import type { ReactionResponse } from '~/api/messageApi'
 import { useAuthStore } from '../../stores/auth'
 
@@ -17,14 +18,9 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
 
-// Helper function to get image URLs
-// Images are proxied through our server to include authentication
 const getAuthenticatedImageUrl = (imageUrl: string) => {
   if (!imageUrl) return ''
-  // Extract just the filename from the backend URL
-  // Backend returns URLs like /api/files/images/filename.jpg
   const filename = imageUrl.split('/').pop()
-  // Use our server proxy route which handles authentication
   return `/api/files/images/${filename}`
 }
 
@@ -36,7 +32,8 @@ const emojiAnchorEl = ref<HTMLElement | null>(null)
 const PICKER_HEIGHT_ESTIMATE = 320
 const inFlightReactions = new Set<string>()
 
-// Image lightbox state
+const editingMessageId = ref<number | null>(null)
+
 const expandedImage = ref<string | null>(null)
 const expandedImageAlt = ref<string | null>(null)
 
@@ -106,13 +103,11 @@ const handleMessagesScroll = () => {
   const scrollingUp = currentScrollTop < lastScrollTop.value
   lastScrollTop.value = currentScrollTop
 
-  // Check if we're near the top (within 100px)
   if (scrollingUp && currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
-    // Store current scroll height before loading more
     previousScrollHeight.value = container.scrollHeight
     isLoadingMore.value = true
     emit('load-more')
-    // Reset the flag after a short delay to allow the parent to update
+
     setTimeout(() => {
       isLoadingMore.value = false
     }, 500)
@@ -131,7 +126,7 @@ onUnmounted(() => {
   if (messagesContainer.value) {
     messagesContainer.value.removeEventListener('scroll', handleMessagesScroll)
   }
-  // Remove keyboard listener
+
   window.removeEventListener('keydown', handleKeyDown)
 })
 
@@ -143,6 +138,60 @@ const canDelete = (message: Message) => {
   return isOwner || isPrivileged
 }
 
+const canEdit = (message: Message) => {
+  const current = authStore.user
+  if (!current) return false
+  return String(message.userId) === String(current.userId)
+}
+
+const startEdit = (message: Message) => {
+  editingMessageId.value = message.id
+  closeEmojiPicker()
+}
+
+const cancelEdit = () => {
+  editingMessageId.value = null
+}
+
+const saveEdit = async (messageId: number, content: string) => {
+  try {
+    const response = await fetch(`/api/messages/${messageId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ content })
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to edit message')
+    }
+
+    const message = props.messages.find(m => m.id === messageId)
+    if (message) {
+      message.content = content
+      message.edited = true
+      message.updatedAt = new Date()
+    }
+
+    cancelEdit()
+    toast.add({
+      title: 'Message updated',
+      description: 'Your message has been edited',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
+  } catch (err) {
+    console.error('Failed to edit message:', err)
+    toast.add({
+      title: 'Failed to edit',
+      description: 'Please try again.',
+      color: 'warning',
+      icon: 'i-lucide-alert-triangle'
+    })
+  }
+}
+
 const emit = defineEmits<{
   (e: 'message-deleted', id: number): void
   (e: 'load-more'): void
@@ -151,7 +200,6 @@ const emit = defineEmits<{
 const handleDeleteMessage = (message: Message) => {
   const performDelete = async () => {
     try {
-      // Use server API route instead of direct backend call
       await $fetch(`/api/messages/${message.id}`, {
         method: 'DELETE'
       })
@@ -351,7 +399,6 @@ const contentWithoutMedia = (text: string): string => {
     .trim()
 }
 
-// Only scroll to bottom on initial load, not on every message change
 const hasInitiallyScrolled = ref(false)
 
 watch(() => props.messages.length, (newLength, oldLength) => {
@@ -463,8 +510,20 @@ watch(() => props.loading, (isLoading) => {
             <span class="text-xs text-gray-500 dark:text-gray-400">
               {{ formatTime(message.timestamp) }}
             </span>
+            <span v-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
+              (edited)
+            </span>
           </div>
-          <p class="text-gray-700 dark:text-gray-300">
+
+          <MessageEditor
+            v-if="editingMessageId === message.id"
+            :message-id="message.id"
+            :initial-content="contentWithoutMedia(message.content) || message.content"
+            @save="saveEdit"
+            @cancel="cancelEdit"
+          />
+
+          <p v-else class="text-gray-700 dark:text-gray-300">
             {{ contentWithoutMedia(message.content) || message.content }}
           </p>
 
@@ -524,6 +583,16 @@ watch(() => props.loading, (isLoading) => {
                 <EmojiPicker @select="(emoji: string) => handleEmojiSelect(message.id, emoji)" />
               </div>
             </div>
+
+            <button
+              v-if="canEdit(message) && editingMessageId !== message.id"
+              type="button"
+              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+              title="Edit message"
+              @click="startEdit(message)"
+            >
+              <UIcon name="i-lucide-pencil" class="text-gray-600 dark:text-gray-300" />
+            </button>
 
             <button
               v-if="canDelete(message)"

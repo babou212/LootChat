@@ -31,6 +31,8 @@ export interface Message {
   channelId?: number
   channelName?: string
   reactions?: Reaction[]
+  updatedAt?: Date
+  edited?: boolean
 }
 
 export enum WebRTCSignalType {
