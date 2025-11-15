@@ -6,12 +6,20 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const body = await readBody(event)
 
   try {
-    const response: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/invites/${token}/register`, {
+    const apiUrl = config.apiUrl || config.public.apiUrl
+    console.log('Registering with invite:', token, 'to URL:', `${apiUrl}/api/invites/${token}/register`)
+
+    const response: unknown = await $fetch<unknown>(`${apiUrl}/api/invites/${token}/register`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'http://frontend:3000'
+      },
       body
     })
     return response
   } catch (error: unknown) {
+    console.error('Registration error:', error)
     let status = 500
     let message = 'Failed to register with invite'
     if (typeof error === 'object' && error) {
