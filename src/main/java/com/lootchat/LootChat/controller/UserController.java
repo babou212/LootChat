@@ -38,4 +38,16 @@ public class UserController {
         userService.changePassword(request);
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/check-username/{username}")
+    public ResponseEntity<Map<String, Boolean>> checkUsername(@PathVariable String username) {
+        boolean exists = userService.usernameExists(username);
+        return ResponseEntity.ok(Map.of("exists", exists));
+    }
+
+    @GetMapping("/check-email/{email}")
+    public ResponseEntity<Map<String, Boolean>> checkEmail(@PathVariable String email) {
+        boolean exists = userService.emailExists(email);
+        return ResponseEntity.ok(Map.of("exists", exists));
+    }
 }
