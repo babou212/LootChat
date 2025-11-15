@@ -14,15 +14,27 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     const response: unknown = await $fetch<unknown>(fullUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Origin': 'http://frontend:3000'
+        'Content-Type': 'application/json'
       },
-      body
+      body,
+      // Add more detailed error info
+      onRequest({ options }) {
+        console.log('Sending request with options:', JSON.stringify(options))
+      },
+      onResponse({ response }) {
+        console.log('Received response status:', response.status)
+        console.log('Response headers:', JSON.stringify(response.headers))
+      },
+      onResponseError({ response }) {
+        console.error('Response error status:', response.status)
+        console.error('Response error body:', response._data)
+      }
     })
     console.log('Registration successful:', response)
     return response
   } catch (error: unknown) {
     console.error('Registration error details:', JSON.stringify(error, null, 2))
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
     let status = 500
     let message = 'Failed to register with invite'
     if (typeof error === 'object' && error) {
