@@ -81,8 +81,22 @@ export default defineNuxtConfig({
     routeRules: {
       '/**': {
         headers: {
-          'X-Frame-Options': 'DENY',
-          'Referrer-Policy': 'strict-origin-when-cross-origin'
+          'Content-Security-Policy': [
+            'default-src \'self\'',
+            'script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'',
+            'style-src \'self\' \'unsafe-inline\'',
+            'img-src \'self\' data: https: blob:',
+            'font-src \'self\' data:',
+            'connect-src \'self\' ws: wss: https://tenor.googleapis.com',
+            'media-src \'self\' https:',
+            'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
+            'worker-src \'self\' blob:',
+            'object-src \'none\'',
+            'base-uri \'self\'',
+            'form-action \'self\'',
+            'frame-ancestors \'none\'',
+            'upgrade-insecure-requests'
+          ].join('; ')
         }
       }
     }
