@@ -87,7 +87,7 @@ export default defineNuxtConfig({
             'style-src \'self\' \'unsafe-inline\'',
             'img-src \'self\' data: https: blob:',
             'font-src \'self\' data:',
-            'connect-src \'self\' ws: wss:',
+            'connect-src \'self\' ws: wss: https://tenor.googleapis.com',
             'media-src \'self\' https:',
             'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
             'worker-src \'self\' blob:',
