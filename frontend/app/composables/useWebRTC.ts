@@ -4,6 +4,7 @@ import type { WebRTCSignalRequest, WebRTCSignalResponse, WebRTCSignalType, Voice
 interface PeerConnection {
   connection: RTCPeerConnection
   stream?: MediaStream
+  audioEl?: HTMLAudioElement
 }
 
 export const useWebRTC = () => {
@@ -18,7 +19,80 @@ export const useWebRTC = () => {
   const currentChannelId = ref<number | null>(null)
 
   let signalSubscription: StompSubscription | null = null
+  let channelWebRTCSub: StompSubscription | null = null
+  let userSignalSub: StompSubscription | null = null
   let stompClient: Client | null = null
+  let beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null
+  let stompHandlersBound = false
+
+  const toastLastShown = new Map<string, number>()
+  const maybeToast = (key: string, title: string, description?: string, cooldownMs = 8000) => {
+    if (typeof window === 'undefined') return
+    const now = Date.now()
+    const last = toastLastShown.get(key) || 0
+    if (now - last < cooldownMs) return
+    toastLastShown.set(key, now)
+    try {
+      const toast = useToast()
+      toast.add({ title, description })
+    } catch {
+      // ignore
+    }
+  }
+
+  const bindStompReconnectHandlers = (client: Client) => {
+    if (stompHandlersBound) return
+    const prevOnConnect = client.onConnect
+    client.onConnect = (frame) => {
+      if (prevOnConnect) {
+        try {
+          prevOnConnect(frame)
+        } catch {
+          // ignore
+        }
+      }
+      if (currentChannelId.value && user.value) {
+        try {
+          channelWebRTCSub?.unsubscribe()
+        } catch {
+          // ignore
+        }
+        try {
+          userSignalSub?.unsubscribe()
+        } catch {
+          // ignore
+        }
+        channelWebRTCSub = client.subscribe(`/topic/channels/${currentChannelId.value}/webrtc`, (message: { body: string }) => {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        })
+        userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        })
+        sendSignal({
+          channelId: currentChannelId.value,
+          type: 'JOIN' as WebRTCSignalType,
+          fromUserId: user.value.userId.toString()
+        })
+        maybeToast('stomp-reconnect', 'Reconnected to voice', 'Re-syncing…')
+      }
+    }
+
+    const prevOnWebSocketClose = client.onWebSocketClose
+    client.onWebSocketClose = (evt) => {
+      if (prevOnWebSocketClose) {
+        try {
+          prevOnWebSocketClose(evt)
+        } catch {
+          // ignore
+        }
+      }
+      channelWebRTCSub = null
+      userSignalSub = null
+    }
+    stompHandlersBound = true
+  }
 
   const getRTCConfiguration = (): RTCConfiguration => {
     const baseStun = [
@@ -70,17 +144,21 @@ export const useWebRTC = () => {
       const [remoteStream] = event.streams
 
       if (remoteStream) {
-        const audio = new Audio()
+        let audio = peers.value.get(userId)?.audioEl
+        if (!audio) {
+          audio = new Audio()
+          audio.autoplay = true
+        }
         audio.srcObject = remoteStream
-        audio.autoplay = true
         audio.play().catch(err => console.error('Error playing audio:', err))
 
         const existingPeer = peers.value.get(userId)
         if (existingPeer) {
           existingPeer.stream = remoteStream
+          existingPeer.audioEl = audio
           peers.value.set(userId, existingPeer)
         } else {
-          peers.value.set(userId, { connection: pc, stream: remoteStream })
+          peers.value.set(userId, { connection: pc, stream: remoteStream, audioEl: audio })
         }
       }
     }
@@ -97,17 +175,31 @@ export const useWebRTC = () => {
       }
     }
 
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-        removePeer(userId)
+    pc.oniceconnectionstatechange = async () => {
+      if (pc.iceConnectionState === 'failed') {
+        maybeToast('ice-restart', 'Voice connection unstable', 'Reconnecting…')
+        await tryIceRestart(userId)
+      } else if (pc.iceConnectionState === 'disconnected') {
+        setTimeout(() => {
+          if (pc.iceConnectionState === 'disconnected') {
+            removePeer(userId)
+          }
+        }, 3000)
       } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         console.log(`Successfully connected to peer ${userId}`)
       }
     }
 
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        removePeer(userId)
+    pc.onconnectionstatechange = async () => {
+      if (pc.connectionState === 'failed') {
+        maybeToast('ice-restart', 'Voice connection unstable', 'Reconnecting…')
+        await tryIceRestart(userId)
+      } else if (pc.connectionState === 'disconnected') {
+        setTimeout(() => {
+          if (pc.connectionState === 'disconnected') {
+            removePeer(userId)
+          }
+        }, 3000)
       } else if (pc.connectionState === 'connected') {
         console.log(`Peer connection established with user ${userId}`)
       }
@@ -316,9 +408,37 @@ export const useWebRTC = () => {
         const list = pendingCandidates.value.get(userId) || []
         list.push(candidate)
         pendingCandidates.value.set(userId, list)
+        if (list.length > 100) {
+          list.splice(0, list.length - 100)
+        }
       }
     } catch (error) {
       console.error('Error handling ICE candidate:', error)
+    }
+  }
+
+  const tryIceRestart = async (userId: string) => {
+    const peer = peers.value.get(userId)
+    if (!peer || !user.value || !currentChannelId.value) return
+    const pc = peer.connection
+    try {
+      if (pc.signalingState === 'stable') {
+        console.log(`Attempting ICE restart with peer ${userId}`)
+        const offer = await pc.createOffer({ iceRestart: true })
+        await pc.setLocalDescription(offer)
+        sendSignal({
+          channelId: currentChannelId.value,
+          type: 'OFFER' as WebRTCSignalType,
+          fromUserId: user.value.userId.toString(),
+          toUserId: userId,
+          data: offer
+        })
+      } else {
+        console.warn(`Cannot ICE-restart with ${userId}, signalingState=${pc.signalingState}`)
+      }
+    } catch (e) {
+      console.error('ICE restart failed, removing peer', e)
+      removePeer(userId)
     }
   }
 
@@ -352,6 +472,7 @@ export const useWebRTC = () => {
 
       currentChannelId.value = channelId
       stompClient = client
+      bindStompReconnectHandlers(client)
 
       participants.value.push({
         userId: user.value.userId.toString(),
@@ -360,12 +481,12 @@ export const useWebRTC = () => {
         isSpeaking: false
       })
 
-      client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
+      channelWebRTCSub = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
 
-      client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
+      userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
@@ -375,6 +496,17 @@ export const useWebRTC = () => {
         type: 'JOIN' as WebRTCSignalType,
         fromUserId: user.value.userId.toString()
       })
+
+      if (typeof window !== 'undefined') {
+        beforeUnloadHandler = () => {
+          try {
+            leaveVoiceChannel()
+          } catch {
+            // best-effort cleanup
+          }
+        }
+        window.addEventListener('beforeunload', beforeUnloadHandler)
+      }
     } catch (error) {
       console.error('Error joining voice channel:', error)
       throw error
@@ -394,6 +526,14 @@ export const useWebRTC = () => {
       signalSubscription.unsubscribe()
       signalSubscription = null
     }
+    if (channelWebRTCSub) {
+      channelWebRTCSub.unsubscribe()
+      channelWebRTCSub = null
+    }
+    if (userSignalSub) {
+      userSignalSub.unsubscribe()
+      userSignalSub = null
+    }
 
     peers.value.forEach((peer, userId) => {
       removePeer(userId)
@@ -408,6 +548,11 @@ export const useWebRTC = () => {
     participants.value = []
     currentChannelId.value = null
     stompClient = null
+
+    if (typeof window !== 'undefined' && beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', beforeUnloadHandler)
+      beforeUnloadHandler = null
+    }
   }
 
   const toggleMute = () => {
