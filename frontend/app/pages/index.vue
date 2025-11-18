@@ -579,7 +579,7 @@ watch(users, () => {
         @select-channel="selectChannel"
       />
 
-      <div class="flex-1 flex flex-col min-w-0">
+      <div class="flex-1 flex flex-col min-w-0" :class="{ 'pb-20': voiceChannelId }">
         <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
           <div class="flex items-center gap-2">
             <UIcon
@@ -608,7 +608,6 @@ watch(users, () => {
 
           <div
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
-            :class="{ 'mb-20': voiceChannelId }"
           >
             <div
               v-if="imagePreviewUrl"
