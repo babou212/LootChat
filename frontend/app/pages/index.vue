@@ -606,7 +606,10 @@ watch(users, () => {
             @load-more="loadMoreMessages"
           />
 
-          <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+          <div
+            class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
+            :class="{ 'mb-20': voiceChannelId }"
+          >
             <div
               v-if="imagePreviewUrl"
               class="mb-2 relative inline-block"
