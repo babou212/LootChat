@@ -159,19 +159,41 @@ onUnmounted(() => {
             <div
               v-for="participant in participants"
               :key="participant.userId"
-              class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50"
+              class="flex items-center gap-3 p-3 rounded-lg transition-all duration-200"
+              :class="{
+                'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500': participant.isSpeaking,
+                'bg-gray-50 dark:bg-gray-700/50': !participant.isSpeaking
+              }"
             >
-              <div class="shrink-0">
-                <div class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center">
+              <div class="shrink-0 relative">
+                <div
+                  class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center transition-all duration-200"
+                  :class="{
+                    'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking
+                  }"
+                >
                   <span class="text-white font-semibold text-sm">
                     {{ participant.username.substring(0, 2).toUpperCase() }}
                   </span>
                 </div>
+                <div
+                  v-if="participant.isSpeaking"
+                  class="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75"
+                />
               </div>
 
               <div class="flex-1 min-w-0">
-                <p class="font-medium text-gray-900 dark:text-white truncate">
+                <p
+                  class="font-medium truncate transition-colors duration-200"
+                  :class="{
+                    'text-primary-700 dark:text-primary-300 font-semibold': participant.isSpeaking,
+                    'text-gray-900 dark:text-white': !participant.isSpeaking
+                  }"
+                >
                   {{ participant.username }}
+                  <span v-if="participant.isSpeaking" class="text-xs text-green-600 dark:text-green-400 ml-2">
+                    Speaking
+                  </span>
                 </p>
               </div>
 
@@ -179,13 +201,16 @@ onUnmounted(() => {
                 <UIcon
                   v-if="participant.isMuted"
                   name="i-lucide-mic-off"
-                  class="text-red-500"
+                  class="text-red-500 text-xl"
                 />
                 <UIcon
                   v-else
                   name="i-lucide-mic"
-                  class="text-green-500"
-                  :class="{ 'animate-pulse': participant.isSpeaking }"
+                  class="text-xl transition-colors duration-200"
+                  :class="{
+                    'text-green-500': participant.isSpeaking,
+                    'text-gray-400': !participant.isSpeaking
+                  }"
                 />
               </div>
             </div>

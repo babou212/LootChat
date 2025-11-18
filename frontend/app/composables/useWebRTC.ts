@@ -5,6 +5,8 @@ interface PeerConnection {
   connection: RTCPeerConnection
   stream?: MediaStream
   audioEl?: HTMLAudioElement
+  analyser?: AnalyserNode
+  audioContext?: AudioContext
 }
 
 export const useWebRTC = () => {
@@ -24,6 +26,9 @@ export const useWebRTC = () => {
   let stompClient: Client | null = null
   let beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null
   let stompHandlersBound = false
+  let localAnalyser: AnalyserNode | null = null
+  let localAudioContext: AudioContext | null = null
+  let speakingCheckInterval: ReturnType<typeof setInterval> | null = null
 
   const toastLastShown = new Map<string, number>()
   const maybeToast = (key: string, title: string, description?: string, cooldownMs = 8000) => {
@@ -38,6 +43,49 @@ export const useWebRTC = () => {
     } catch {
       // ignore
     }
+  }
+
+  const SPEAKING_THRESHOLD = -30 // dB threshold
+
+  const setupAudioAnalyser = (stream: MediaStream, audioContext?: AudioContext): { analyser: AnalyserNode, context: AudioContext } => {
+    const context = audioContext || new AudioContext()
+    const source = context.createMediaStreamSource(stream)
+    const analyser = context.createAnalyser()
+    analyser.fftSize = 512
+    analyser.smoothingTimeConstant = 0.8
+    source.connect(analyser)
+    return { analyser, context }
+  }
+
+  const getAudioLevel = (analyser: AnalyserNode): number => {
+    const dataArray = new Uint8Array(analyser.frequencyBinCount)
+    analyser.getByteFrequencyData(dataArray)
+    const sum = dataArray.reduce((a, b) => a + b, 0)
+    const average = sum / dataArray.length
+
+    return average > 0 ? 20 * Math.log10(average / 255) : -100
+  }
+
+  const checkSpeaking = () => {
+    if (localAnalyser && user.value) {
+      const level = getAudioLevel(localAnalyser)
+      const isSpeaking = level > SPEAKING_THRESHOLD && !isMuted.value
+      const selfParticipant = participants.value.find(p => p.userId === user.value?.userId.toString())
+      if (selfParticipant && selfParticipant.isSpeaking !== isSpeaking) {
+        selfParticipant.isSpeaking = isSpeaking
+      }
+    }
+
+    peers.value.forEach((peer, userId) => {
+      if (peer.analyser) {
+        const level = getAudioLevel(peer.analyser)
+        const isSpeaking = level > SPEAKING_THRESHOLD
+        const participant = participants.value.find(p => p.userId === userId)
+        if (participant && participant.isSpeaking !== isSpeaking) {
+          participant.isSpeaking = isSpeaking
+        }
+      }
+    })
   }
 
   const bindStompReconnectHandlers = (client: Client) => {
@@ -135,7 +183,18 @@ export const useWebRTC = () => {
     if (localStream.value) {
       localStream.value.getTracks().forEach((track) => {
         if (localStream.value) {
-          pc.addTrack(track, localStream.value)
+          const sender = pc.addTrack(track, localStream.value)
+          if (track.kind === 'audio') {
+            const params = sender.getParameters()
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}]
+            }
+            if (params.encodings[0]) {
+              params.encodings[0].maxBitrate = 510000 // 510 kbps
+              params.encodings[0].priority = 'high'
+            }
+            sender.setParameters(params).catch(err => console.warn('Failed to set audio encoding params:', err))
+          }
         }
       })
     }
@@ -152,13 +211,17 @@ export const useWebRTC = () => {
         audio.srcObject = remoteStream
         audio.play().catch(err => console.error('Error playing audio:', err))
 
+        const { analyser, context } = setupAudioAnalyser(remoteStream)
+
         const existingPeer = peers.value.get(userId)
         if (existingPeer) {
           existingPeer.stream = remoteStream
           existingPeer.audioEl = audio
+          existingPeer.analyser = analyser
+          existingPeer.audioContext = context
           peers.value.set(userId, existingPeer)
         } else {
-          peers.value.set(userId, { connection: pc, stream: remoteStream, audioEl: audio })
+          peers.value.set(userId, { connection: pc, stream: remoteStream, audioEl: audio, analyser, audioContext: context })
         }
       }
     }
@@ -305,7 +368,9 @@ export const useWebRTC = () => {
       const pc = await createPeerConnection(userId)
       peers.value.set(userId, { connection: pc })
 
-      const offer = await pc.createOffer()
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true
+      })
       await pc.setLocalDescription(offer)
 
       if (currentChannelId.value && user.value) {
@@ -449,6 +514,9 @@ export const useWebRTC = () => {
       if (peer.stream) {
         peer.stream.getTracks().forEach(track => track.stop())
       }
+      if (peer.audioContext) {
+        peer.audioContext.close().catch(() => {})
+      }
       peers.value.delete(userId)
     }
   }
@@ -465,7 +533,9 @@ export const useWebRTC = () => {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 2
         },
         video: false
       })
@@ -473,6 +543,12 @@ export const useWebRTC = () => {
       currentChannelId.value = channelId
       stompClient = client
       bindStompReconnectHandlers(client)
+
+      const { analyser, context } = setupAudioAnalyser(localStream.value)
+      localAnalyser = analyser
+      localAudioContext = context
+
+      speakingCheckInterval = setInterval(checkSpeaking, 100)
 
       participants.value.push({
         userId: user.value.userId.toString(),
@@ -521,6 +597,17 @@ export const useWebRTC = () => {
       type: 'LEAVE' as WebRTCSignalType,
       fromUserId: user.value.userId.toString()
     })
+
+    if (speakingCheckInterval) {
+      clearInterval(speakingCheckInterval)
+      speakingCheckInterval = null
+    }
+
+    if (localAudioContext) {
+      localAudioContext.close().catch(() => {})
+      localAudioContext = null
+      localAnalyser = null
+    }
 
     if (signalSubscription) {
       signalSubscription.unsubscribe()
