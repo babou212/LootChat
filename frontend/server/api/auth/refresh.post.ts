@@ -1,7 +1,12 @@
+/**
+ * Refresh the JWT token
+ * This endpoint calls the backend to get a new JWT token and updates the session
+ */
 export default defineEventHandler(async (event) => {
+  const token = await requireSessionToken(event)
   const session = await getUserSession(event)
 
-  if (!session || !session.token) {
+  if (!session?.user) {
     throw createError({
       statusCode: 401,
       message: 'Not authenticated'
@@ -21,7 +26,7 @@ export default defineEventHandler(async (event) => {
     }>(`${config.apiUrl || config.public.apiUrl}/api/auth/refresh`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session.token}`
+        Authorization: `Bearer ${token}`
       }
     })
 
@@ -31,6 +36,10 @@ export default defineEventHandler(async (event) => {
         message: 'Token refresh failed'
       })
     }
+
+    // Calculate new token expiration
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
 
     await replaceUserSession(event, {
       user: {
@@ -42,7 +51,7 @@ export default defineEventHandler(async (event) => {
       },
       token: response.token,
       loggedInAt: session.loggedInAt,
-      refreshedAt: new Date()
+      expiresAt
     })
 
     return {

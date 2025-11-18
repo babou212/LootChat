@@ -1,14 +1,4 @@
 export default defineEventHandler(async (event) => {
-  const session = await getUserSession(event)
-
-  if (!session || !session.token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Not authenticated'
-    })
-  }
-
-  const config = useRuntimeConfig()
   const query = getQuery(event)
   const channelIdRaw = query.channelId
   const pageRaw = query.page
@@ -37,25 +27,28 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const url = new URL(`${config.apiUrl || config.public.apiUrl}/api/messages`)
-  if (channelIdParam) {
-    url.searchParams.set('channelId', channelIdParam)
-  }
-  if (pageParam) {
-    url.searchParams.set('page', pageParam)
-  }
-  if (sizeParam) {
-    url.searchParams.set('size', sizeParam)
-  }
-
   try {
-    const messages = await $fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      }
-    })
-    return messages
+    const authFetch = await createAuthenticatedFetch(event)
+
+    const params = new URLSearchParams()
+    if (channelIdParam) {
+      params.set('channelId', channelIdParam)
+    }
+    if (pageParam) {
+      params.set('page', pageParam)
+    }
+    if (sizeParam) {
+      params.set('size', sizeParam)
+    }
+
+    const queryString = params.toString()
+    const url = queryString ? `/api/messages?${queryString}` : '/api/messages'
+
+    return await authFetch(url) as unknown
   } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 401) {
+      throw error
+    }
     console.error('Failed to fetch messages:', error)
     throw createError({
       statusCode: 500,

@@ -15,6 +15,8 @@ interface MessageResponse {
 }
 
 export default defineEventHandler(async (event: H3Event): Promise<MessageResponse> => {
+  const body = await validateBody(event, updateMessageSchema)
+
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -26,14 +28,6 @@ export default defineEventHandler(async (event: H3Event): Promise<MessageRespons
 
   const config = useRuntimeConfig()
   const messageId = getRouterParam(event, 'id')
-  const body = await readBody(event)
-
-  if (!body.content || typeof body.content !== 'string') {
-    throw createError({
-      statusCode: 400,
-      message: 'Content is required'
-    })
-  }
 
   try {
     const response: MessageResponse = await $fetch<MessageResponse>(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}`, {
@@ -47,8 +41,7 @@ export default defineEventHandler(async (event: H3Event): Promise<MessageRespons
       }
     })
     return response
-  } catch (error: unknown) {
-    console.error('Failed to update message:', error)
+  } catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to update message'

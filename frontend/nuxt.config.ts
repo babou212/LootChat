@@ -44,6 +44,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     session: {
+      name: 'lootchat-session',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       password: process.env.NUXT_SESSION_PASSWORD || '',
       cookie: {
@@ -52,6 +53,9 @@ export default defineNuxtConfig({
         httpOnly: true,
         path: '/'
       }
+    },
+    oauth: {
+      // OAuth providers can be added here if needed in the future
     },
     // Server-side API URL (internal Docker network)
     apiUrl: process.env.NUXT_API_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',

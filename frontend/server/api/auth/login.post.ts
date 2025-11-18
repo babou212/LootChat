@@ -59,6 +59,11 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    // Calculate token expiration (assuming 7 days like session)
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7)
+
+    // Store user data and JWT token in secure session
     await setUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -68,9 +73,11 @@ export default defineEventHandler(async (event) => {
         avatar: response.avatar
       },
       token: response.token,
-      loggedInAt: new Date()
+      loggedInAt: new Date(),
+      expiresAt
     })
 
+    // Return only user data to client (never expose token)
     return {
       success: true,
       user: {

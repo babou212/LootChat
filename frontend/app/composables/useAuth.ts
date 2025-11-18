@@ -1,10 +1,12 @@
 import type { LoginRequest, User } from '../../shared/types/user'
-import { storeToRefs } from 'pinia'
-import { useAuthStore } from '../../stores/auth'
 
+/**
+ * Authentication composable using nuxt-auth-utils
+ * Provides a clean interface for login, logout, and session management
+ * All authentication state is managed server-side in secure HTTP-only cookies
+ */
 export const useAuth = () => {
-  const authStore = useAuthStore()
-  const { user } = storeToRefs(authStore)
+  const { loggedIn, user, session, clear, fetch: refreshSession } = useUserSession()
   const loading = useState<boolean>('auth-loading', () => false)
   const error = useState<string | null>('auth-error', () => null)
 
@@ -20,8 +22,8 @@ export const useAuth = () => {
       })
 
       if (response.success && response.user) {
-        authStore.setUser(response.user)
-
+        // Refresh the session to get the updated user data
+        await refreshSession()
         return { success: true }
       } else {
         error.value = 'Login failed'
@@ -46,11 +48,13 @@ export const useAuth = () => {
         credentials: 'include'
       })
 
-      authStore.clear()
+      // Clear the session on both client and server
+      await clear()
       error.value = null
     } catch (err) {
       console.error('Logout error:', err)
-      authStore.clear()
+      // Clear session even on error
+      await clear()
     } finally {
       loading.value = false
     }
@@ -58,29 +62,25 @@ export const useAuth = () => {
 
   const restore = async () => {
     try {
-      if (user.value) return
-
-      const response = await $fetch<{ user: User }>('/api/auth/session', {
-        credentials: 'include'
-      })
-
-      if (response.user) {
-        authStore.setUser(response.user)
+      // nuxt-auth-utils handles session restoration automatically
+      // We just need to refresh it if needed
+      if (!user.value) {
+        await refreshSession()
       }
     } catch {
-      authStore.clear()
+      await clear()
     }
   }
 
-  const isAuthenticated = computed(() => !!user.value)
-
   return {
-    user: readonly(user),
+    user: computed(() => user.value),
     loading: readonly(loading),
     error: readonly(error),
-    isAuthenticated,
+    isAuthenticated: computed(() => loggedIn.value),
+    session: computed(() => session.value),
     login,
     logout,
-    restore
+    restore,
+    refreshSession
   }
 }
