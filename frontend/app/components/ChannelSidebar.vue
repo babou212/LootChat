@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
+import type { Client } from '@stomp/stompjs'
+import VoiceChannelSection from '~/components/VoiceChannelSection.vue'
 
 interface Props {
   channels: Channel[]
   selectedChannel: Channel | null
+  stompClient: Client | null
 }
 
 interface Emits {
   (e: 'selectChannel', channel: Channel): void
+  (e: 'joinVoice', channelId: number): void
+  (e: 'leaveVoice'): void
 }
 
 const props = defineProps<Props>()
@@ -19,16 +24,20 @@ const textChannels = computed(() =>
   props.channels.filter(channel => !channel.channelType || channel.channelType === 'TEXT')
 )
 
-const voiceChannels = computed(() =>
-  props.channels.filter(channel => channel.channelType === 'VOICE')
-)
-
 const totalUnread = computed(() =>
   props.channels.reduce((sum, channel) => sum + (channel.unread || 0), 0)
 )
 
 const handleSelectChannel = (channel: Channel) => {
   emit('selectChannel', channel)
+}
+
+const handleJoinVoice = (channelId: number) => {
+  emit('joinVoice', channelId)
+}
+
+const handleLeaveVoice = () => {
+  emit('leaveVoice')
 }
 
 const toggleSidebar = () => {
@@ -100,29 +109,12 @@ const toggleSidebar = () => {
         </UButton>
       </div>
 
-      <div v-if="voiceChannels.length > 0">
-        <h3
-          v-show="!isCollapsed"
-          class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2"
-        >
-          Voice Channels
-        </h3>
-        <UButton
-          v-for="channel in voiceChannels"
-          :key="channel.id"
-          :variant="selectedChannel?.id === channel.id ? 'soft' : 'ghost'"
-          color="primary"
-          :title="isCollapsed ? channel.name : channel.description"
-          class="w-full mb-1"
-          :class="isCollapsed ? 'justify-center' : 'justify-between'"
-          @click="handleSelectChannel(channel)"
-        >
-          <span class="flex items-center gap-2">
-            <UIcon name="i-lucide-mic" class="text-lg" />
-            <span v-show="!isCollapsed">{{ channel.name }}</span>
-          </span>
-        </UButton>
-      </div>
+      <VoiceChannelSection
+        :channels="channels"
+        :is-collapsed="isCollapsed"
+        @join-voice="handleJoinVoice"
+        @leave-voice="handleLeaveVoice"
+      />
     </div>
   </div>
 </template>
