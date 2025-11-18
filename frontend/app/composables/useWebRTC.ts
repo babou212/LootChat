@@ -45,7 +45,7 @@ export const useWebRTC = () => {
     }
   }
 
-  const SPEAKING_THRESHOLD = -50 // dB threshold
+  const SPEAKING_THRESHOLD = -30 // dB threshold
 
   const setupAudioAnalyser = (stream: MediaStream, audioContext?: AudioContext): { analyser: AnalyserNode, context: AudioContext } => {
     const context = audioContext || new AudioContext()
