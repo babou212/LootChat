@@ -14,6 +14,8 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+const { user } = useAuth()
+
 const {
   participants,
   isMuted,
@@ -35,6 +37,14 @@ const connectedVoiceChannel = computed(() => {
   if (!currentChannelId.value) return null
   return props.channels.find(ch => ch.id === currentChannelId.value && ch.channelType === 'VOICE')
 })
+
+const getParticipantInitials = (username: string) => {
+  return username.substring(0, 2).toUpperCase()
+}
+
+const isCurrentUser = (userId: string) => {
+  return user.value?.userId.toString() === userId
+}
 
 const handleJoinVoice = async (channelId: number) => {
   if (isConnecting.value) return
@@ -85,30 +95,86 @@ const handleLeaveVoice = () => {
           size="xs"
         />
       </UButton>
-
       <div
         v-if="!isCollapsed && currentChannelId === channel.id && participants.length > 0"
-        class="ml-6 mt-1 space-y-1"
+        class="ml-3 mt-1 space-y-0.5"
       >
         <div
           v-for="participant in participants"
           :key="participant.userId"
-          class="flex items-center gap-2 px-2 py-1 rounded text-sm"
+          class="group relative flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all duration-150"
           :class="{
-            'bg-green-50 dark:bg-green-900/20': participant.isSpeaking,
-            'text-gray-700 dark:text-gray-300': !participant.isSpeaking
+            'bg-green-50 dark:bg-green-900/30': participant.isSpeaking
           }"
         >
-          <UIcon
-            :name="participant.isMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
-            class="text-xs"
-            :class="{
-              'text-red-500': participant.isMuted,
-              'text-green-500': participant.isSpeaking && !participant.isMuted,
-              'text-gray-400': !participant.isSpeaking && !participant.isMuted
-            }"
-          />
-          <span class="truncate">{{ participant.username }}</span>
+          <div class="relative shrink-0">
+            <div
+              class="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 overflow-hidden"
+              :class="{
+                'ring-2 ring-green-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': participant.isSpeaking && !participant.isMuted,
+                'ring-2 ring-gray-300 dark:ring-gray-600 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': !participant.isSpeaking
+              }"
+            >
+              <UAvatar
+                v-if="participant.avatar"
+                :src="participant.avatar"
+                :alt="participant.username"
+                size="xs"
+              />
+              <div
+                v-else
+                class="w-full h-full flex items-center justify-center text-xs font-semibold"
+                :class="{
+                  'bg-green-600 text-white': participant.isSpeaking && !participant.isMuted,
+                  'bg-gray-400 dark:bg-gray-600 text-white': !participant.isSpeaking || participant.isMuted
+                }"
+              >
+                {{ getParticipantInitials(participant.username) }}
+              </div>
+            </div>
+            <div
+              v-if="participant.isSpeaking && !participant.isMuted"
+              class="absolute inset-0 rounded-full animate-ping bg-green-400 opacity-75"
+            />
+            <div
+              v-if="participant.isMuted"
+              class="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 border-2 border-white dark:border-gray-800 flex items-center justify-center"
+            >
+              <UIcon name="i-lucide-mic-off" class="text-white text-[10px]" />
+            </div>
+          </div>
+          <div class="flex-1 min-w-0 flex items-center gap-2">
+            <span
+              class="text-sm font-medium truncate transition-colors duration-150"
+              :class="{
+                'text-green-700 dark:text-green-400': participant.isSpeaking && !participant.isMuted,
+                'text-gray-700 dark:text-gray-300': !participant.isSpeaking && !participant.isMuted,
+                'text-gray-500 dark:text-gray-500': participant.isMuted
+              }"
+            >
+              {{ participant.username }}
+              <span v-if="isCurrentUser(participant.userId)" class="text-xs text-gray-500 dark:text-gray-400">(you)</span>
+            </span>
+            <div
+              v-if="participant.isSpeaking && !participant.isMuted"
+              class="flex items-center gap-0.5 h-3"
+            >
+              <div class="w-0.5 bg-green-500 rounded-full audio-bar" style="animation-delay: 0ms" />
+              <div class="w-0.5 bg-green-500 rounded-full audio-bar" style="animation-delay: 150ms" />
+              <div class="w-0.5 bg-green-500 rounded-full audio-bar" style="animation-delay: 300ms" />
+            </div>
+          </div>
+          <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+            <UIcon
+              :name="participant.isMuted ? 'i-lucide-mic-off' : participant.isSpeaking ? 'i-lucide-volume-2' : 'i-lucide-mic'"
+              class="text-xs"
+              :class="{
+                'text-red-500': participant.isMuted,
+                'text-green-500': participant.isSpeaking && !participant.isMuted,
+                'text-gray-400': !participant.isSpeaking && !participant.isMuted
+              }"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -174,3 +240,18 @@ const handleLeaveVoice = () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.audio-bar {
+  animation: audioBar 0.8s ease-in-out infinite;
+}
+
+@keyframes audioBar {
+  0%, 100% {
+    height: 0.25rem;
+  }
+  50% {
+    height: 0.75rem;
+  }
+}
+</style>
