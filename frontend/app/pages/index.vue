@@ -579,7 +579,7 @@ watch(users, () => {
         @select-channel="selectChannel"
       />
 
-      <div class="flex-1 flex flex-col min-w-0" :class="{ 'pb-20': voiceChannelId }">
+      <div class="flex-1 flex flex-col min-w-0">
         <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
           <div class="flex items-center gap-2">
             <UIcon
@@ -696,57 +696,57 @@ watch(users, () => {
           :channel="selectedChannel"
           :stomp-client="stompClient"
         />
-      </div>
 
-      <!-- Voice Status Bar (Discord-like) -->
-      <div
-        v-if="voiceChannelId"
-        class="fixed bottom-0 left-0 right-0 bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg z-50"
-      >
-        <div class="flex items-center justify-between max-w-7xl mx-auto">
-          <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
-              <div>
-                <div class="text-sm font-semibold text-white">
-                  Voice Connected
-                </div>
-                <div class="text-xs text-gray-400">
-                  {{ voiceChannelName || 'Voice Channel' }}
+        <!-- Voice Status Bar (Discord-like) -->
+        <div
+          v-if="voiceChannelId"
+          class="bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg"
+        >
+          <div class="flex items-center justify-between max-w-7xl mx-auto">
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
+                <div>
+                  <div class="text-sm font-semibold text-white">
+                    Voice Connected
+                  </div>
+                  <div class="text-xs text-gray-400">
+                    {{ voiceChannelName || 'Voice Channel' }}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="flex items-center gap-2">
-              <UButton
-                :color="voiceMuted ? 'error' : 'neutral'"
-                :variant="voiceMuted ? 'solid' : 'soft'"
-                size="sm"
-                :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
-                @click="toggleMute"
-              >
-                {{ voiceMuted ? 'Unmute' : 'Mute' }}
-              </UButton>
+              <div class="flex items-center gap-2">
+                <UButton
+                  :color="voiceMuted ? 'error' : 'neutral'"
+                  :variant="voiceMuted ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
+                  @click="toggleMute"
+                >
+                  {{ voiceMuted ? 'Unmute' : 'Mute' }}
+                </UButton>
 
-              <UButton
-                :color="voiceDeafened ? 'error' : 'neutral'"
-                :variant="voiceDeafened ? 'solid' : 'soft'"
-                size="sm"
-                :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
-                @click="toggleDeafen"
-              >
-                {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
-              </UButton>
+                <UButton
+                  :color="voiceDeafened ? 'error' : 'neutral'"
+                  :variant="voiceDeafened ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+                  @click="toggleDeafen"
+                >
+                  {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
+                </UButton>
 
-              <UButton
-                color="error"
-                variant="soft"
-                size="sm"
-                icon="i-lucide-phone-off"
-                @click="leaveVoiceChannel"
-              >
-                Disconnect
-              </UButton>
+                <UButton
+                  color="error"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-phone-off"
+                  @click="leaveVoiceChannel"
+                >
+                  Disconnect
+                </UButton>
+              </div>
             </div>
           </div>
         </div>
