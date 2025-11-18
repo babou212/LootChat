@@ -38,6 +38,8 @@ const getAuthToken = async (): Promise<string | null> => {
 
 const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
+const { currentChannelId: voiceChannelId, currentChannelName: voiceChannelName, isMuted: voiceMuted, isDeafened: voiceDeafened, leaveVoiceChannel, toggleMute, toggleDeafen } = useWebRTC()
+
 const channels = ref<Channel[]>([])
 
 const selectedChannel = ref<Channel | null>(null)
@@ -140,13 +142,11 @@ const selectChannel = async (channel: Channel) => {
     channels.value[channelIndex]!.unread = 0
   }
 
-  // Reset pagination state
   currentPage.value = 0
   hasMoreMessages.value = true
   loadingMoreMessages.value = false
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
-    // Clear existing messages before loading new channel messages for visual feedback
     messages.value = []
     await fetchMessages()
 
@@ -694,6 +694,60 @@ watch(users, () => {
           :channel="selectedChannel"
           :stomp-client="stompClient"
         />
+      </div>
+
+      <!-- Voice Status Bar (Discord-like) -->
+      <div
+        v-if="voiceChannelId"
+        class="fixed bottom-0 left-0 right-0 bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg z-50"
+      >
+        <div class="flex items-center justify-between max-w-7xl mx-auto">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
+              <div>
+                <div class="text-sm font-semibold text-white">
+                  Voice Connected
+                </div>
+                <div class="text-xs text-gray-400">
+                  {{ voiceChannelName || 'Voice Channel' }}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <UButton
+                :color="voiceMuted ? 'error' : 'neutral'"
+                :variant="voiceMuted ? 'solid' : 'soft'"
+                size="sm"
+                :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
+                @click="toggleMute"
+              >
+                {{ voiceMuted ? 'Unmute' : 'Mute' }}
+              </UButton>
+
+              <UButton
+                :color="voiceDeafened ? 'error' : 'neutral'"
+                :variant="voiceDeafened ? 'solid' : 'soft'"
+                size="sm"
+                :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+                @click="toggleDeafen"
+              >
+                {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
+              </UButton>
+
+              <UButton
+                color="error"
+                variant="soft"
+                size="sm"
+                icon="i-lucide-phone-off"
+                @click="leaveVoiceChannel"
+              >
+                Disconnect
+              </UButton>
+            </div>
+          </div>
+        </div>
       </div>
 
       <UserPanel :users="users" />
