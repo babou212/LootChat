@@ -63,6 +63,7 @@ export interface WebRTCSignalResponse {
 export interface VoiceParticipant {
   userId: string
   username: string
+  avatar?: string
   isMuted: boolean
   isSpeaking: boolean
 }

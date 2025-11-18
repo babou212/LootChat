@@ -468,6 +468,35 @@ const handleJoinVoice = async (channelId: number) => {
     return
   }
 
+  // Wait for the connection to be established if it's not connected yet
+  if (!client.connected) {
+    const waitForConnection = (timeoutMs = 5000, intervalMs = 100) => {
+      return new Promise<boolean>((resolve) => {
+        const start = Date.now()
+        const timer = setInterval(() => {
+          if (client.connected) {
+            clearInterval(timer)
+            resolve(true)
+          } else if (Date.now() - start > timeoutMs || !client.active) {
+            clearInterval(timer)
+            resolve(false)
+          }
+        }, intervalMs)
+      })
+    }
+
+    const isConnected = await waitForConnection()
+    if (!isConnected) {
+      toast.add({
+        title: 'Connection Timeout',
+        description: 'WebSocket connection could not be established. Please refresh the page.',
+        color: 'error',
+        icon: 'i-lucide-wifi-off'
+      })
+      return
+    }
+  }
+
   try {
     await joinVoiceChannel(channelId, client)
     toast.add({
