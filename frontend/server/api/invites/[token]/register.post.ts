@@ -8,9 +8,6 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   try {
     const apiUrl = config.apiUrl || config.public.apiUrl
     const fullUrl = `${apiUrl}/api/invites/${token}/register`
-    console.log('Registering with invite:', token, 'to URL:', fullUrl)
-    console.log('Request body:', JSON.stringify(body))
-    console.log('API URL config:', 'apiUrl=', config.apiUrl, 'public.apiUrl=', config.public.apiUrl)
 
     const response: unknown = await $fetch<unknown>(fullUrl, {
       method: 'POST',

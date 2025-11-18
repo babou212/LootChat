@@ -1,6 +1,9 @@
 import type { H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
+  // Validate request body
+  const body = await validateBody(event, createChannelSchema)
+
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -9,8 +12,6 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       message: 'Not authenticated'
     })
   }
-
-  const body = await readBody(event)
 
   try {
     const config = useRuntimeConfig()

@@ -1,4 +1,7 @@
 export default defineEventHandler(async (event) => {
+  // Validate request body
+  const validatedBody = await validateBody(event, changePasswordSchema)
+
   const session = await getUserSession(event)
 
   if (!session || !session.token) {
@@ -9,7 +12,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const config = useRuntimeConfig()
-  const body = await readBody(event)
 
   try {
     const response = await fetch(`${config.apiUrl || config.public.apiUrl}/api/users/password`, {
@@ -18,7 +20,7 @@ export default defineEventHandler(async (event) => {
         'Authorization': `Bearer ${session.token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(validatedBody)
     })
 
     if (!response.ok) {
@@ -30,12 +32,7 @@ export default defineEventHandler(async (event) => {
     }
 
     return { success: true }
-  } catch (error: unknown) {
-    const err = error as { statusCode?: number }
-    if (err.statusCode) {
-      throw error
-    }
-    console.error('Failed to change password:', error)
+  } catch {
     throw createError({
       statusCode: 500,
       message: 'Failed to change password'

@@ -16,10 +16,6 @@ export const useAuthStore = defineStore('auth', {
     setUser(user: User) {
       this.user = user
     },
-    // Deprecated: kept for backward compatibility
-    setAuth(user: User, _token: string) {
-      this.user = user
-    },
     clear() {
       this.user = null
     }
