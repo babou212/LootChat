@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
     const queryString = params.toString()
     const url = queryString ? `/api/messages?${queryString}` : '/api/messages'
 
-    return await authFetch(url)
+    return await authFetch(url) as unknown
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 401) {
       throw error

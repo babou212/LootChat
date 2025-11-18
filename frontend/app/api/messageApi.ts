@@ -1,5 +1,4 @@
 import { API_CONFIG } from './apiConfig'
-import { createAuthFetch } from './authApi'
 
 export interface MessageResponse {
   id: number
@@ -40,8 +39,8 @@ export interface UpdateMessageRequest {
 }
 
 export const messageApi = {
-  async getAllMessages(token: string, channelId?: number, page?: number, size?: number): Promise<MessageResponse[]> {
-    const authFetch = createAuthFetch(token)
+  async getAllMessages(_token: string, channelId?: number, page?: number, size?: number): Promise<MessageResponse[]> {
+    // Use Nuxt server proxy endpoint (token managed server-side)
     const params = new URLSearchParams()
     if (channelId !== undefined) {
       params.append('channelId', channelId.toString())
@@ -55,28 +54,25 @@ export const messageApi = {
     const url = params.toString()
       ? `${API_CONFIG.MESSAGES.ALL}?${params.toString()}`
       : API_CONFIG.MESSAGES.ALL
-    return await authFetch<MessageResponse[]>(url)
+    return await $fetch<MessageResponse[]>(url)
   },
 
-  async getMessageById(id: number, token: string): Promise<MessageResponse> {
-    const authFetch = createAuthFetch(token)
-    return await authFetch<MessageResponse>(API_CONFIG.MESSAGES.BY_ID(id))
+  async getMessageById(id: number, _token: string): Promise<MessageResponse> {
+    return await $fetch<MessageResponse>(API_CONFIG.MESSAGES.BY_ID(id))
   },
 
-  async getMessagesByUserId(userId: number, token: string): Promise<MessageResponse[]> {
-    const authFetch = createAuthFetch(token)
-    return await authFetch<MessageResponse[]>(API_CONFIG.MESSAGES.BY_USER(userId))
+  async getMessagesByUserId(userId: number, _token: string): Promise<MessageResponse[]> {
+    return await $fetch<MessageResponse[]>(API_CONFIG.MESSAGES.BY_USER(userId))
   },
 
-  async createMessage(request: CreateMessageRequest, token: string): Promise<MessageResponse> {
-    const authFetch = createAuthFetch(token)
-    return await authFetch<MessageResponse>(API_CONFIG.MESSAGES.CREATE, {
+  async createMessage(request: CreateMessageRequest, _token: string): Promise<MessageResponse> {
+    return await $fetch<MessageResponse>(API_CONFIG.MESSAGES.CREATE, {
       method: 'POST',
       body: request
     })
   },
 
-  async createMessageWithImage(channelId: number, image: File, content: string | null, token: string): Promise<MessageResponse> {
+  async createMessageWithImage(channelId: number, image: File, content: string | null, _token: string): Promise<MessageResponse> {
     const formData = new FormData()
     formData.append('image', image)
     formData.append('channelId', channelId.toString())
@@ -84,47 +80,34 @@ export const messageApi = {
       formData.append('content', content)
     }
 
-    const response = await fetch(`${API_CONFIG.BASE_URL}/api/messages/upload`, {
+    return await $fetch<MessageResponse>('/api/messages/upload', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       body: formData
     })
-
-    if (!response.ok) {
-      throw new Error(`Failed to upload image: ${response.statusText}`)
-    }
-
-    return await response.json()
   },
 
-  async updateMessage(id: number, request: UpdateMessageRequest, token: string): Promise<MessageResponse> {
-    const authFetch = createAuthFetch(token)
-    return await authFetch<MessageResponse>(API_CONFIG.MESSAGES.UPDATE(id), {
+  async updateMessage(id: number, request: UpdateMessageRequest, _token: string): Promise<MessageResponse> {
+    return await $fetch<MessageResponse>(API_CONFIG.MESSAGES.UPDATE(id), {
       method: 'PUT',
       body: request
     })
   },
 
-  async deleteMessage(id: number, token: string): Promise<void> {
-    const authFetch = createAuthFetch(token)
-    await authFetch(API_CONFIG.MESSAGES.DELETE(id), {
+  async deleteMessage(id: number, _token: string): Promise<void> {
+    await $fetch(API_CONFIG.MESSAGES.DELETE(id), {
       method: 'DELETE'
     })
   },
 
-  async addReaction(messageId: number, emoji: string, token: string): Promise<ReactionResponse> {
-    const authFetch = createAuthFetch(token)
-    return await authFetch<ReactionResponse>(API_CONFIG.MESSAGES.ADD_REACTION(messageId), {
+  async addReaction(messageId: number, emoji: string, _token: string): Promise<ReactionResponse> {
+    return await $fetch<ReactionResponse>(API_CONFIG.MESSAGES.ADD_REACTION(messageId), {
       method: 'POST',
       body: { emoji } as ReactionRequest
     })
   },
 
-  async removeReaction(messageId: number, emoji: string, token: string): Promise<void> {
-    const authFetch = createAuthFetch(token)
-    await authFetch(API_CONFIG.MESSAGES.REMOVE_REACTION(messageId), {
+  async removeReaction(messageId: number, emoji: string, _token: string): Promise<void> {
+    await $fetch(API_CONFIG.MESSAGES.REMOVE_REACTION(messageId), {
       method: 'DELETE',
       body: { emoji } as ReactionRequest
     })
