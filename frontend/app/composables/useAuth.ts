@@ -1,4 +1,5 @@
 import type { LoginRequest, User } from '../../shared/types/user'
+import { useAuthStore } from '../../stores/auth'
 
 /**
  * Authentication composable using nuxt-auth-utils
@@ -7,6 +8,7 @@ import type { LoginRequest, User } from '../../shared/types/user'
  */
 export const useAuth = () => {
   const { loggedIn, user, session, clear, fetch: refreshSession } = useUserSession()
+  const authStore = useAuthStore()
   const loading = useState<boolean>('auth-loading', () => false)
   const error = useState<string | null>('auth-error', () => null)
 
@@ -22,8 +24,12 @@ export const useAuth = () => {
       })
 
       if (response.success && response.user) {
-        // Refresh the session to get the updated user data
         await refreshSession()
+
+        if (user.value) {
+          authStore.setUser(user.value)
+        }
+
         return { success: true }
       } else {
         error.value = 'Login failed'
@@ -48,13 +54,15 @@ export const useAuth = () => {
         credentials: 'include'
       })
 
-      // Clear the session on both client and server
       await clear()
+
+      authStore.clear()
+
       error.value = null
     } catch (err) {
       console.error('Logout error:', err)
-      // Clear session even on error
       await clear()
+      authStore.clear()
     } finally {
       loading.value = false
     }
@@ -62,8 +70,6 @@ export const useAuth = () => {
 
   const restore = async () => {
     try {
-      // nuxt-auth-utils handles session restoration automatically
-      // We just need to refresh it if needed
       if (!user.value) {
         await refreshSession()
       }
