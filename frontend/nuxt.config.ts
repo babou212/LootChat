@@ -46,22 +46,7 @@ export default defineNuxtConfig({
     session: {
       name: 'lootchat-session',
       maxAge: 60 * 60 * 24 * 7, // 7 days
-      password: process.env.NUXT_SESSION_PASSWORD || (() => {
-        const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
-        const isProduction = process.env.NODE_ENV === 'production'
-
-        if (isProduction && !isCI) {
-          throw new Error('NUXT_SESSION_PASSWORD must be set in production')
-        }
-
-        if (isCI) {
-          console.warn('CI environment detected: Using temporary session password for build')
-          return 'ci-temporary-password-not-for-production-use'
-        }
-
-        console.warn('Using insecure session password for development only')
-        return 'dev-only-insecure-password-change-in-production'
-      })(),
+      password: process.env.NUXT_SESSION_PASSWORD || '',
       cookie: {
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
