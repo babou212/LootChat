@@ -205,7 +205,7 @@ resource "hcloud_server" "workers" {
 
   user_data = templatefile("${path.module}/templates/worker-init.sh", {
     kubernetes_version = var.kubernetes_version
-    control_plane_ip   = hcloud_server.control_plane.ipv4_address
+    control_plane_ip   = cidrhost(var.subnet_cidr, 10)
     server_arch        = "arm64"
   })
 

@@ -84,7 +84,7 @@ variable "load_balancer_type" {
 variable "kubernetes_version" {
   description = "Kubernetes version to install"
   type        = string
-  default     = "1.28.4"
+  default     = "1.32.0"
 }
 
 variable "postgres_volume_size" {

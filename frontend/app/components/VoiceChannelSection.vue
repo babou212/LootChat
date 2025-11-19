@@ -7,8 +7,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'joinVoice', channelId: number): void
-  (e: 'leaveVoice'): void
+  (e: 'selectChannel', channel: Channel): void
 }
 
 const props = defineProps<Props>()
@@ -21,11 +20,10 @@ const {
   isMuted,
   isDeafened,
   currentChannelId,
+  leaveVoiceChannel,
   toggleMute,
   toggleDeafen
 } = useWebRTC()
-
-const isConnecting = ref(false)
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -46,20 +44,12 @@ const isCurrentUser = (userId: string) => {
   return user.value?.userId.toString() === userId
 }
 
-const handleJoinVoice = async (channelId: number) => {
-  if (isConnecting.value) return
-  isConnecting.value = true
-  try {
-    emit('joinVoice', channelId)
-  } finally {
-    setTimeout(() => {
-      isConnecting.value = false
-    }, 1000)
-  }
+const handleSelectChannel = (channel: Channel) => {
+  emit('selectChannel', channel)
 }
 
 const handleLeaveVoice = () => {
-  emit('leaveVoice')
+  leaveVoiceChannel()
 }
 </script>
 
@@ -82,7 +72,7 @@ const handleLeaveVoice = () => {
         :title="isCollapsed ? channel.name : channel.description"
         class="w-full"
         :class="isCollapsed ? 'justify-center' : 'justify-between'"
-        @click="currentChannelId === channel.id ? handleLeaveVoice() : handleJoinVoice(channel.id)"
+        @click="currentChannelId === channel.id ? handleLeaveVoice() : handleSelectChannel(channel)"
       >
         <span class="flex items-center gap-2">
           <UIcon name="i-lucide-mic" class="text-lg" />
