@@ -606,16 +606,18 @@ watch(users, () => {
             @load-more="loadMoreMessages"
           />
 
-          <<<<<<< HEAD
           <div
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
-            =======
-            >>>>>>> affe05f (feat: added ability for persistent voice chat for better ux)
             <div
-              class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
+              v-if="imagePreviewUrl"
+              class="mb-2 relative inline-block"
             >
-              <<<<<<< HEAD
+              <img
+                :src="imagePreviewUrl"
+                alt="Preview"
+                class="max-h-32 rounded-lg shadow-md"
+              >
               <button
                 type="button"
                 class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
@@ -628,161 +630,127 @@ watch(users, () => {
             <form class="flex items-center gap-2" @submit.prevent="sendMessage">
               <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
                 <input
-                  v-if="imagePreviewUrl"
                   ref="fileInputRef"
                   type="file"
                   accept="image/*"
                   class="hidden"
-                  =="====="
-                  <div
-                  class="mb-2 relative inline-block"
                   @change="handleImageSelect"
                 >
-                <img
-                  :src="imagePreviewUrl"
-                  alt="Preview"
-                  class="max-h-32 rounded-lg shadow-md"
-                >>>>>>> affe05f (feat: added ability for persistent voice chat for better ux)
-                >
-                <button
-                  type="button"
-                  class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
-                  @click="removeImage"
-                >
-                  <<<<<<< HEAD
-                  <EmojiPicker @select="addEmoji" />
-                </button>
-              </div>
-              <VoiceChannel
-                v-else-if="selectedChannel?.channelType === 'VOICE'"
-                :channel="selectedChannel"
-                :stomp-client="stompClient"
-              />
-              <div
-                v-if="voiceChannelId"
-                class="bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg"
-              >
-                <div class="flex items-center justify-between max-w-7xl mx-auto">
-                  <div class="flex items-center gap-4">
-                    <div class="flex items-center gap-2">
-                      <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
-                      <div>
-                        <div class="text-sm font-semibold text-white">
-                          Voice Connected
-                        </div>
-                        <div class="text-xs text-gray-400">
-                          {{ voiceChannelName || 'Voice Channel' }}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                      <UButton
-                        :color="voiceMuted ? 'error' : 'neutral'"
-                        :variant="voiceMuted ? 'solid' : 'soft'"
-                        size="sm"
-                        :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
-                        @click="toggleMute"
-                      >
-                        {{ voiceMuted ? 'Unmute' : 'Mute' }}
-                      </UButton>
-
-                      <UButton
-                        :color="voiceDeafened ? 'error' : 'neutral'"
-                        :variant="voiceDeafened ? 'solid' : 'soft'"
-                        size="sm"
-                        :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
-                        @click="toggleDeafen"
-                      >
-                        {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
-                      </UButton>
-
-                      <UButton
-                        color="error"
-                        variant="soft"
-                        size="sm"
-                        icon="i-lucide-phone-off"
-                        @click="leaveVoiceChannel"
-                      >
-                        Disconnect
-                      </UButton>
-                    </div>
-                  </div>
-                </div>
-                =======
-                ×
-                </button>
-              </div>
-
-              <form class="flex items-center gap-2" @submit.prevent="sendMessage">
-                <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
-                  <input
-                    ref="fileInputRef"
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    @change="handleImageSelect"
-                  >
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    icon="i-lucide-image-plus"
-                    aria-label="Upload image"
-                    @click="fileInputRef?.click()"
-                  />
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    icon="i-lucide-smile"
-                    aria-label="Insert emoji"
-                    @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
-                  />
-                  <div
-                    v-if="showEmojiPicker"
-                    class="absolute bottom-full mb-2 left-0 z-20"
-                  >
-                    <EmojiPicker @select="addEmoji" />
-                  </div>
-
-                  >>>>>>> affe05f (feat: added ability for persistent voice chat for better ux)
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    icon="i-lucide-image"
-                    aria-label="Insert GIF"
-                    @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
-                  />
-                  <div
-                    v-if="showGifPicker"
-                    class="absolute bottom-full mb-2 left-0 z-20"
-                  >
-                    <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
-                  </div>
-                </div>
-
-                <UInput
-                  v-model="newMessage"
-                  placeholder="Type a message..."
-                  size="lg"
-                  class="flex-1"
-                  :ui="{ base: 'w-full' }"
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-image-plus"
+                  aria-label="Upload image"
+                  @click="fileInputRef?.click()"
                 />
                 <UButton
-                  type="submit"
-                  size="lg"
-                  icon="i-lucide-send"
-                  :disabled="!newMessage.trim() && !selectedImage"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-smile"
+                  aria-label="Insert emoji"
+                  @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
+                />
+                <div
+                  v-if="showEmojiPicker"
+                  class="absolute bottom-full mb-2 left-0 z-20"
                 >
-                  Send
-                </UButton>
-              </form>
+                  <EmojiPicker @select="addEmoji" />
+                </div>
+
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-image"
+                  aria-label="Insert GIF"
+                  @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
+                />
+                <div
+                  v-if="showGifPicker"
+                  class="absolute bottom-full mb-2 left-0 z-20"
+                >
+                  <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
+                </div>
+              </div>
+
+              <UInput
+                v-model="newMessage"
+                placeholder="Type a message..."
+                size="lg"
+                class="flex-1"
+                :ui="{ base: 'w-full' }"
+              />
+              <UButton
+                type="submit"
+                size="lg"
+                icon="i-lucide-send"
+                :disabled="!newMessage.trim() && !selectedImage"
+              >
+                Send
+              </UButton>
             </form>
           </div>
-          </form>
         </template>
+
+        <VoiceChannel
+          v-else-if="selectedChannel?.channelType === 'VOICE'"
+          :channel="selectedChannel"
+          :stomp-client="stompClient"
+        />
+        <div
+          v-if="voiceChannelId"
+          class="bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg"
+        >
+          <div class="flex items-center justify-between max-w-7xl mx-auto">
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
+                <div>
+                  <div class="text-sm font-semibold text-white">
+                    Voice Connected
+                  </div>
+                  <div class="text-xs text-gray-400">
+                    {{ voiceChannelName || 'Voice Channel' }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <UButton
+                  :color="voiceMuted ? 'error' : 'neutral'"
+                  :variant="voiceMuted ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
+                  @click="toggleMute"
+                >
+                  {{ voiceMuted ? 'Unmute' : 'Mute' }}
+                </UButton>
+
+                <UButton
+                  :color="voiceDeafened ? 'error' : 'neutral'"
+                  :variant="voiceDeafened ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+                  @click="toggleDeafen"
+                >
+                  {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
+                </UButton>
+
+                <UButton
+                  color="error"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-phone-off"
+                  @click="leaveVoiceChannel"
+                >
+                  Disconnect
+                </UButton>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-    <UserPanel :users="users" />
+
+      <UserPanel :users="users" />
     </div>
   </ClientOnly>
 </template>
