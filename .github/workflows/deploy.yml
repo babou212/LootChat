@@ -1,0 +1,209 @@
+name: Build and Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  BACKEND_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/lootchat-backend
+  FRONTEND_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/lootchat-frontend
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        run: |
+          # Generate version tag from git commit
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          VERSION="${{ github.ref_name }}-${SHORT_SHA}-$(date +%s)"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+            ${{ env.BACKEND_IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache,mode=max
+          labels: |
+            org.opencontainers.image.title=LootChat Backend
+            org.opencontainers.image.description=LootChat Spring Boot Backend
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/arm64,linux/amd64
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+            ${{ env.FRONTEND_IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache,mode=max
+          labels: |
+            org.opencontainers.image.title=LootChat Frontend
+            org.opencontainers.image.description=LootChat Nuxt.js Frontend
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Image digest
+        run: |
+          echo "Backend Image: ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          echo "Frontend Image: ${{ env.FRONTEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/master'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.4'
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Update Backend deployment
+        run: |
+          kubectl set image deployment/lootchat-backend \
+            backend=${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} \
+            -n lootchat
+          
+          kubectl annotate deployment/lootchat-backend \
+            kubernetes.io/change-cause="Deploy from GitHub Actions - commit ${{ github.sha }}" \
+            -n lootchat --overwrite
+
+      - name: Update Frontend deployment
+        run: |
+          kubectl set image deployment/lootchat-frontend \
+            frontend=${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} \
+            -n lootchat
+          
+          kubectl annotate deployment/lootchat-frontend \
+            kubernetes.io/change-cause="Deploy from GitHub Actions - commit ${{ github.sha }}" \
+            -n lootchat --overwrite
+
+      - name: Wait for Backend rollout
+        run: |
+          kubectl rollout status deployment/lootchat-backend -n lootchat --timeout=5m
+
+      - name: Wait for Frontend rollout
+        run: |
+          kubectl rollout status deployment/lootchat-frontend -n lootchat --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          echo "=== Backend Pods ==="
+          kubectl get pods -n lootchat -l app=lootchat-backend
+          
+          echo ""
+          echo "=== Frontend Pods ==="
+          kubectl get pods -n lootchat -l app=lootchat-frontend
+          
+          echo ""
+          echo "=== Deployment Status ==="
+          kubectl get deployments -n lootchat
+
+      - name: Get rollout history
+        if: always()
+        run: |
+          echo "=== Backend Rollout History ==="
+          kubectl rollout history deployment/lootchat-backend -n lootchat
+          
+          echo ""
+          echo "=== Frontend Rollout History ==="
+          kubectl rollout history deployment/lootchat-frontend -n lootchat
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-kubernetes]
+    if: always()
+    
+    steps:
+      - name: Deployment Success
+        if: needs.deploy-kubernetes.result == 'success'
+        run: |
+          echo "Deployment successful!"
+          echo "Backend: ${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Frontend: ${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Commit: ${{ github.sha }}"
+
+      - name: Deployment Failed
+        if: needs.deploy-kubernetes.result == 'failure'
+        run: |
+          echo "Deployment failed!"
+          exit 1
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          #LootChat Deployment Summary
+          
+          ## Build Information
+          - **Branch**: ${{ github.ref_name }}
+          - **Commit**: ${{ github.sha }}
+          - **Image Tag**: ${{ needs.build-and-push.outputs.image-tag }}
+          
+          ## Images Built
+          - Backend: \`${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}\`
+          - Frontend: \`${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}\`
+          
+          ## Deployment Status
+          - Build: ${{ needs.build-and-push.result == 'success' && 'Success' || 'Failed' }}
+          - Deploy: ${{ needs.deploy-kubernetes.result == 'success' && 'Success' || 'Failed' }}
+          
+          ## Next Steps
+          - Check application: https://your-domain.com
+          - View logs: \`kubectl logs -n lootchat -l app=lootchat-backend\`
+          - Rollback if needed: \`kubectl rollout undo deployment/lootchat-backend -n lootchat\`
+          EOF
