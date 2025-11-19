@@ -1,0 +1,191 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lootchat-backend
+  namespace: lootchat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lootchat-backend
+  template:
+    metadata:
+      labels:
+        app: lootchat-backend
+    spec:
+      initContainers:
+      - name: wait-for-db
+        image: postgres:15-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h lootchat-db -U $POSTGRES_USER -d $POSTGRES_DB; do
+            echo "Waiting for database..."
+            sleep 2
+          done
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: POSTGRES_DB
+      containers:
+      - name: backend
+        image: babou212/lootchat-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: POSTGRES_DB
+        - name: DATABASE_URL
+          value: "jdbc:postgresql://lootchat-db:5432/$(POSTGRES_DB)"
+        - name: DATABASE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: DATABASE_USERNAME
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: DATABASE_PASSWORD
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: JWT_SECRET
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: CORS_ALLOWED_ORIGINS
+        - name: FILE_UPLOAD_DIR
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: FILE_UPLOAD_DIR
+        - name: SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: SERVER_PORT
+        - name: APP_PUBLIC_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: APP_PUBLIC_BASE_URL
+        - name: ADMIN_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: ADMIN_USERNAME
+        - name: ADMIN_EMAIL
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: ADMIN_EMAIL
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: ADMIN_PASSWORD
+        - name: ADMIN_FIRST_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: ADMIN_FIRST_NAME
+        - name: ADMIN_LAST_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: ADMIN_LAST_NAME
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: KAFKA_BOOTSTRAP_SERVERS
+        - name: SPRING_DATA_REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: SPRING_DATA_REDIS_HOST
+        - name: SPRING_DATA_REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: SPRING_DATA_REDIS_PORT
+        - name: MAIL_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: MAIL_HOST
+        - name: MAIL_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: MAIL_PORT
+        - name: MAIL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: MAIL_USERNAME
+        - name: MAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: MAIL_PASSWORD
+        - name: APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: APP_NAME
+        volumeMounts:
+        - name: backend-uploads
+          mountPath: /app/uploads
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: backend-uploads
+        persistentVolumeClaim:
+          claimName: backend-uploads
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lootchat-backend
+  namespace: lootchat
+spec:
+  selector:
+    app: lootchat-backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http

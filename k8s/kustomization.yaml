@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lootchat
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.yaml
+  - pvcs.yaml
+  - postgres.yaml
+  - redis.yaml
+  - kafka.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+  # - certbot-cronjob.yaml  # Uncomment if not using cert-manager
+
+# Labels to add to all resources
+labels:
+  - pairs:
+      app.kubernetes.io/name: lootchat
+      app.kubernetes.io/version: "1.0.0"
+
+commonAnnotations:
+  description: "LootChat - A real-time chat application"
