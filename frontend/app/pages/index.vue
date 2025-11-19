@@ -576,6 +576,7 @@ watch(users, () => {
       <ChannelSidebar
         :channels="channels"
         :selected-channel="selectedChannel"
+        :stomp-client="stompClient"
         @select-channel="selectChannel"
       />
 
