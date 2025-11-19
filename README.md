@@ -65,7 +65,30 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 
 - **Backend:** Java 25, Spring Boot, Kafka, PostgreSQL, Redis
 - **Frontend:** Nuxt 4, Vue 3, TypeScript, Nuxt UI
-- **DevOps:** Docker, Docker Compose
+- **DevOps:** Docker, Kubernetes, FluxCD (GitOps), GitHub Actions
+
+---
+
+## 🚢 Deployment
+
+LootChat supports both Docker Compose and Kubernetes deployments:
+
+### Docker Compose (Development)
+```bash
+docker compose up -d
+```
+
+### Kubernetes + FluxCD (Production)
+
+For production GitOps deployment with automatic updates:
+
+1. See [Kubernetes Deployment Guide](DEPLOYMENT.md) for cluster setup
+2. See [Flux GitOps Setup](flux/SETUP.md) for automated deployments
+
+With Flux:
+- Push code → GitHub Actions builds images → Flux auto-deploys
+- No manual `kubectl` commands needed
+- Git as the source of truth
 
 ---
 
