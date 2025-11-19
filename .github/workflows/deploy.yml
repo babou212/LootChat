@@ -22,6 +22,8 @@ jobs:
     
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
+      backend-image: ${{ steps.meta.outputs.backend_image }}
+      frontend-image: ${{ steps.meta.outputs.frontend_image }}
     
     steps:
       - name: Checkout code
@@ -44,6 +46,8 @@ jobs:
           VERSION="${{ github.ref_name }}-${SHORT_SHA}-$(date +%s)"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "backend_image=${{ secrets.DOCKER_USERNAME }}/lootchat-backend" >> $GITHUB_OUTPUT
+          echo "frontend_image=${{ secrets.DOCKER_USERNAME }}/lootchat-frontend" >> $GITHUB_OUTPUT
 
       - name: Build and push Backend image
         uses: docker/build-push-action@v5
@@ -53,8 +57,8 @@ jobs:
           platforms: linux/arm64,linux/amd64
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-            ${{ env.BACKEND_IMAGE_NAME }}:latest
+            ${{ steps.meta.outputs.backend_image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.backend_image }}:latest
           labels: |
             org.opencontainers.image.title=LootChat Backend
             org.opencontainers.image.description=LootChat Spring Boot Backend
@@ -69,8 +73,8 @@ jobs:
           platforms: linux/arm64,linux/amd64
           push: true
           tags: |
-            ${{ env.FRONTEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-            ${{ env.FRONTEND_IMAGE_NAME }}:latest
+            ${{ steps.meta.outputs.frontend_image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.frontend_image }}:latest
           labels: |
             org.opencontainers.image.title=LootChat Frontend
             org.opencontainers.image.description=LootChat Nuxt.js Frontend
@@ -79,8 +83,8 @@ jobs:
 
       - name: Image digest
         run: |
-          echo "Backend Image: ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
-          echo "Frontend Image: ${{ env.FRONTEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          echo "Backend Image: ${{ steps.meta.outputs.backend_image }}:${{ steps.meta.outputs.version }}"
+          echo "Frontend Image: ${{ steps.meta.outputs.frontend_image }}:${{ steps.meta.outputs.version }}"
 
   deploy-kubernetes:
     name: Deploy to Kubernetes
@@ -112,7 +116,7 @@ jobs:
       - name: Update Backend deployment
         run: |
           kubectl set image deployment/lootchat-backend \
-            backend=${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} \
+            backend=${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }} \
             -n lootchat
           
           kubectl annotate deployment/lootchat-backend \
@@ -122,7 +126,7 @@ jobs:
       - name: Update Frontend deployment
         run: |
           kubectl set image deployment/lootchat-frontend \
-            frontend=${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} \
+            frontend=${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }} \
             -n lootchat
           
           kubectl annotate deployment/lootchat-frontend \
@@ -171,8 +175,8 @@ jobs:
         if: needs.deploy-kubernetes.result == 'success'
         run: |
           echo "Deployment successful!"
-          echo "Backend: ${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
-          echo "Frontend: ${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Backend: ${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Frontend: ${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }}"
           echo "Commit: ${{ github.sha }}"
 
       - name: Deployment Failed
@@ -193,15 +197,15 @@ jobs:
           - **Image Tag**: ${{ needs.build-and-push.outputs.image-tag }}
           
           ## Images Built
-          - Backend: \`${{ env.BACKEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}\`
-          - Frontend: \`${{ env.FRONTEND_IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}\`
+          - Backend: \`${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }}\`
+          - Frontend: \`${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }}\`
           
           ## Deployment Status
           - Build: ${{ needs.build-and-push.result == 'success' && 'Success' || 'Failed' }}
           - Deploy: ${{ needs.deploy-kubernetes.result == 'success' && 'Success' || 'Failed' }}
           
           ## Next Steps
-          - Check application: https://your-domain.com
+          - Check application
           - View logs: \`kubectl logs -n lootchat -l app=lootchat-backend\`
           - Rollback if needed: \`kubectl rollout undo deployment/lootchat-backend -n lootchat\`
           EOF
