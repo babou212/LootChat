@@ -14,9 +14,23 @@ echo -e "${BLUE}================================================${NC}"
 echo ""
 
 # Check if we're in the terraform directory
+if [ ! -f "main.tf" ]; then
+    echo -e "${RED}Error: main.tf not found${NC}"
+    echo "Please run this script from the terraform directory"
+    exit 1
+fi
+
+# Check if Terraform has been applied
 if [ ! -f "terraform.tfstate" ]; then
     echo -e "${RED}Error: terraform.tfstate not found${NC}"
-    echo "Run this script from the terraform directory"
+    echo ""
+    echo "It looks like Terraform hasn't been applied yet."
+    echo ""
+    echo "Please run the following commands first:"
+    echo -e "${YELLOW}  terraform init${NC}"
+    echo -e "${YELLOW}  terraform apply${NC}"
+    echo ""
+    echo "After the infrastructure is created, run this script again."
     exit 1
 fi
 

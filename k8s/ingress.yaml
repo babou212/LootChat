@@ -13,10 +13,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - example.com  # Replace with your actual domain
+    - dylancree.com  # Replace with your actual domain
     secretName: lootchat-tls
   rules:
-  - host: example.com  # Replace with your actual domain
+  - host: dylancree.com  # Replace with your actual domain
     http:
       paths:
       # All API routes go through frontend for authentication
@@ -61,7 +61,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: example@gmail.com  # Replace with your email
+    email: dylanpab1@gmail.com  # Replace with your email
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
