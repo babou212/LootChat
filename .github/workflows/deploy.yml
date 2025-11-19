@@ -15,6 +15,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
+    environment: lootchat
     permissions:
       contents: read
       packages: write
@@ -88,6 +89,7 @@ jobs:
   deploy-kubernetes:
     name: Deploy to Kubernetes
     runs-on: ubuntu-latest
+    environment: lootchat
     needs: build-and-push
     if: github.ref == 'refs/heads/master'
     
