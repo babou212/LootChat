@@ -22,9 +22,11 @@ const {
 
 const isConnected = computed(() => currentChannelId.value === props.channel.id)
 const isConnecting = ref(false)
+const error = ref<string | null>(null)
 
 const handleJoinChannel = async () => {
   if (!props.stompClient) {
+    error.value = 'WebSocket connection not established. Please wait a moment and try again.'
     console.error('STOMP client is null - WebSocket connection may not be ready')
     return
   }
@@ -46,20 +48,29 @@ const handleJoinChannel = async () => {
     }
 
     isConnecting.value = true
+    error.value = null
 
     const ok = await waitForConnected(props.stompClient)
     if (!ok) {
+      error.value = 'WebSocket connection timeout. Please refresh the page and try again.'
       isConnecting.value = false
       return
     }
   }
 
   isConnecting.value = true
+  error.value = null
 
   try {
     await joinVoiceChannel(props.channel.id, props.stompClient, props.channel.name)
   } catch (err) {
     console.error('Failed to join voice channel:', err)
+
+    if (err instanceof Error) {
+      error.value = err.message
+    } else {
+      error.value = 'Failed to join voice channel. Please check your microphone permissions.'
+    }
   } finally {
     isConnecting.value = false
   }
@@ -67,6 +78,7 @@ const handleJoinChannel = async () => {
 
 const handleLeaveChannel = () => {
   leaveVoiceChannel()
+  error.value = null
 }
 </script>
 
@@ -84,6 +96,15 @@ const handleLeaveChannel = () => {
           {{ channel.description }}
         </p>
       </div>
+
+      <UAlert
+        v-if="error"
+        color="error"
+        icon="i-lucide-alert-circle"
+        :title="error"
+        class="mb-6"
+        @close="error = null"
+      />
 
       <UAlert
         v-if="!stompClient"

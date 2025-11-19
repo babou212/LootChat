@@ -11,8 +11,6 @@ interface Props {
 
 interface Emits {
   (e: 'selectChannel', channel: Channel): void
-  (e: 'joinVoice', channelId: number): void
-  (e: 'leaveVoice'): void
 }
 
 const props = defineProps<Props>()
@@ -30,14 +28,6 @@ const totalUnread = computed(() =>
 
 const handleSelectChannel = (channel: Channel) => {
   emit('selectChannel', channel)
-}
-
-const handleJoinVoice = (channelId: number) => {
-  emit('joinVoice', channelId)
-}
-
-const handleLeaveVoice = () => {
-  emit('leaveVoice')
 }
 
 const toggleSidebar = () => {
@@ -112,8 +102,7 @@ const toggleSidebar = () => {
       <VoiceChannelSection
         :channels="channels"
         :is-collapsed="isCollapsed"
-        @join-voice="handleJoinVoice"
-        @leave-voice="handleLeaveVoice"
+        @select-channel="handleSelectChannel"
       />
     </div>
   </div>

@@ -37,7 +37,7 @@ const getAuthToken = async (): Promise<string | null> => {
 
 const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
-const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
+const { currentChannelId: voiceChannelId, currentChannelName: voiceChannelName, isMuted: voiceMuted, isDeafened: voiceDeafened, leaveVoiceChannel, toggleMute, toggleDeafen } = useWebRTC()
 
 const channels = ref<Channel[]>([])
 
@@ -134,10 +134,6 @@ const removeImage = () => {
 }
 
 const selectChannel = async (channel: Channel) => {
-  if (channel.channelType === 'VOICE') {
-    return
-  }
-
   selectedChannel.value = channel
 
   const channelIndex = channels.value.findIndex(ch => ch.id === channel.id)
@@ -145,6 +141,12 @@ const selectChannel = async (channel: Channel) => {
     channels.value[channelIndex]!.unread = 0
   }
 
+  // If it's a voice channel, just set it as selected (VoiceChannel component handles joining)
+  if (channel.channelType === 'VOICE') {
+    return
+  }
+
+  // For text channels, handle message loading and subscriptions
   currentPage.value = 0
   hasMoreMessages.value = true
   loadingMoreMessages.value = false
@@ -454,46 +456,6 @@ const sendMessage = async () => {
 
 const isClient = ref(false)
 
-const handleJoinVoice = async (channelId: number) => {
-  const client = getClient()
-  if (!client) {
-    return
-  }
-
-  // Wait for the connection to be established if it's not connected yet
-  if (!client.connected) {
-    const waitForConnection = (timeoutMs = 5000, intervalMs = 100) => {
-      return new Promise<boolean>((resolve) => {
-        const start = Date.now()
-        const timer = setInterval(() => {
-          if (client.connected) {
-            clearInterval(timer)
-            resolve(true)
-          } else if (Date.now() - start > timeoutMs || !client.active) {
-            clearInterval(timer)
-            resolve(false)
-          }
-        }, intervalMs)
-      })
-    }
-
-    const isConnected = await waitForConnection()
-    if (!isConnected) {
-      return
-    }
-  }
-
-  try {
-    await joinVoiceChannel(channelId, client)
-  } catch (err) {
-    console.error('Failed to join voice channel:', err)
-  }
-}
-
-const handleLeaveVoice = () => {
-  leaveVoiceChannel()
-}
-
 onMounted(async () => {
   isClient.value = true
 
@@ -619,127 +581,180 @@ watch(users, () => {
         :selected-channel="selectedChannel"
         :stomp-client="stompClient"
         @select-channel="selectChannel"
-        @join-voice="handleJoinVoice"
-        @leave-voice="handleLeaveVoice"
       />
 
-      <div class="flex-1 flex flex-col min-w-0">
-        <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
-          <div class="flex items-center gap-2">
-            <UIcon
-              :name="selectedChannel?.channelType === 'VOICE' ? 'i-lucide-mic' : 'i-lucide-hash'"
-              class="text-xl text-gray-600 dark:text-gray-400"
-            />
-            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
-              {{ selectedChannel?.name || 'Select a channel' }}
-            </h1>
-          </div>
-          <div class="ml-auto">
-            <UserMenu />
-          </div>
-        </div>
-
-        <template v-if="selectedChannel?.channelType === 'TEXT'">
-          <MessageList
-            :messages="messages"
-            :loading="loading"
-            :error="error"
-            :has-more="hasMoreMessages"
-            :loading-more="loadingMoreMessages"
-            @message-deleted="removeMessageById"
-            @load-more="loadMoreMessages"
-          />
-
-          <div
-            class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
-          >
-            <div
-              v-if="imagePreviewUrl"
-              class="mb-2 relative inline-block"
-            >
-              <img :src="imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
-              <button
-                type="button"
-                class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
-                @click="removeImage"
-              >
-                ×
-              </button>
+      <div class="flex-1 flex min-w-0">
+        <div class="flex-1 flex flex-col min-w-0">
+          <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="selectedChannel?.channelType === 'VOICE' ? 'i-lucide-mic' : 'i-lucide-hash'"
+                class="text-xl text-gray-600 dark:text-gray-400"
+              />
+              <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
+                {{ selectedChannel?.name || 'Select a channel' }}
+              </h1>
             </div>
+            <div class="ml-auto">
+              <UserMenu />
+            </div>
+          </div>
 
-            <form class="flex items-center gap-2" @submit.prevent="sendMessage">
-              <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
-                <input
-                  ref="fileInputRef"
-                  type="file"
-                  accept="image/*"
-                  class="hidden"
-                  @change="handleImageSelect"
-                >
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-image-plus"
-                  aria-label="Upload image"
-                  @click="fileInputRef?.click()"
-                />
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-smile"
-                  aria-label="Insert emoji"
-                  @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
-                />
-                <div
-                  v-if="showEmojiPicker"
-                  class="absolute bottom-full mb-2 left-0 z-20"
-                >
-                  <EmojiPicker @select="addEmoji" />
-                </div>
+          <template v-if="selectedChannel?.channelType === 'TEXT'">
+            <MessageList
+              :messages="messages"
+              :loading="loading"
+              :error="error"
+              :has-more="hasMoreMessages"
+              :loading-more="loadingMoreMessages"
+              @message-deleted="removeMessageById"
+              @load-more="loadMoreMessages"
+            />
 
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-image"
-                  aria-label="Insert GIF"
-                  @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
-                />
-                <div
-                  v-if="showGifPicker"
-                  class="absolute bottom-full mb-2 left-0 z-20"
+            <div
+              class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
+            >
+              <div
+                v-if="imagePreviewUrl"
+                class="mb-2 relative inline-block"
+              >
+                <img :src="imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
+                <button
+                  type="button"
+                  class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
+                  @click="removeImage"
                 >
-                  <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
-                </div>
+                  ×
+                </button>
               </div>
 
-              <UTextarea
-                v-model="newMessage"
-                placeholder="Type a message..."
-                :rows="1"
-                autoresize
-                class="flex-1"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
+              <form class="flex items-center gap-2" @submit.prevent="sendMessage">
+                <div ref="pickerWrapperRef" class="relative flex items-center gap-1">
+                  <input
+                    ref="fileInputRef"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="handleImageSelect"
+                  >
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-image-plus"
+                    aria-label="Upload image"
+                    @click="fileInputRef?.click()"
+                  />
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-smile"
+                    aria-label="Insert emoji"
+                    @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
+                  />
+                  <div
+                    v-if="showEmojiPicker"
+                    class="absolute bottom-full mb-2 left-0 z-20"
+                  >
+                    <EmojiPicker @select="addEmoji" />
+                  </div>
+
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-image"
+                    aria-label="Insert GIF"
+                    @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
+                  />
+                  <div
+                    v-if="showGifPicker"
+                    class="absolute bottom-full mb-2 left-0 z-20"
+                  >
+                    <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
+                  </div>
+                </div>
+
+                <UTextarea
+                  v-model="newMessage"
+                  placeholder="Type a message..."
+                  :rows="1"
+                  autoresize
+                  class="flex-1"
+                  @keydown.enter.exact.prevent="sendMessage"
+                />
+
+                <UButton
+                  type="submit"
+                  icon="i-lucide-send"
+                  color="primary"
+                  :disabled="!newMessage.trim() && !selectedImage"
+                >
+                  Send
+                </UButton>
+              </form>
+            </div>
+          </template>
+
+          <VoiceChannel
+            v-else-if="selectedChannel?.channelType === 'VOICE'"
+            :channel="selectedChannel"
+            :stomp-client="stompClient"
+          />
+        </div>
+
+        <UserPanel v-if="selectedChannel?.channelType === 'TEXT'" :users="users" />
+      </div>
+
+      <div
+        v-if="voiceChannelId"
+        class="absolute bottom-0 left-0 right-0 bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg z-10"
+      >
+        <div class="flex items-center justify-between max-w-7xl mx-auto">
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
+              <div>
+                <div class="text-sm font-semibold text-white">
+                  Voice Connected
+                </div>
+                <div class="text-xs text-gray-400">
+                  {{ voiceChannelName || 'Voice Channel' }}
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <UButton
+                :color="voiceMuted ? 'error' : 'neutral'"
+                :variant="voiceMuted ? 'solid' : 'soft'"
+                size="sm"
+                :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
+                @click="toggleMute"
+              >
+                {{ voiceMuted ? 'Unmute' : 'Mute' }}
+              </UButton>
 
               <UButton
-                type="submit"
-                icon="i-lucide-send"
-                color="primary"
-                :disabled="!newMessage.trim() && !selectedImage"
+                :color="voiceDeafened ? 'error' : 'neutral'"
+                :variant="voiceDeafened ? 'solid' : 'soft'"
+                size="sm"
+                :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+                @click="toggleDeafen"
               >
-                Send
+                {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
               </UButton>
-            </form>
+
+              <UButton
+                color="error"
+                variant="soft"
+                size="sm"
+                icon="i-lucide-phone-off"
+                @click="leaveVoiceChannel"
+              >
+                Disconnect
+              </UButton>
+            </div>
           </div>
-
-          <UserPanel :users="users" />
-        </template>
-
-        <VoiceChannel
-          v-else-if="selectedChannel?.channelType === 'VOICE'"
-          :channel="selectedChannel"
-          :stomp-client="stompClient"
-        />
+        </div>
       </div>
     </div>
   </ClientOnly>
