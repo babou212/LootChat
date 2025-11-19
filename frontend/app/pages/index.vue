@@ -37,7 +37,7 @@ const getAuthToken = async (): Promise<string | null> => {
 
 const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
-const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
+const { currentChannelId: voiceChannelId, currentChannelName: voiceChannelName, isMuted: voiceMuted, isDeafened: voiceDeafened, leaveVoiceChannel, toggleMute, toggleDeafen } = useWebRTC()
 
 const channels = ref<Channel[]>([])
 
@@ -672,30 +672,23 @@ watch(users, () => {
           </div>
         </div>
 
-        <MessageList
-          :messages="messages"
-          :loading="loading"
-          :error="error"
-          :has-more="hasMoreMessages"
-          :loading-more="loadingMoreMessages"
-          @message-deleted="removeMessageById"
-          @load-more="loadMoreMessages"
-        />
+        <template v-if="selectedChannel?.channelType === 'TEXT'">
+          <MessageList
+            :messages="messages"
+            :loading="loading"
+            :error="error"
+            :has-more="hasMoreMessages"
+            :loading-more="loadingMoreMessages"
+            @message-deleted="removeMessageById"
+            @load-more="loadMoreMessages"
+          />
 
-        <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
           <div
-            v-if="imagePreviewUrl"
-            class="mb-2 relative inline-block"
+            class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
-            <img
-              :src="imagePreviewUrl"
-              alt="Preview"
-              class="max-h-32 rounded-lg shadow-md"
-            >
-            <button
-              type="button"
-              class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
-              @click="removeImage"
+            <div
+              v-if="imagePreviewUrl"
+              class="mb-2 relative inline-block"
             >
               ×
             </button>
@@ -746,22 +739,62 @@ watch(users, () => {
               </div>
             </div>
 
-            <UInput
-              v-model="newMessage"
-              placeholder="Type a message..."
-              size="lg"
-              class="flex-1"
-              :ui="{ base: 'w-full' }"
-            />
-            <UButton
-              type="submit"
-              size="lg"
-              icon="i-lucide-send"
-              :disabled="!newMessage.trim() && !selectedImage"
-            >
-              Send
-            </UButton>
-          </form>
+        <VoiceChannel
+          v-else-if="selectedChannel?.channelType === 'VOICE'"
+          :channel="selectedChannel"
+          :stomp-client="stompClient"
+        />
+        <div
+          v-if="voiceChannelId"
+          class="bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg"
+        >
+          <div class="flex items-center justify-between max-w-7xl mx-auto">
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
+                <div>
+                  <div class="text-sm font-semibold text-white">
+                    Voice Connected
+                  </div>
+                  <div class="text-xs text-gray-400">
+                    {{ voiceChannelName || 'Voice Channel' }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <UButton
+                  :color="voiceMuted ? 'error' : 'neutral'"
+                  :variant="voiceMuted ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
+                  @click="toggleMute"
+                >
+                  {{ voiceMuted ? 'Unmute' : 'Mute' }}
+                </UButton>
+
+                <UButton
+                  :color="voiceDeafened ? 'error' : 'neutral'"
+                  :variant="voiceDeafened ? 'solid' : 'soft'"
+                  size="sm"
+                  :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
+                  @click="toggleDeafen"
+                >
+                  {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
+                </UButton>
+
+                <UButton
+                  color="error"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-phone-off"
+                  @click="leaveVoiceChannel"
+                >
+                  Disconnect
+                </UButton>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

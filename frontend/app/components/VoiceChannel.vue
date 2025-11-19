@@ -13,13 +13,14 @@ const {
   participants,
   isMuted,
   isDeafened,
+  currentChannelId,
   joinVoiceChannel,
   leaveVoiceChannel,
   toggleMute,
   toggleDeafen
 } = useWebRTC()
 
-const isConnected = ref(false)
+const isConnected = computed(() => currentChannelId.value === props.channel.id)
 const isConnecting = ref(false)
 const error = ref<string | null>(null)
 
@@ -61,8 +62,7 @@ const handleJoinChannel = async () => {
   error.value = null
 
   try {
-    await joinVoiceChannel(props.channel.id, props.stompClient)
-    isConnected.value = true
+    await joinVoiceChannel(props.channel.id, props.stompClient, props.channel.name)
   } catch (err) {
     console.error('Failed to join voice channel:', err)
 
@@ -78,15 +78,8 @@ const handleJoinChannel = async () => {
 
 const handleLeaveChannel = () => {
   leaveVoiceChannel()
-  isConnected.value = false
   error.value = null
 }
-
-onUnmounted(() => {
-  if (isConnected.value) {
-    handleLeaveChannel()
-  }
-})
 </script>
 
 <template>

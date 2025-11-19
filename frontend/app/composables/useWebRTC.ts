@@ -9,26 +9,56 @@ interface PeerConnection {
   audioContext?: AudioContext
 }
 
+const globalVoiceState = {
+  localStream: ref<MediaStream | null>(null),
+  peers: ref<Map<string, PeerConnection>>(new Map()),
+  participants: ref<VoiceParticipant[]>([]),
+  isMuted: ref(false),
+  isDeafened: ref(false),
+  currentChannelId: ref<number | null>(null),
+  currentChannelName: ref<string | null>(null),
+  signalSubscription: null as StompSubscription | null,
+  channelWebRTCSub: null as StompSubscription | null,
+  userSignalSub: null as StompSubscription | null,
+  stompClient: null as Client | null,
+  beforeUnloadHandler: null as ((e: BeforeUnloadEvent) => void) | null,
+  stompHandlersBound: false,
+  localAnalyser: null as AnalyserNode | null,
+  localAudioContext: null as AudioContext | null,
+  speakingCheckInterval: null as ReturnType<typeof setInterval> | null
+}
+
 export const useWebRTC = () => {
   const { user } = useAuth()
   const { public: publicRuntime } = useRuntimeConfig()
 
-  const localStream = ref<MediaStream | null>(null)
-  const peers = ref<Map<string, PeerConnection>>(new Map())
-  const participants = ref<VoiceParticipant[]>([])
-  const isMuted = ref(false)
-  const isDeafened = ref(false)
-  const currentChannelId = ref<number | null>(null)
+  const localStream = globalVoiceState.localStream
+  const peers = globalVoiceState.peers
+  const participants = globalVoiceState.participants
+  const isMuted = globalVoiceState.isMuted
+  const isDeafened = globalVoiceState.isDeafened
+  const currentChannelId = globalVoiceState.currentChannelId
+  const currentChannelName = globalVoiceState.currentChannelName
 
-  let signalSubscription: StompSubscription | null = null
-  let channelWebRTCSub: StompSubscription | null = null
-  let userSignalSub: StompSubscription | null = null
-  let stompClient: Client | null = null
-  let beforeUnloadHandler: ((e: BeforeUnloadEvent) => void) | null = null
-  let stompHandlersBound = false
-  let localAnalyser: AnalyserNode | null = null
-  let localAudioContext: AudioContext | null = null
-  let speakingCheckInterval: ReturnType<typeof setInterval> | null = null
+  // Cache for user avatars
+  const avatarCache = new Map<string, string | undefined>()
+
+  // Helper function to fetch user avatar
+  const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
+    if (avatarCache.has(userId)) {
+      return avatarCache.get(userId)
+    }
+
+    try {
+      const response = await $fetch<{ avatar?: string }>(`/api/users/${userId}`)
+      const avatar = response.avatar
+      avatarCache.set(userId, avatar)
+      return avatar
+    } catch {
+      avatarCache.set(userId, undefined)
+      return undefined
+    }
+  }
 
   // Cache for user avatars
   const avatarCache = new Map<string, string | undefined>()
@@ -87,8 +117,8 @@ export const useWebRTC = () => {
   }
 
   const checkSpeaking = () => {
-    if (localAnalyser && user.value) {
-      const level = getAudioLevel(localAnalyser)
+    if (globalVoiceState.localAnalyser && user.value) {
+      const level = getAudioLevel(globalVoiceState.localAnalyser)
       const isSpeaking = level > SPEAKING_THRESHOLD && !isMuted.value
       const selfParticipant = participants.value.find(p => p.userId === user.value?.userId.toString())
       if (selfParticipant && selfParticipant.isSpeaking !== isSpeaking) {
@@ -109,7 +139,7 @@ export const useWebRTC = () => {
   }
 
   const bindStompReconnectHandlers = (client: Client) => {
-    if (stompHandlersBound) return
+    if (globalVoiceState.stompHandlersBound) return
     const prevOnConnect = client.onConnect
     client.onConnect = (frame) => {
       if (prevOnConnect) {
@@ -121,20 +151,20 @@ export const useWebRTC = () => {
       }
       if (currentChannelId.value && user.value) {
         try {
-          channelWebRTCSub?.unsubscribe()
+          globalVoiceState.channelWebRTCSub?.unsubscribe()
         } catch {
           // ignore
         }
         try {
-          userSignalSub?.unsubscribe()
+          globalVoiceState.userSignalSub?.unsubscribe()
         } catch {
           // ignore
         }
-        channelWebRTCSub = client.subscribe(`/topic/channels/${currentChannelId.value}/webrtc`, (message: { body: string }) => {
+        globalVoiceState.channelWebRTCSub = client.subscribe(`/topic/channels/${currentChannelId.value}/webrtc`, (message: { body: string }) => {
           const signal = JSON.parse(message.body) as WebRTCSignalResponse
           handleSignal(signal)
         })
-        userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
+        globalVoiceState.userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
           const signal = JSON.parse(message.body) as WebRTCSignalResponse
           handleSignal(signal)
         })
@@ -156,10 +186,10 @@ export const useWebRTC = () => {
           // ignore
         }
       }
-      channelWebRTCSub = null
-      userSignalSub = null
+      globalVoiceState.channelWebRTCSub = null
+      globalVoiceState.userSignalSub = null
     }
-    stompHandlersBound = true
+    globalVoiceState.stompHandlersBound = true
   }
 
   const getRTCConfiguration = (): RTCConfiguration => {
@@ -292,8 +322,8 @@ export const useWebRTC = () => {
   }
 
   const sendSignal = (signal: WebRTCSignalRequest) => {
-    if (stompClient && stompClient.connected) {
-      stompClient.publish({
+    if (globalVoiceState.stompClient && globalVoiceState.stompClient.connected) {
+      globalVoiceState.stompClient.publish({
         destination: '/app/webrtc/signal',
         body: JSON.stringify(signal)
       })
@@ -544,7 +574,7 @@ export const useWebRTC = () => {
     }
   }
 
-  const joinVoiceChannel = async (channelId: number, client: Client) => {
+  const joinVoiceChannel = async (channelId: number, client: Client, channelName?: string) => {
     if (!user.value) return
 
     try {
@@ -564,14 +594,15 @@ export const useWebRTC = () => {
       })
 
       currentChannelId.value = channelId
-      stompClient = client
+      currentChannelName.value = channelName || null
+      globalVoiceState.stompClient = client
       bindStompReconnectHandlers(client)
 
       const { analyser, context } = setupAudioAnalyser(localStream.value)
-      localAnalyser = analyser
-      localAudioContext = context
+      globalVoiceState.localAnalyser = analyser
+      globalVoiceState.localAudioContext = context
 
-      speakingCheckInterval = setInterval(checkSpeaking, 100)
+      globalVoiceState.speakingCheckInterval = setInterval(checkSpeaking, 100)
 
       participants.value.push({
         userId: user.value.userId.toString(),
@@ -581,12 +612,12 @@ export const useWebRTC = () => {
         isSpeaking: false
       })
 
-      channelWebRTCSub = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
+      globalVoiceState.channelWebRTCSub = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
 
-      userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
+      globalVoiceState.userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
@@ -598,14 +629,14 @@ export const useWebRTC = () => {
       })
 
       if (typeof window !== 'undefined') {
-        beforeUnloadHandler = () => {
+        globalVoiceState.beforeUnloadHandler = () => {
           try {
             leaveVoiceChannel()
           } catch {
             // best-effort cleanup
           }
         }
-        window.addEventListener('beforeunload', beforeUnloadHandler)
+        window.addEventListener('beforeunload', globalVoiceState.beforeUnloadHandler)
       }
     } catch (error) {
       console.error('Error joining voice channel:', error)
@@ -622,28 +653,28 @@ export const useWebRTC = () => {
       fromUserId: user.value.userId.toString()
     })
 
-    if (speakingCheckInterval) {
-      clearInterval(speakingCheckInterval)
-      speakingCheckInterval = null
+    if (globalVoiceState.speakingCheckInterval) {
+      clearInterval(globalVoiceState.speakingCheckInterval)
+      globalVoiceState.speakingCheckInterval = null
     }
 
-    if (localAudioContext) {
-      localAudioContext.close().catch(() => {})
-      localAudioContext = null
-      localAnalyser = null
+    if (globalVoiceState.localAudioContext) {
+      globalVoiceState.localAudioContext.close().catch(() => {})
+      globalVoiceState.localAudioContext = null
+      globalVoiceState.localAnalyser = null
     }
 
-    if (signalSubscription) {
-      signalSubscription.unsubscribe()
-      signalSubscription = null
+    if (globalVoiceState.signalSubscription) {
+      globalVoiceState.signalSubscription.unsubscribe()
+      globalVoiceState.signalSubscription = null
     }
-    if (channelWebRTCSub) {
-      channelWebRTCSub.unsubscribe()
-      channelWebRTCSub = null
+    if (globalVoiceState.channelWebRTCSub) {
+      globalVoiceState.channelWebRTCSub.unsubscribe()
+      globalVoiceState.channelWebRTCSub = null
     }
-    if (userSignalSub) {
-      userSignalSub.unsubscribe()
-      userSignalSub = null
+    if (globalVoiceState.userSignalSub) {
+      globalVoiceState.userSignalSub.unsubscribe()
+      globalVoiceState.userSignalSub = null
     }
 
     peers.value.forEach((peer, userId) => {
@@ -658,11 +689,12 @@ export const useWebRTC = () => {
 
     participants.value = []
     currentChannelId.value = null
-    stompClient = null
+    currentChannelName.value = null
+    globalVoiceState.stompClient = null
 
-    if (typeof window !== 'undefined' && beforeUnloadHandler) {
-      window.removeEventListener('beforeunload', beforeUnloadHandler)
-      beforeUnloadHandler = null
+    if (typeof window !== 'undefined' && globalVoiceState.beforeUnloadHandler) {
+      window.removeEventListener('beforeunload', globalVoiceState.beforeUnloadHandler)
+      globalVoiceState.beforeUnloadHandler = null
     }
   }
 
@@ -705,6 +737,7 @@ export const useWebRTC = () => {
     isMuted: readonly(isMuted),
     isDeafened: readonly(isDeafened),
     currentChannelId: readonly(currentChannelId),
+    currentChannelName: readonly(currentChannelName),
     joinVoiceChannel,
     leaveVoiceChannel,
     toggleMute,
