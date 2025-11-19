@@ -46,8 +46,8 @@ jobs:
           VERSION="${{ github.ref_name }}-${SHORT_SHA}-$(date +%s)"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "backend_image=${{ secrets.DOCKER_USERNAME }}/lootchat-backend" >> $GITHUB_OUTPUT
-          echo "frontend_image=${{ secrets.DOCKER_USERNAME }}/lootchat-frontend" >> $GITHUB_OUTPUT
+          echo "backend_image=babou212/lootchat-backend" >> $GITHUB_OUTPUT
+          echo "frontend_image=babou212/lootchat-frontend" >> $GITHUB_OUTPUT
 
       - name: Build and push Backend image
         uses: docker/build-push-action@v5
