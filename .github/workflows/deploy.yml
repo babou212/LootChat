@@ -55,8 +55,10 @@ jobs:
           tags: |
             ${{ env.BACKEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
             ${{ env.BACKEND_IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache,mode=max
+          cache-from: |
+            type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=registry,ref=${{ env.BACKEND_IMAGE_NAME }}:buildcache,mode=max
           labels: |
             org.opencontainers.image.title=LootChat Backend
             org.opencontainers.image.description=LootChat Spring Boot Backend
@@ -73,8 +75,10 @@ jobs:
           tags: |
             ${{ env.FRONTEND_IMAGE_NAME }}:${{ steps.meta.outputs.version }}
             ${{ env.FRONTEND_IMAGE_NAME }}:latest
-          cache-from: type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache,mode=max
+          cache-from: |
+            type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=registry,ref=${{ env.FRONTEND_IMAGE_NAME }}:buildcache,mode=max
           labels: |
             org.opencontainers.image.title=LootChat Frontend
             org.opencontainers.image.description=LootChat Nuxt.js Frontend
