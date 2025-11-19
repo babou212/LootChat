@@ -1,0 +1,16 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: lootchat
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/babou212/LootChat
+  ref:
+    branch: master
+  ignore: |
+    # exclude all
+    /*
+    # include k8s directory
+    !/k8s/

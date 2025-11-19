@@ -1,4 +1,4 @@
-name: Build and Deploy to Kubernetes
+name: Build and Push Docker Images
 
 on:
   push:
@@ -8,8 +8,6 @@ on:
 
 env:
   REGISTRY: docker.io
-  BACKEND_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/lootchat-backend
-  FRONTEND_IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/lootchat-frontend
 
 jobs:
   build-and-push:
@@ -85,111 +83,42 @@ jobs:
         run: |
           echo "Backend Image: ${{ steps.meta.outputs.backend_image }}:${{ steps.meta.outputs.version }}"
           echo "Frontend Image: ${{ steps.meta.outputs.frontend_image }}:${{ steps.meta.outputs.version }}"
-
-  deploy-kubernetes:
-    name: Deploy to Kubernetes
-    runs-on: ubuntu-latest
-    environment: lootchat
-    needs: build-and-push
-    if: github.ref == 'refs/heads/master'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'v1.28.4'
-
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-
-      - name: Verify cluster connection
-        run: |
-          kubectl cluster-info
-          kubectl get nodes
-
-      - name: Update Backend deployment
-        run: |
-          kubectl set image deployment/lootchat-backend \
-            backend=${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }} \
-            -n lootchat
-          
-          kubectl annotate deployment/lootchat-backend \
-            kubernetes.io/change-cause="Deploy from GitHub Actions - commit ${{ github.sha }}" \
-            -n lootchat --overwrite
-
-      - name: Update Frontend deployment
-        run: |
-          kubectl set image deployment/lootchat-frontend \
-            frontend=${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }} \
-            -n lootchat
-          
-          kubectl annotate deployment/lootchat-frontend \
-            kubernetes.io/change-cause="Deploy from GitHub Actions - commit ${{ github.sha }}" \
-            -n lootchat --overwrite
-
-      - name: Wait for Backend rollout
-        run: |
-          kubectl rollout status deployment/lootchat-backend -n lootchat --timeout=5m
-
-      - name: Wait for Frontend rollout
-        run: |
-          kubectl rollout status deployment/lootchat-frontend -n lootchat --timeout=5m
-
-      - name: Verify deployment
-        run: |
-          echo "=== Backend Pods ==="
-          kubectl get pods -n lootchat -l app=lootchat-backend
-          
           echo ""
-          echo "=== Frontend Pods ==="
-          kubectl get pods -n lootchat -l app=lootchat-frontend
-          
+          echo "✅ Images pushed successfully!"
+          echo "Flux CD will automatically detect and deploy these images to the cluster."
           echo ""
-          echo "=== Deployment Status ==="
-          kubectl get deployments -n lootchat
-
-      - name: Get rollout history
-        if: always()
-        run: |
-          echo "=== Backend Rollout History ==="
-          kubectl rollout history deployment/lootchat-backend -n lootchat
-          
-          echo ""
-          echo "=== Frontend Rollout History ==="
-          kubectl rollout history deployment/lootchat-frontend -n lootchat
+          echo "Monitor deployment with:"
+          echo "  flux get kustomizations"
+          echo "  kubectl get pods -n lootchat -w"
 
   notify:
-    name: Notify Deployment Status
+    name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-and-push, deploy-kubernetes]
+    needs: build-and-push
     if: always()
     
     steps:
-      - name: Deployment Success
-        if: needs.deploy-kubernetes.result == 'success'
+      - name: Build Success
+        if: needs.build-and-push.result == 'success'
         run: |
-          echo "Deployment successful!"
+          echo "✅ Build successful!"
           echo "Backend: ${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }}"
           echo "Frontend: ${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }}"
           echo "Commit: ${{ github.sha }}"
+          echo ""
+          echo "Flux CD will automatically deploy these images."
 
-      - name: Deployment Failed
-        if: needs.deploy-kubernetes.result == 'failure'
+      - name: Build Failed
+        if: needs.build-and-push.result == 'failure'
         run: |
-          echo "Deployment failed!"
+          echo "❌ Build failed!"
           exit 1
 
-      - name: Create deployment summary
+      - name: Create build summary
         if: always()
         run: |
           cat >> $GITHUB_STEP_SUMMARY << EOF
-          #LootChat Deployment Summary
+          # LootChat Build Summary
           
           ## Build Information
           - **Branch**: ${{ github.ref_name }}
@@ -200,12 +129,34 @@ jobs:
           - Backend: \`${{ needs.build-and-push.outputs.backend-image }}:${{ needs.build-and-push.outputs.image-tag }}\`
           - Frontend: \`${{ needs.build-and-push.outputs.frontend-image }}:${{ needs.build-and-push.outputs.image-tag }}\`
           
-          ## Deployment Status
-          - Build: ${{ needs.build-and-push.result == 'success' && 'Success' || 'Failed' }}
-          - Deploy: ${{ needs.deploy-kubernetes.result == 'success' && 'Success' || 'Failed' }}
+          ## Build Status
+          - Build: ${{ needs.build-and-push.result == 'success' && '✅ Success' || '❌ Failed' }}
           
-          ## Next Steps
-          - Check application
-          - View logs: \`kubectl logs -n lootchat -l app=lootchat-backend\`
-          - Rollback if needed: \`kubectl rollout undo deployment/lootchat-backend -n lootchat\`
+          ## Deployment
+          Flux CD will automatically:
+          1. Detect the new \`:latest\` images
+          2. Update the manifest files in the repository
+          3. Deploy to the Kubernetes cluster
+          
+          Monitor with:
+          \`\`\`bash
+          # Check Flux status
+          flux get all
+          
+          # Watch pods
+          kubectl get pods -n lootchat -w
+          
+          # View Flux logs
+          flux logs --follow
+          \`\`\`
+          
+          ## Application
+          - URL: https://dylancree.com
+          
+          ## Rollback
+          If needed, rollback with:
+          \`\`\`bash
+          kubectl rollout undo deployment/lootchat-backend -n lootchat
+          kubectl rollout undo deployment/lootchat-frontend -n lootchat
+          \`\`\`
           EOF
