@@ -70,8 +70,10 @@ systemctl restart containerd
 systemctl enable containerd
 
 # Install Kubernetes packages
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+# Extract major.minor version from kubernetes_version
+K8S_VERSION_MAJOR_MINOR=$(echo ${kubernetes_version} | cut -d. -f1,2)
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v$K8S_VERSION_MAJOR_MINOR/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v$K8S_VERSION_MAJOR_MINOR/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
 
 apt-get update
 apt-get install -y kubelet=${kubernetes_version}-* kubeadm=${kubernetes_version}-* kubectl=${kubernetes_version}-*
@@ -145,17 +147,7 @@ kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/main/
 echo "Installing NGINX Ingress Controller..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
 
-# Install cert-manager
-echo "Installing cert-manager..."
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
-
-# Wait for cert-manager to be ready
-echo "Waiting for cert-manager..."
-kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager || true
-kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager || true
-kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager || true
-
-# Generate join command for workers
+# Generate join command for workers EARLY so workers can join
 echo "Generating worker join command..."
 JOIN_COMMAND=$(kubeadm token create --print-join-command)
 echo "$JOIN_COMMAND --apiserver-advertise-address=$PRIVATE_IP" > /root/join-command.sh
@@ -164,12 +156,27 @@ chmod +x /root/join-command.sh
 # Save join command to a location workers can access
 echo "$JOIN_COMMAND" > /tmp/join-command.txt
 
+# Create a flag file to indicate initialization is complete - workers can join now
+touch /root/.k8s-init-complete
+
+echo "=========================================="
+echo "Control plane is ready for worker nodes!"
+echo "=========================================="
+
+# Install cert-manager
+echo "Installing cert-manager..."
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+
 # Install Helm
 echo "Installing Helm..."
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-# Create a flag file to indicate initialization is complete
-touch /root/.k8s-init-complete
+# Wait for cert-manager to be ready (after workers have had a chance to join)
+echo "Waiting for cert-manager..."
+sleep 30
+kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager || true
+kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager || true
+kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-cainjector -n cert-manager || true
 
 echo "=========================================="
 echo "Control Plane Initialization Complete!"
