@@ -40,21 +40,6 @@ export const useWebRTC = () => {
   const currentChannelId = globalVoiceState.currentChannelId
   const currentChannelName = globalVoiceState.currentChannelName
 
-  const toastLastShown = new Map<string, number>()
-  const maybeToast = (key: string, title: string, description?: string, cooldownMs = 8000) => {
-    if (typeof window === 'undefined') return
-    const now = Date.now()
-    const last = toastLastShown.get(key) || 0
-    if (now - last < cooldownMs) return
-    toastLastShown.set(key, now)
-    try {
-      const toast = useToast()
-      toast.add({ title, description })
-    } catch {
-      // ignore
-    }
-  }
-
   const SPEAKING_THRESHOLD = -25 // dB threshold
 
   const setupAudioAnalyser = (stream: MediaStream, audioContext?: AudioContext): { analyser: AnalyserNode, context: AudioContext } => {
@@ -133,7 +118,6 @@ export const useWebRTC = () => {
           type: 'JOIN' as WebRTCSignalType,
           fromUserId: user.value.userId.toString()
         })
-        maybeToast('stomp-reconnect', 'Reconnected to voice', 'Re-syncing…')
       }
     }
 
@@ -250,7 +234,6 @@ export const useWebRTC = () => {
 
     pc.oniceconnectionstatechange = async () => {
       if (pc.iceConnectionState === 'failed') {
-        maybeToast('ice-restart', 'Voice connection unstable', 'Reconnecting…')
         await tryIceRestart(userId)
       } else if (pc.iceConnectionState === 'disconnected') {
         setTimeout(() => {
@@ -265,7 +248,6 @@ export const useWebRTC = () => {
 
     pc.onconnectionstatechange = async () => {
       if (pc.connectionState === 'failed') {
-        maybeToast('ice-restart', 'Voice connection unstable', 'Reconnecting…')
         await tryIceRestart(userId)
       } else if (pc.connectionState === 'disconnected') {
         setTimeout(() => {

@@ -37,7 +37,7 @@ const getAuthToken = async (): Promise<string | null> => {
 
 const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
 
-const { currentChannelId: voiceChannelId, currentChannelName: voiceChannelName, isMuted: voiceMuted, isDeafened: voiceDeafened, joinVoiceChannel, leaveVoiceChannel, toggleMute, toggleDeafen } = useWebRTC()
+const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 
 const channels = ref<Channel[]>([])
 
@@ -454,17 +454,9 @@ const sendMessage = async () => {
 
 const isClient = ref(false)
 
-const toast = useToast()
-
 const handleJoinVoice = async (channelId: number) => {
   const client = getClient()
   if (!client) {
-    toast.add({
-      title: 'Connection Error',
-      description: 'WebSocket connection not established. Please wait and try again.',
-      color: 'error',
-      icon: 'i-lucide-wifi-off'
-    })
     return
   }
 
@@ -487,44 +479,19 @@ const handleJoinVoice = async (channelId: number) => {
 
     const isConnected = await waitForConnection()
     if (!isConnected) {
-      toast.add({
-        title: 'Connection Timeout',
-        description: 'WebSocket connection could not be established. Please refresh the page.',
-        color: 'error',
-        icon: 'i-lucide-wifi-off'
-      })
       return
     }
   }
 
   try {
     await joinVoiceChannel(channelId, client)
-    toast.add({
-      title: 'Connected',
-      description: 'You joined the voice channel',
-      color: 'success',
-      icon: 'i-lucide-mic'
-    })
   } catch (err) {
     console.error('Failed to join voice channel:', err)
-    const errorMessage = err instanceof Error ? err.message : 'Failed to join voice channel'
-    toast.add({
-      title: 'Voice Connection Failed',
-      description: errorMessage,
-      color: 'error',
-      icon: 'i-lucide-alert-circle'
-    })
   }
 }
 
 const handleLeaveVoice = () => {
   leaveVoiceChannel()
-  toast.add({
-    title: 'Disconnected',
-    description: 'You left the voice channel',
-    color: 'neutral',
-    icon: 'i-lucide-phone-off'
-  })
 }
 
 onMounted(async () => {
@@ -763,59 +730,6 @@ watch(users, () => {
                 Send
               </UButton>
             </form>
-          </div>
-
-          <div
-            v-if="voiceChannelId"
-            class="bg-gray-800 dark:bg-gray-900 border-t border-gray-700 dark:border-gray-800 p-4 shadow-lg"
-          >
-            <div class="flex items-center justify-between max-w-7xl mx-auto">
-              <div class="flex items-center gap-4">
-                <div class="flex items-center gap-2">
-                  <UIcon name="i-lucide-mic" class="text-green-500 text-xl" />
-                  <div>
-                    <div class="text-sm font-semibold text-white">
-                      Voice Connected
-                    </div>
-                    <div class="text-xs text-gray-400">
-                      {{ voiceChannelName || 'Voice Channel' }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <UButton
-                    :color="voiceMuted ? 'error' : 'neutral'"
-                    :variant="voiceMuted ? 'solid' : 'soft'"
-                    size="sm"
-                    :icon="voiceMuted ? 'i-lucide-mic-off' : 'i-lucide-mic'"
-                    @click="toggleMute"
-                  >
-                    {{ voiceMuted ? 'Unmute' : 'Mute' }}
-                  </UButton>
-
-                  <UButton
-                    :color="voiceDeafened ? 'error' : 'neutral'"
-                    :variant="voiceDeafened ? 'solid' : 'soft'"
-                    size="sm"
-                    :icon="voiceDeafened ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
-                    @click="toggleDeafen"
-                  >
-                    {{ voiceDeafened ? 'Undeafen' : 'Deafen' }}
-                  </UButton>
-
-                  <UButton
-                    color="error"
-                    variant="soft"
-                    size="sm"
-                    icon="i-lucide-phone-off"
-                    @click="leaveVoiceChannel"
-                  >
-                    Disconnect
-                  </UButton>
-                </div>
-              </div>
-            </div>
           </div>
 
           <UserPanel :users="users" />

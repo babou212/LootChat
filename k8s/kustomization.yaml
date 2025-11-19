@@ -6,7 +6,7 @@ namespace: lootchat
 resources:
   - namespace.yaml
   - configmap.yaml
-  # - secrets.yaml  # Applied manually, not in git for security
+  - secrets.yaml
   - pvcs.yaml
   - postgres.yaml
   - redis.yaml
