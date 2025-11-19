@@ -1,0 +1,5 @@
+# Ignore the actual secrets file with real values
+secrets.yaml
+
+# Keep the example file
+!secrets.yaml.example

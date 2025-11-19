@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lootchat-frontend
+  namespace: lootchat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lootchat-frontend
+  template:
+    metadata:
+      labels:
+        app: lootchat-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: babou212/lootchat-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: NODE_ENV
+        - name: NUXT_SESSION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: NUXT_SESSION_PASSWORD
+        - name: NUXT_PUBLIC_API_URL
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: NUXT_PUBLIC_API_URL
+        - name: NUXT_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: NUXT_API_URL
+        - name: NUXT_PUBLIC_TENOR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: NUXT_PUBLIC_TENOR_API_KEY
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lootchat-frontend
+  namespace: lootchat
+spec:
+  selector:
+    app: lootchat-frontend
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http
