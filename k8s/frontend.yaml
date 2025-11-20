@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: babou212/lootchat-frontend:master-dc29718-1763652341 # {"$imagepolicy": "flux-system:lootchat-frontend"}
+        image: babou212/lootchat-frontend:master-1360620-1763653464 # {"$imagepolicy": "flux-system:lootchat-frontend"}
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
