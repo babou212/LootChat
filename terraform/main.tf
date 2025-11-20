@@ -132,6 +132,17 @@ resource "hcloud_firewall" "workers" {
     ]
   }
 
+  # WireGuard VPN
+  rule {
+    direction = "in"
+    protocol  = "udp"
+    port      = "51820"
+    source_ips = [
+      "0.0.0.0/0",
+      "::/0"
+    ]
+  }
+
   # Allow all traffic within the cluster
   rule {
     direction = "in"
