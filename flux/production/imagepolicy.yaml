@@ -7,11 +7,12 @@ metadata:
 spec:
   imageRepositoryRef:
     name: lootchat-backend
-  policy:
-    alphabetical:
-      order: asc
   filterTags:
-    pattern: '^latest$'
+    pattern: '^master-[a-f0-9]+-(?P<timestamp>[0-9]+)$'
+    extract: '$timestamp'
+  policy:
+    numerical:
+      order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
@@ -21,8 +22,9 @@ metadata:
 spec:
   imageRepositoryRef:
     name: lootchat-frontend
-  policy:
-    alphabetical:
-      order: asc
   filterTags:
-    pattern: '^latest$'
+    pattern: '^master-[a-f0-9]+-(?P<timestamp>[0-9]+)$'
+    extract: '$timestamp'
+  policy:
+    numerical:
+      order: asc
