@@ -18,14 +18,25 @@ kubectl exec -n wireguard $POD -- cat /config/peer1/peer1.png 2>/dev/null || ech
 
 echo ""
 echo ""
-echo "=== WireGuard Server Public IP ==="
-kubectl get svc wireguard -n wireguard -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+echo "=== WireGuard Server Connection Info ==="
+NODEPORT=$(kubectl get svc wireguard -n wireguard -o jsonpath='{.spec.ports[0].nodePort}')
+# Get any worker node IP (all workers have the service)
+NODE_IP=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+
+if [ -z "$NODE_IP" ]; then
+    # Fallback: try to get from terraform output
+    NODE_IP="46.224.56.167"  # First worker from terraform
+fi
+
+echo "Server: $NODE_IP:$NODEPORT"
 echo ""
+echo "NOTE: Update the Endpoint in the config above to: $NODE_IP:$NODEPORT"
 
 echo ""
 echo "=== Instructions ==="
 echo "1. Save the configuration above to a file (e.g., wg0.conf)"
-echo "2. Install WireGuard on your client device"
-echo "3. Import the configuration or use: wg-quick up wg0.conf"
-echo "4. Once connected, access Grafana at: http://grafana"
+echo "2. Update the Endpoint line to: Endpoint = $NODE_IP:$NODEPORT"
+echo "3. Install WireGuard on your client device"
+echo "4. Import the configuration or use: wg-quick up wg0.conf"
+echo "5. Once connected, access Grafana at: http://grafana"
 echo ""

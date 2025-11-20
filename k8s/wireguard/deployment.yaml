@@ -99,12 +99,13 @@ metadata:
   labels:
     app: wireguard
 spec:
-  type: LoadBalancer
+  type: NodePort
   ports:
   - port: 51820
     targetPort: 51820
     protocol: UDP
     name: wireguard
+    nodePort: 32222
   selector:
     app: wireguard
 ---
