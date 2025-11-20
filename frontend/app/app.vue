@@ -38,10 +38,5 @@ useSeoMeta({
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
-
-    <!-- Global persistent voice indicator -->
-    <ClientOnly>
-      <VoiceIndicator />
-    </ClientOnly>
   </UApp>
 </template>

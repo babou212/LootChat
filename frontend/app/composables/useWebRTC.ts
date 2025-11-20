@@ -40,6 +40,26 @@ export const useWebRTC = () => {
   const currentChannelId = globalVoiceState.currentChannelId
   const currentChannelName = globalVoiceState.currentChannelName
 
+  // Cache for user avatars
+  const avatarCache = new Map<string, string | undefined>()
+
+  // Helper function to fetch user avatar
+  const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
+    if (avatarCache.has(userId)) {
+      return avatarCache.get(userId)
+    }
+
+    try {
+      const response = await $fetch<{ avatar?: string }>(`/api/users/${userId}`)
+      const avatar = response.avatar
+      avatarCache.set(userId, avatar)
+      return avatar
+    } catch {
+      avatarCache.set(userId, undefined)
+      return undefined
+    }
+  }
+
   const toastLastShown = new Map<string, number>()
   const maybeToast = (key: string, title: string, description?: string, cooldownMs = 8000) => {
     if (typeof window === 'undefined') return
@@ -310,9 +330,12 @@ export const useWebRTC = () => {
       switch (type) {
         case 'JOIN':
           if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
+            // Fetch avatar for the joining user
+            const avatar = await fetchUserAvatar(fromUserId)
             participants.value.push({
               userId: fromUserId,
               username: signal.fromUsername,
+              avatar,
               isMuted: false,
               isSpeaking: false
             })
@@ -564,6 +587,7 @@ export const useWebRTC = () => {
       participants.value.push({
         userId: user.value.userId.toString(),
         username: user.value.username,
+        avatar: user.value.avatar,
         isMuted: false,
         isSpeaking: false
       })

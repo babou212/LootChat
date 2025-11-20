@@ -5,6 +5,7 @@ import type { Client } from '@stomp/stompjs'
 interface Props {
   channel: Channel
   stompClient: Client | null
+  wsConnected?: boolean
 }
 
 const props = defineProps<Props>()
@@ -107,7 +108,7 @@ const handleLeaveChannel = () => {
       />
 
       <UAlert
-        v-if="!stompClient"
+        v-if="!wsConnected"
         color="warning"
         icon="i-lucide-wifi-off"
         title="Connecting to server..."
@@ -129,7 +130,7 @@ const handleLeaveChannel = () => {
             color="primary"
             icon="i-lucide-phone-call"
             :loading="isConnecting"
-            :disabled="isConnecting || !stompClient"
+            :disabled="isConnecting || !wsConnected"
             @click="handleJoinChannel"
           >
             {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
