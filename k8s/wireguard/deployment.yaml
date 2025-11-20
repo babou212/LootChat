@@ -17,28 +17,6 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      initContainers:
-      - name: wireguard-setup
-        image: linuxserver/wireguard:latest
-        command:
-        - sh
-        - -c
-        - |
-          if [ ! -f /config/server/privatekey ]; then
-            mkdir -p /config/server /config/peer1
-            cd /config/server
-            wg genkey | tee privatekey | wg pubkey > publickey
-            cd /config/peer1
-            wg genkey | tee privatekey | wg pubkey > publickey
-            chmod 600 /config/server/privatekey /config/peer1/privatekey
-          fi
-        volumeMounts:
-        - name: wireguard-config
-          mountPath: /config
-        securityContext:
-          capabilities:
-            add:
-            - NET_ADMIN
       containers:
       - name: wireguard
         image: linuxserver/wireguard:latest
