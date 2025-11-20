@@ -6,7 +6,6 @@ namespace: lootchat
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secrets.yaml
   - pvcs.yaml
   - postgres.yaml
   - redis.yaml
@@ -15,6 +14,15 @@ resources:
   - frontend.yaml
   - ingress.yaml
   # - certbot-cronjob.yaml  # Uncomment if not using cert-manager
+
+# Generate secrets from environment variables
+secretGenerator:
+  - name: lootchat-secrets
+    namespace: lootchat
+    envs:
+      - secrets.env
+    options:
+      disableNameSuffixHash: true
 
 # Labels to add to all resources
 labels:

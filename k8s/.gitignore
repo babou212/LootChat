@@ -1,5 +1,9 @@
 # Ignore the actual secrets file with real values
 secrets.yaml
+secrets.env
 
-# Keep the example file
+# Keep the template and example files
 !secrets.yaml.example
+!secrets.env.example
+!secrets.template.yaml
+!.sops.yaml
