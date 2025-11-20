@@ -14,6 +14,13 @@ export interface UserPresenceUpdate {
   status: 'online' | 'offline'
 }
 
+// Global state for WebSocket connection (singleton pattern)
+const globalWebSocketState = {
+  stompClient: null as Client | null,
+  isConnected: ref(false),
+  connectionError: ref<string | null>(null)
+}
+
 export const useWebSocket = () => {
   const config = useRuntimeConfig()
 
@@ -30,10 +37,6 @@ export const useWebSocket = () => {
     return config.public.apiUrl || 'http://localhost:8080'
   }
 
-  let stompClient: Client | null = null
-  const isConnected = ref(false)
-  const connectionError = ref<string | null>(null)
-
   const connect = (token: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       try {
@@ -42,7 +45,7 @@ export const useWebSocket = () => {
         const socket = new SockJS(`${wsUrl}/ws`)
 
         // Create STOMP client
-        stompClient = new Client({
+        globalWebSocketState.stompClient = new Client({
           webSocketFactory: () => socket as WebSocket,
           connectHeaders: {
             Authorization: `Bearer ${token}`
@@ -51,52 +54,52 @@ export const useWebSocket = () => {
           heartbeatIncoming: 4000,
           heartbeatOutgoing: 4000,
           onConnect: () => {
-            isConnected.value = true
-            connectionError.value = null
+            globalWebSocketState.isConnected.value = true
+            globalWebSocketState.connectionError.value = null
             resolve()
           },
           onStompError: (frame) => {
             console.error('STOMP error:', frame)
-            connectionError.value = frame.headers['message'] || 'Unknown error'
-            isConnected.value = false
+            globalWebSocketState.connectionError.value = frame.headers['message'] || 'Unknown error'
+            globalWebSocketState.isConnected.value = false
             reject(new Error(frame.headers['message'] || 'WebSocket connection failed'))
           },
           onWebSocketError: (event) => {
             console.error('WebSocket error:', event)
-            connectionError.value = 'WebSocket connection error'
-            isConnected.value = false
+            globalWebSocketState.connectionError.value = 'WebSocket connection error'
+            globalWebSocketState.isConnected.value = false
             reject(new Error('WebSocket connection error'))
           },
           onDisconnect: () => {
-            isConnected.value = false
+            globalWebSocketState.isConnected.value = false
           }
         })
 
         // Activate the client
-        stompClient.activate()
+        globalWebSocketState.stompClient.activate()
       } catch (error) {
         console.error('Error creating WebSocket connection:', error)
-        connectionError.value = 'Failed to create WebSocket connection'
+        globalWebSocketState.connectionError.value = 'Failed to create WebSocket connection'
         reject(error)
       }
     })
   }
 
   const disconnect = () => {
-    if (stompClient) {
-      stompClient.deactivate()
-      stompClient = null
-      isConnected.value = false
+    if (globalWebSocketState.stompClient) {
+      globalWebSocketState.stompClient.deactivate()
+      globalWebSocketState.stompClient = null
+      globalWebSocketState.isConnected.value = false
     }
   }
 
   const subscribeToChannel = (channelId: number, callback: (message: MessageResponse) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       `/topic/channels/${channelId}/messages`,
       (message) => {
         try {
@@ -112,12 +115,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToAllMessages = (callback: (message: MessageResponse) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       '/topic/messages',
       (message) => {
         try {
@@ -133,12 +136,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToUserPresence = (callback: (update: UserPresenceUpdate) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       '/topic/user-presence',
       (message) => {
         try {
@@ -154,12 +157,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToReactions = (callback: (reaction: Reaction) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       '/topic/reactions',
       (message) => {
         try {
@@ -175,12 +178,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToReactionRemovals = (callback: (reaction: Reaction) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       '/topic/reactions/remove',
       (message) => {
         try {
@@ -196,12 +199,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToChannelReactions = (channelId: number, callback: (reaction: Reaction) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       `/topic/channels/${channelId}/reactions`,
       (message) => {
         try {
@@ -217,12 +220,12 @@ export const useWebSocket = () => {
   }
 
   const subscribeToChannelReactionRemovals = (channelId: number, callback: (reaction: Reaction) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
 
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       `/topic/channels/${channelId}/reactions/remove`,
       (message) => {
         try {
@@ -238,11 +241,11 @@ export const useWebSocket = () => {
   }
 
   const subscribeToGlobalMessageDeletions = (callback: (payload: MessageDeletionPayload) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       '/topic/messages/delete',
       (message) => {
         try {
@@ -257,11 +260,11 @@ export const useWebSocket = () => {
   }
 
   const subscribeToChannelMessageDeletions = (channelId: number, callback: (payload: MessageDeletionPayload) => void) => {
-    if (!stompClient || !isConnected.value) {
+    if (!globalWebSocketState.stompClient || !globalWebSocketState.isConnected.value) {
       // console.error('WebSocket is not connected')
       return null
     }
-    const subscription = stompClient.subscribe(
+    const subscription = globalWebSocketState.stompClient.subscribe(
       `/topic/channels/${channelId}/messages/delete`,
       (message) => {
         try {
@@ -287,8 +290,8 @@ export const useWebSocket = () => {
     subscribeToChannelReactionRemovals,
     subscribeToGlobalMessageDeletions,
     subscribeToChannelMessageDeletions,
-    isConnected: readonly(isConnected),
-    connectionError: readonly(connectionError),
-    getClient: () => stompClient
+    isConnected: readonly(globalWebSocketState.isConnected),
+    connectionError: readonly(globalWebSocketState.connectionError),
+    getClient: () => globalWebSocketState.stompClient
   }
 }
