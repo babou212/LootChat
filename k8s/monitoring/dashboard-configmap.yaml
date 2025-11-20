@@ -1,9 +1,12 @@
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-k8s-cluster-315
   namespace: monitoring
   labels:
     grafana_dashboard: "1"
 data:
-  kubernetes-cluster-monitoring.json: |-
+  kubernetes-cluster-monitoring.json: |
     {
       "__inputs": [
         {
