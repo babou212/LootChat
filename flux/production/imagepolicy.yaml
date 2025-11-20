@@ -8,8 +8,8 @@ spec:
   imageRepositoryRef:
     name: lootchat-backend
   policy:
-    semver:
-      range: '>=0.0.0'
+    alphabetical:
+      order: asc
   filterTags:
     pattern: '^latest$'
 ---
@@ -22,7 +22,7 @@ spec:
   imageRepositoryRef:
     name: lootchat-frontend
   policy:
-    semver:
-      range: '>=0.0.0'
+    alphabetical:
+      order: asc
   filterTags:
     pattern: '^latest$'

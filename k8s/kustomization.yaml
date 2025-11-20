@@ -15,14 +15,8 @@ resources:
   - ingress.yaml
   # - certbot-cronjob.yaml  # Uncomment if not using cert-manager
 
-# Generate secrets from environment variables
-secretGenerator:
-  - name: lootchat-secrets
-    namespace: lootchat
-    envs:
-      - secrets.env
-    options:
-      disableNameSuffixHash: true
+# NOTE: Secrets are managed manually in the cluster
+# If you want Flux to manage secrets, use sealed-secrets or SOPS
 
 # Labels to add to all resources
 labels:
