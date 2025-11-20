@@ -13,6 +13,7 @@ resources:
   - backend.yaml
   - frontend.yaml
   - ingress.yaml
+  - wireguard
   # - certbot-cronjob.yaml  # Uncomment if not using cert-manager
 
 # NOTE: Secrets are managed manually in the cluster

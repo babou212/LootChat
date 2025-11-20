@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wireguard
+  namespace: wireguard
+  labels:
+    app: wireguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wireguard
+  template:
+    metadata:
+      labels:
+        app: wireguard
+    spec:
+      initContainers:
+      - name: wireguard-setup
+        image: linuxserver/wireguard:latest
+        command:
+        - sh
+        - -c
+        - |
+          if [ ! -f /config/server/privatekey ]; then
+            mkdir -p /config/server /config/peer1
+            cd /config/server
+            wg genkey | tee privatekey | wg pubkey > publickey
+            cd /config/peer1
+            wg genkey | tee privatekey | wg pubkey > publickey
+            chmod 600 /config/server/privatekey /config/peer1/privatekey
+          fi
+        volumeMounts:
+        - name: wireguard-config
+          mountPath: /config
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+      containers:
+      - name: wireguard
+        image: linuxserver/wireguard:latest
+        ports:
+        - containerPort: 51820
+          protocol: UDP
+          name: wireguard
+        env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: "America/New_York"
+        - name: SERVERURL
+          value: "auto"
+        - name: SERVERPORT
+          value: "51820"
+        - name: PEERS
+          value: "1"
+        - name: PEERDNS
+          value: "10.96.0.10"  # CoreDNS service IP
+        - name: INTERNAL_SUBNET
+          value: "10.8.0.0/24"
+        - name: ALLOWEDIPS
+          value: "10.8.0.0/24,10.96.0.0/12,10.244.0.0/16"  # VPN subnet + k8s service CIDR + pod CIDR
+        volumeMounts:
+        - name: wireguard-config
+          mountPath: /config
+        - name: lib-modules
+          mountPath: /lib/modules
+          readOnly: true
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - SYS_MODULE
+          privileged: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      volumes:
+      - name: wireguard-config
+        persistentVolumeClaim:
+          claimName: wireguard-config
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wireguard
+  namespace: wireguard
+  labels:
+    app: wireguard
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 51820
+    targetPort: 51820
+    protocol: UDP
+    name: wireguard
+  selector:
+    app: wireguard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wireguard-config
+  namespace: wireguard
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
