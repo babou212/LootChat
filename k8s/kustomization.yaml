@@ -13,13 +13,10 @@ resources:
   - backend.yaml
   - frontend.yaml
   - ingress.yaml
-  - wireguard
-  # - certbot-cronjob.yaml  # Uncomment if not using cert-manager
 
 # NOTE: Secrets are managed manually in the cluster
-# If you want Flux to manage secrets, use sealed-secrets or SOPS
 
-# Labels to add to all resources
+# Labels to add to all lootchat resources
 labels:
   - pairs:
       app.kubernetes.io/name: lootchat
