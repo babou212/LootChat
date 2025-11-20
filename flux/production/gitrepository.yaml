@@ -9,6 +9,8 @@ spec:
   url: https://github.com/babou212/LootChat
   ref:
     branch: master
+  secretRef:
+    name: lootchat-git-auth
   ignore: |
     # exclude all
     /*

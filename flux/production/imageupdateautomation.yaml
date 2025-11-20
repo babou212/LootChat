@@ -1,5 +1,5 @@
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: lootchat
@@ -23,10 +23,6 @@ spec:
         Automation: {{range .Changed.Changes}}{{println .}}{{end}}
     push:
       branch: master
-      options:
-        credentials:
-          secretRef:
-            name: lootchat-git-auth
   update:
     path: ./k8s
     strategy: Setters
