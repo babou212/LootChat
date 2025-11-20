@@ -20,9 +20,13 @@ spec:
       messageTemplate: |
         [ci skip] Update image tags
         
-        Automation: {{range .Updated.Images}}{{println .}}{{end}}
+        Automation: {{range .Changed.Changes}}{{println .}}{{end}}
     push:
       branch: master
+      options:
+        credentials:
+          secretRef:
+            name: lootchat-git-auth
   update:
     path: ./k8s
     strategy: Setters
