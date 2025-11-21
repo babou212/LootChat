@@ -5,11 +5,13 @@ namespace: lootchat
 
 resources:
   - namespace.yaml
+  - priority-classes.yaml
   - configmap.yaml
   - pvcs.yaml
   - postgres.yaml
   - redis.yaml
   - kafka.yaml
+  - minio.yaml
   - backend.yaml
   - frontend.yaml
   - ingress.yaml

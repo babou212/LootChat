@@ -18,10 +18,56 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
 
-const getAuthenticatedImageUrl = (imageUrl: string) => {
+// Cache for presigned URLs (filename -> {url, expiry})
+const presignedUrlCache = ref<Map<string, { url: string, expiry: number }>>(new Map())
+
+const getAuthenticatedImageUrl = async (imageUrl: string): Promise<string> => {
   if (!imageUrl) return ''
   const filename = imageUrl.split('/').pop()
-  return `/api/files/images/${filename}`
+  if (!filename) return ''
+  
+  // Check cache first
+  const cached = presignedUrlCache.value.get(filename)
+  if (cached && cached.expiry > Date.now()) {
+    return cached.url
+  }
+  
+  try {
+    // Fetch presigned URL from our API route
+    const response = await $fetch<{ url: string, fileName: string }>(`/api/files/images/${filename}`)
+    const url = response.url
+    
+    // Cache for 55 minutes (presigned URLs are valid for 60 minutes)
+    presignedUrlCache.value.set(filename, {
+      url,
+      expiry: Date.now() + (55 * 60 * 1000)
+    })
+    
+    return url
+  } catch (error) {
+    console.error('Failed to get presigned URL:', error)
+    return ''
+  }
+}
+
+const imageUrls = ref<Map<string, string>>(new Map())
+
+const loadImageUrl = async (imageUrl: string) => {
+  if (!imageUrl) return
+  const filename = imageUrl.split('/').pop()
+  if (!filename) return
+  
+  if (!imageUrls.value.has(filename)) {
+    const url = await getAuthenticatedImageUrl(imageUrl)
+    imageUrls.value.set(filename, url)
+  }
+}
+
+const getLoadedImageUrl = (imageUrl: string): string => {
+  if (!imageUrl) return ''
+  const filename = imageUrl.split('/').pop()
+  if (!filename) return ''
+  return imageUrls.value.get(filename) || ''
 }
 
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -445,6 +491,15 @@ watch(() => props.loading, (isLoading) => {
     hasInitiallyScrolled.value = true
   }
 })
+
+// Watch for new messages and preload image URLs
+watch(() => props.messages, async (newMessages) => {
+  for (const message of newMessages) {
+    if (message.imageUrl) {
+      await loadImageUrl(message.imageUrl)
+    }
+  }
+}, { immediate: true, deep: true })
 </script>
 
 <template>
@@ -528,12 +583,12 @@ watch(() => props.loading, (isLoading) => {
           </p>
 
           <img
-            v-if="message.imageUrl"
-            :src="getAuthenticatedImageUrl(message.imageUrl)"
+            v-if="message.imageUrl && getLoadedImageUrl(message.imageUrl)"
+            :src="getLoadedImageUrl(message.imageUrl)"
             :alt="message.imageFilename || 'Uploaded image'"
             class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
             loading="lazy"
-            @click="openImageModal(getAuthenticatedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
+            @click="openImageModal(getLoadedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
           >
 
           <YouTubePlayer

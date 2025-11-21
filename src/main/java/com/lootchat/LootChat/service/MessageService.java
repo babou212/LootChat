@@ -44,7 +44,7 @@ public class MessageService {
     private final ChannelRepository channelRepository;
     private final MessageReactionRepository reactionRepository;
     private final CurrentUserService currentUserService;
-    private final FileStorageService fileStorageService;
+    private final S3FileStorageService s3FileStorageService;
     private final KafkaProducerService kafkaProducerService;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
@@ -109,7 +109,7 @@ public class MessageService {
         Channel channel = channelRepository.findById(channelId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + channelId));
 
-        String imageFilename = fileStorageService.storeFile(image);
+        String imageFilename = s3FileStorageService.storeFile(image);
         String imageUrl = "/api/files/images/" + imageFilename;
 
         String messageContent = content != null ? content : "";
@@ -272,7 +272,7 @@ public class MessageService {
         reactionRepository.deleteByMessageId(id);
 
         if (message.getImageFilename() != null) {
-            fileStorageService.deleteFile(message.getImageFilename());
+            s3FileStorageService.deleteFile(message.getImageFilename());
         }
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
         messageRepository.deleteById(id);

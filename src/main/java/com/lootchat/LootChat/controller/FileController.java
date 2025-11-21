@@ -1,56 +1,53 @@
 package com.lootchat.LootChat.controller;
 
-import com.lootchat.LootChat.service.FileStorageService;
+import com.lootchat.LootChat.service.S3FileStorageService;
+import io.minio.StatObjectResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.servlet.http.HttpServletRequest;
-import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/files")
 @RequiredArgsConstructor
 public class FileController {
 
-    private final FileStorageService fileStorageService;
+    private final S3FileStorageService s3FileStorageService;
 
     @GetMapping("/images/{fileName:.+}")
-    public ResponseEntity<Resource> downloadFile(
-            @PathVariable String fileName,
-            HttpServletRequest request) {
-        
-        // Authentication is handled by JwtAuthenticationFilter
-        // If we reach here, user is authenticated
-        Resource resource = fileStorageService.loadFileAsResource(fileName);
+    public ResponseEntity<Map<String, String>> getPresignedUrl(@PathVariable String fileName) {
+        // Validate filename to prevent path traversal attacks
+        if (fileName == null || fileName.isBlank()) {
+            log.warn("Empty filename requested");
+            return ResponseEntity.badRequest().build();
+        }
 
-        String contentType = null;
+        if (fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) {
+            log.warn("Invalid filename requested (path traversal attempt): {}", fileName);
+            return ResponseEntity.badRequest().build();
+        }
+
         try {
-            contentType = request.getServletContext().getMimeType(resource.getFile().getAbsolutePath());
-        } catch (IOException ex) {
-            String lowerFileName = fileName.toLowerCase();
-            if (lowerFileName.endsWith(".png")) {
-                contentType = "image/png";
-            } else if (lowerFileName.endsWith(".jpg") || lowerFileName.endsWith(".jpeg")) {
-                contentType = "image/jpeg";
-            } else if (lowerFileName.endsWith(".gif")) {
-                contentType = "image/gif";
-            } else if (lowerFileName.endsWith(".webp")) {
-                contentType = "image/webp";
-            }
-        }
+            // Verify file exists before generating presigned URL
+            StatObjectResponse metadata = s3FileStorageService.getFileMetadata(fileName);
+            log.debug("Generating presigned URL for file: {} (size: {} bytes)",
+                    fileName, metadata.size());
 
-        if (contentType == null) {
-            contentType = "image/jpeg"; 
-        }
+            String presignedUrl = s3FileStorageService.getPresignedUrl(fileName, 60);
 
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(contentType))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
-                .header(HttpHeaders.CACHE_CONTROL, "max-age=31536000")
-                .body(resource);
+            Map<String, String> response = new HashMap<>();
+            response.put("url", presignedUrl);
+            response.put("fileName", fileName);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Failed to generate presigned URL for file: {}", fileName, e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
     }
 }
