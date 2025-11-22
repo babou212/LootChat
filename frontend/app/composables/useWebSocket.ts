@@ -96,7 +96,7 @@ export const useWebSocket = () => {
 
   const subscribeToChannel = (channelId: number, callback: (message: MessageResponse) => void) => {
     if (!stompClient || !isConnected.value) {
-      // console.error('WebSocket is not connected')
+      console.warn(`Cannot subscribe to channel ${channelId} - WebSocket not connected`)
       return null
     }
 

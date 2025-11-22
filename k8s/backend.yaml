@@ -294,6 +294,10 @@ metadata:
 spec:
   selector:
     app: lootchat-backend
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   ports:
   - port: 8080
     targetPort: 8080

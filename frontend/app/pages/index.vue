@@ -167,6 +167,11 @@ const selectChannel = async (channel: Channel) => {
     }
 
     if (token.value) {
+      const client = getClient()
+      if (client && !client.connected) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
       subscription = subscribeToChannel(channel.id, (newMessage) => {
         const exists = messages.value.find(m => m.id === newMessage.id)
         if (!exists) {
@@ -180,6 +185,10 @@ const selectChannel = async (channel: Channel) => {
           }
         }
       })
+
+      if (!subscription) {
+        console.warn('Failed to subscribe to channel messages - WebSocket may not be connected')
+      }
 
       channelReactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {
         const messageIndex = messages.value.findIndex(m => m.id === reaction.messageId)

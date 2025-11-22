@@ -10,6 +10,10 @@ metadata:
     nginx.ingress.kubernetes.io/websocket-services: "lootchat-backend"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "lootchat-affinity"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
 spec:
   ingressClassName: nginx
   tls:
