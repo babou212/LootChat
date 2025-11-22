@@ -28,14 +28,6 @@ spec:
             name: lootchat-backend
             port:
               number: 8080
-      # MinIO S3 API for presigned URL access
-      - path: /minio-api
-        pathType: Prefix
-        backend:
-          service:
-            name: minio
-            port:
-              number: 9000
       # All other API routes go through frontend for SSR
       - path: /api
         pathType: Prefix
@@ -68,6 +60,36 @@ spec:
             name: lootchat-frontend
             port:
               number: 3000
+---
+# Separate ingress for MinIO with path rewriting
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lootchat-minio-ingress
+  namespace: lootchat
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - dylancree.com
+    secretName: lootchat-tls
+  rules:
+  - host: dylancree.com
+    http:
+      paths:
+      - path: /minio-api(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: minio
+            port:
+              number: 9000
 ---
 # ClusterIssuer for Let's Encrypt
 # Note: This requires cert-manager to be installed in your cluster
