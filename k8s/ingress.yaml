@@ -20,7 +20,15 @@ spec:
   - host: dylancree.com  # Replace with your actual domain
     http:
       paths:
-      # All API routes go through frontend for authentication
+      # File uploads/downloads go directly to backend
+      - path: /api/files
+        pathType: Prefix
+        backend:
+          service:
+            name: lootchat-backend
+            port:
+              number: 8080
+      # All other API routes go through frontend for SSR
       - path: /api
         pathType: Prefix
         backend:

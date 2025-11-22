@@ -4,12 +4,14 @@ import com.lootchat.LootChat.service.S3FileStorageService;
 import io.minio.StatObjectResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.InputStream;
 
 @Slf4j
 @RestController
@@ -20,7 +22,7 @@ public class FileController {
     private final S3FileStorageService s3FileStorageService;
 
     @GetMapping("/images/{fileName:.+}")
-    public ResponseEntity<Map<String, String>> getPresignedUrl(@PathVariable String fileName) {
+    public ResponseEntity<InputStreamResource> getFile(@PathVariable String fileName) {
         // Validate filename to prevent path traversal attacks
         if (fileName == null || fileName.isBlank()) {
             log.warn("Empty filename requested");
@@ -33,20 +35,27 @@ public class FileController {
         }
 
         try {
-            // Verify file exists before generating presigned URL
+            // Get file metadata
             StatObjectResponse metadata = s3FileStorageService.getFileMetadata(fileName);
-            log.debug("Generating presigned URL for file: {} (size: {} bytes)",
-                    fileName, metadata.size());
+            log.debug("Serving file: {} (size: {} bytes)", fileName, metadata.size());
 
-            String presignedUrl = s3FileStorageService.getPresignedUrl(fileName, 60);
+            // Get file input stream
+            InputStream fileStream = s3FileStorageService.getFileStream(fileName);
+            InputStreamResource resource = new InputStreamResource(fileStream);
 
-            Map<String, String> response = new HashMap<>();
-            response.put("url", presignedUrl);
-            response.put("fileName", fileName);
+            // Determine content type from metadata
+            String contentType = metadata.contentType();
+            if (contentType == null || contentType.isBlank()) {
+                contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+            }
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .contentLength(metadata.size())
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000")
+                    .body(resource);
         } catch (Exception e) {
-            log.error("Failed to generate presigned URL for file: {}", fileName, e);
+            log.error("Failed to serve file: {}", fileName, e);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
     }
