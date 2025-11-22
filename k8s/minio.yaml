@@ -51,18 +51,12 @@ spec:
           value: "1600"
         - name: MINIO_API_REQUESTS_DEADLINE
           value: "10s"
+        - name: MINIO_DOMAIN
+          value: "minio.dylancree.com"
         - name: MINIO_SERVER_URL
           value: "https://minio.dylancree.com"
         - name: MINIO_PROMETHEUS_AUTH_TYPE
           value: "public"
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
         resources:
           requests:
             cpu: 250m

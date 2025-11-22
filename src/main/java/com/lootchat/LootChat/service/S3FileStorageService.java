@@ -24,6 +24,9 @@ public class S3FileStorageService {
     @Value("${minio.bucket-name}")
     private String bucketName;
 
+    @Value("${minio.public-url:}")
+    private String publicUrl;
+
     // Allowed file extensions for security
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"
@@ -178,7 +181,16 @@ public class S3FileStorageService {
                             .build()
             );
 
-            log.debug("Generated presigned URL for {} (expires in {} min)", filename, expiryMinutes);
+            // If public URL is configured, rewrite internal URL to public URL
+            if (publicUrl != null && !publicUrl.isEmpty()) {
+                // Replace the internal endpoint with public URL
+                // Internal: http://minio:9000/bucket/object?params
+                // Public: https://minio.dylancree.com/bucket/object?params
+                presignedUrl = presignedUrl.replace("http://minio:9000", publicUrl);
+                log.debug("Rewrote presigned URL for {} to use public endpoint (expires in {} min)", filename, expiryMinutes);
+            } else {
+                log.debug("Generated presigned URL for {} (expires in {} min)", filename, expiryMinutes);
+            }
             return presignedUrl;
         } catch (IllegalArgumentException e) {
             log.warn("Invalid presigned URL request: {}", e.getMessage());
