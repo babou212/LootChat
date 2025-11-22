@@ -7,6 +7,7 @@ import com.lootchat.LootChat.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -49,5 +50,11 @@ public class UserController {
     public ResponseEntity<Map<String, Boolean>> checkEmail(@PathVariable String email) {
         boolean exists = userService.emailExists(email);
         return ResponseEntity.ok(Map.of("exists", exists));
+    }
+
+    @PostMapping("/avatar")
+    public ResponseEntity<Map<String, String>> uploadAvatar(@RequestParam("avatar") MultipartFile file) {
+        String avatarUrl = userService.uploadAvatar(file);
+        return ResponseEntity.ok(Map.of("avatarUrl", avatarUrl));
     }
 }

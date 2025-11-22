@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -21,6 +22,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final PasswordEncoder passwordEncoder;
+    private final S3FileStorageService s3FileStorageService;
 
     public List<UserResponse> getAllUsers() {
         return userRepository.findAll().stream()
@@ -62,6 +64,51 @@ public class UserService {
 
     public boolean emailExists(String email) {
         return userRepository.existsByEmail(email);
+    }
+
+    @Transactional
+    public String uploadAvatar(MultipartFile file) {
+        Long userId = currentUserService.getCurrentUserIdOrThrow();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        // Validate file
+        if (file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file is empty");
+        }
+
+        if (file.getSize() > 5 * 1024 * 1024) { // 5MB limit for avatars
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file size exceeds 5MB limit");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar must be an image file");
+        }
+
+        try {
+            // Delete old avatar if exists
+            if (user.getAvatar() != null && !user.getAvatar().isEmpty()) {
+                try {
+                    String oldFileName = user.getAvatar().substring(user.getAvatar().lastIndexOf('/') + 1);
+                    s3FileStorageService.deleteFile(oldFileName);
+                } catch (Exception e) {
+                    // Log but don't fail if old avatar deletion fails
+                }
+            }
+
+            // Upload new avatar
+            String fileName = s3FileStorageService.storeFile(file);
+            String avatarUrl = "/api/files/images/" + fileName;
+            
+            // Update user's avatar
+            user.setAvatar(avatarUrl);
+            userRepository.save(user);
+
+            return avatarUrl;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload avatar: " + e.getMessage());
+        }
     }
 
     private UserResponse mapToUserResponse(User user) {
