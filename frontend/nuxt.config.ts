@@ -100,7 +100,23 @@ export default defineNuxtConfig({
             'form-action \'self\'',
             'frame-ancestors \'none\'',
             'upgrade-insecure-requests'
-          ].join('; ')
+          ].join('; '),
+          'Permissions-Policy': [
+            'microphone=(self)',
+            'camera=()',
+            'geolocation=()',
+            'payment=()',
+            'usb=()',
+            'magnetometer=()',
+            'gyroscope=()',
+            'accelerometer=()',
+            'ambient-light-sensor=()',
+            'autoplay=()',
+            'encrypted-media=()',
+            'fullscreen=(self)',
+            'picture-in-picture=()'
+          ].join(', '),
+          'Referrer-Policy': 'strict-origin-when-cross-origin'
         }
       }
     }
