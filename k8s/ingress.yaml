@@ -10,8 +10,6 @@ metadata:
     nginx.ingress.kubernetes.io/websocket-services: "lootchat-backend"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: nginx
   tls:
@@ -30,9 +28,9 @@ spec:
             name: lootchat-backend
             port:
               number: 8080
-      # MinIO S3 API for presigned URL access - strip /minio-api prefix
-      - path: /minio-api(/|$)(.*)
-        pathType: ImplementationSpecific
+      # MinIO S3 API for presigned URL access
+      - path: /minio-api
+        pathType: Prefix
         backend:
           service:
             name: minio
