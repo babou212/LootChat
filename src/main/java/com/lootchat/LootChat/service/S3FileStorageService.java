@@ -24,12 +24,6 @@ public class S3FileStorageService {
     @Value("${minio.bucket-name}")
     private String bucketName;
 
-    @Value("${minio.public-url:}")
-    private String minioPublicUrl;
-
-    @Value("${minio.endpoint}")
-    private String minioEndpoint;
-
     // Allowed file extensions for security
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp"
@@ -147,6 +141,7 @@ public class S3FileStorageService {
 
     public String getPresignedUrl(String filename, int expiryMinutes) {
         try {
+            // MinIO client is configured with public URL, so presigned URLs will be correct
             String presignedUrl = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
@@ -156,12 +151,7 @@ public class S3FileStorageService {
                             .build()
             );
 
-            if (minioPublicUrl != null && !minioPublicUrl.isEmpty()) {
-                String pathAndQuery = presignedUrl.substring(minioEndpoint.length());
-                presignedUrl = minioPublicUrl + pathAndQuery;
-                log.debug("Transformed presigned URL from {} to public URL {}", minioEndpoint, minioPublicUrl);
-            }
-
+            log.debug("Generated presigned URL for {}: {}", filename, presignedUrl);
             return presignedUrl;
         } catch (Exception e) {
             log.error("Error generating presigned URL for: {}", filename, e);
