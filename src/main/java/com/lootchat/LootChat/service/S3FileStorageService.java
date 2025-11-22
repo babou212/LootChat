@@ -72,19 +72,16 @@ public class S3FileStorageService {
 
     public String storeFile(MultipartFile file) {
         try {
-            // Validate file is not empty
             if (file.isEmpty()) {
                 throw new IllegalArgumentException("Cannot upload empty file");
             }
 
-            // Validate file size
             if (file.getSize() > MAX_FILE_SIZE) {
                 throw new IllegalArgumentException(
                         String.format("File too large. Maximum size: %d MB", MAX_FILE_SIZE / 1024 / 1024)
                 );
             }
 
-            // Validate MIME type
             String contentType = file.getContentType();
             if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType)) {
                 throw new IllegalArgumentException(
@@ -92,7 +89,6 @@ public class S3FileStorageService {
                 );
             }
 
-            // Validate file extension
             String originalFilename = file.getOriginalFilename();
             if (originalFilename == null || originalFilename.isBlank()) {
                 throw new IllegalArgumentException("Filename is required");
@@ -160,11 +156,10 @@ public class S3FileStorageService {
                             .build()
             );
 
-            // Replace internal endpoint with public URL if configured
             if (minioPublicUrl != null && !minioPublicUrl.isEmpty()) {
-                presignedUrl = presignedUrl.replace(minioEndpoint, minioPublicUrl);
-                log.debug("Replaced internal endpoint {} with public URL {} in presigned URL", 
-                         minioEndpoint, minioPublicUrl);
+                String pathAndQuery = presignedUrl.substring(minioEndpoint.length());
+                presignedUrl = minioPublicUrl + pathAndQuery;
+                log.debug("Transformed presigned URL from {} to public URL {}", minioEndpoint, minioPublicUrl);
             }
 
             return presignedUrl;

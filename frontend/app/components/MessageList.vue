@@ -18,31 +18,27 @@ const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
 
-// Cache for presigned URLs (filename -> {url, expiry})
 const presignedUrlCache = ref<Map<string, { url: string, expiry: number }>>(new Map())
 
 const getAuthenticatedImageUrl = async (imageUrl: string): Promise<string> => {
   if (!imageUrl) return ''
   const filename = imageUrl.split('/').pop()
   if (!filename) return ''
-  
-  // Check cache first
+
   const cached = presignedUrlCache.value.get(filename)
   if (cached && cached.expiry > Date.now()) {
     return cached.url
   }
-  
+
   try {
-    // Fetch presigned URL from our API route
     const response = await $fetch<{ url: string, fileName: string }>(`/api/files/images/${filename}`)
     const url = response.url
-    
-    // Cache for 55 minutes (presigned URLs are valid for 60 minutes)
+
     presignedUrlCache.value.set(filename, {
       url,
       expiry: Date.now() + (55 * 60 * 1000)
     })
-    
+
     return url
   } catch (error) {
     console.error('Failed to get presigned URL:', error)
@@ -56,7 +52,7 @@ const loadImageUrl = async (imageUrl: string) => {
   if (!imageUrl) return
   const filename = imageUrl.split('/').pop()
   if (!filename) return
-  
+
   if (!imageUrls.value.has(filename)) {
     const url = await getAuthenticatedImageUrl(imageUrl)
     imageUrls.value.set(filename, url)
@@ -308,7 +304,6 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
     const removed = message.reactions[existingIndex]!
     message.reactions.splice(existingIndex, 1)
     try {
-      // Use server API route instead of direct backend call
       await $fetch(`/api/messages/${messageId}/reactions`, {
         method: 'DELETE',
         body: { emoji }
@@ -334,7 +329,6 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
   message.reactions.push(tempReaction)
 
   try {
-    // Use server API route instead of direct backend call
     const serverReaction = await $fetch<ReactionResponse>(`/api/messages/${messageId}/reactions`, {
       method: 'POST',
       body: { emoji }
@@ -448,7 +442,6 @@ const contentWithoutMedia = (text: string): string => {
 const hasInitiallyScrolled = ref(false)
 
 watch(() => props.messages.length, (newLength, oldLength) => {
-  // Reset scroll state when messages are cleared (channel change)
   if (newLength === 0 && oldLength > 0) {
     hasInitiallyScrolled.value = false
     previousScrollHeight.value = 0
@@ -459,14 +452,12 @@ watch(() => props.messages.length, (newLength, oldLength) => {
     if (!messagesContainer.value) return
     const container = messagesContainer.value
 
-    // Initial load - scroll to bottom
     if (oldLength === 0 && newLength > 0) {
       scrollToBottom()
       hasInitiallyScrolled.value = true
       return
     }
 
-    // Loading older messages (prepending) - maintain scroll position
     if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
       const newScrollHeight = container.scrollHeight
       const heightDifference = newScrollHeight - previousScrollHeight.value
@@ -475,7 +466,6 @@ watch(() => props.messages.length, (newLength, oldLength) => {
       return
     }
 
-    // New messages arriving (appending) - scroll to bottom only if user is near bottom
     if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
       if (isNearBottom) {
@@ -492,7 +482,6 @@ watch(() => props.loading, (isLoading) => {
   }
 })
 
-// Watch for new messages and preload image URLs
 watch(() => props.messages, async (newMessages) => {
   for (const message of newMessages) {
     if (message.imageUrl) {
