@@ -17,6 +17,19 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      initContainers:
+      - name: init-wg0-config
+        image: busybox:latest
+        command: ["/bin/sh", "/scripts/init-wg0-config.sh"]
+        volumeMounts:
+        - name: wireguard-config
+          mountPath: /config
+        - name: wireguard-keys
+          mountPath: /run/secrets/wireguard
+          readOnly: true
+        - name: init-script
+          mountPath: /scripts
+          readOnly: true
       containers:
       - name: wireguard
         image: linuxserver/wireguard:latest
@@ -66,6 +79,14 @@ spec:
       - name: wireguard-config
         persistentVolumeClaim:
           claimName: wireguard-config
+      - name: wireguard-keys
+        secret:
+          secretName: wireguard-keys
+          defaultMode: 0400
+      - name: init-script
+        configMap:
+          name: wireguard-init-script
+          defaultMode: 0755
       - name: lib-modules
         hostPath:
           path: /lib/modules
