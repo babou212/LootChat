@@ -4,10 +4,11 @@ import type { Channel } from '../../shared/types/chat'
 import ChannelCreate from '~/components/ChannelCreate.vue'
 import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'
 import PasswordChange from '~/components/PasswordChange.vue'
+import AvatarUpload from '~/components/AvatarUpload.vue'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
-const { user } = useAuth()
+const { user, refreshSession } = useAuth()
 
 const isAdmin = computed(() => user.value?.role === 'ADMIN')
 
@@ -17,6 +18,7 @@ const channelToDelete = ref<Channel | null>(null)
 const showCreate = ref(false)
 
 const error = ref<string | null>(null)
+const success = ref<string | null>(null)
 const channelsLoading = ref(false)
 
 const textChannels = computed(() =>
@@ -67,6 +69,21 @@ const handleDeleted = async () => {
   closeDeleteConfirm()
 }
 
+const handleAvatarUploaded = async () => {
+  success.value = 'Avatar updated successfully'
+  error.value = null
+
+  await refreshSession()
+  setTimeout(() => {
+    success.value = null
+  }, 3000)
+}
+
+const handleAvatarError = (message: string) => {
+  error.value = message
+  success.value = null
+}
+
 onMounted(() => {
   if (isAdmin.value) {
     fetchChannels()
@@ -97,6 +114,36 @@ watch(isAdmin, (admin) => {
     </div>
 
     <div v-if="user" class="space-y-6">
+      <UAlert
+        v-if="error"
+        color="error"
+        icon="i-lucide-alert-circle"
+        :title="error"
+        @close="error = null"
+      />
+
+      <UAlert
+        v-if="success"
+        color="success"
+        icon="i-lucide-check-circle"
+        :title="success"
+        @close="success = null"
+      />
+
+      <UCard>
+        <template #header>
+          <h2 class="text-lg font-semibold">
+            Profile Picture
+          </h2>
+        </template>
+
+        <AvatarUpload
+          :current-avatar="user.avatar"
+          @uploaded="handleAvatarUploaded"
+          @error="handleAvatarError"
+        />
+      </UCard>
+
       <UCard>
         <template #header>
           <h2 class="text-lg font-semibold">
@@ -162,14 +209,6 @@ watch(isAdmin, (admin) => {
         </div>
 
         <div v-else class="space-y-6">
-          <UAlert
-            v-if="error"
-            color="error"
-            icon="i-lucide-alert-circle"
-            :title="error"
-            @close="error = null"
-          />
-
           <div>
             <h3 class="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase mb-3">
               Text Channels ({{ textChannels.length }})
