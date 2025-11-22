@@ -28,6 +28,14 @@ spec:
             name: lootchat-backend
             port:
               number: 8080
+      # MinIO S3 API for presigned URL access
+      - path: /minio-api
+        pathType: Prefix
+        backend:
+          service:
+            name: minio
+            port:
+              number: 9000
       # All other API routes go through frontend for SSR
       - path: /api
         pathType: Prefix
