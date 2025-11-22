@@ -32,7 +32,7 @@ spec:
         - name: TZ
           value: "America/New_York"
         - name: SERVERURL
-          value: "auto"
+          value: "116.203.192.48"
         - name: SERVERPORT
           value: "51820"
         - name: PEERS
