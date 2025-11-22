@@ -61,7 +61,7 @@ spec:
             port:
               number: 3000
 ---
-# Separate ingress for MinIO with path rewriting
+# MinIO ingress on subdomain
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -69,22 +69,21 @@ metadata:
   namespace: lootchat
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
 spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - dylancree.com
-    secretName: lootchat-tls
+    - minio.dylancree.com
+    secretName: minio-tls
   rules:
-  - host: dylancree.com
+  - host: minio.dylancree.com
     http:
       paths:
-      - path: /minio-api(/|$)(.*)
-        pathType: ImplementationSpecific
+      - path: /
+        pathType: Prefix
         backend:
           service:
             name: minio

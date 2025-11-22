@@ -105,7 +105,7 @@ spec:
         - name: MINIO_ENDPOINT
           value: "http://minio:9000"
         - name: MINIO_PUBLIC_URL
-          value: "https://dylancree.com/minio-api"
+          value: "https://minio.dylancree.com"
         - name: MINIO_ACCESS_KEY
           valueFrom:
             secretKeyRef:
