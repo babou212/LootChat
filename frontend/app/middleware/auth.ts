@@ -39,7 +39,9 @@ export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => 
   if (routeUsername) {
     const currentUsername = user.value?.username
     if (!currentUsername || currentUsername !== routeUsername) {
-      return navigateTo({ path: '/login', query: { redirect: to.fullPath } })
+      const redirectPath = to.path === '/login' ? '/' : to.fullPath
+      const safeRedirect = isAllowedRedirect(redirectPath) ? redirectPath : '/'
+      return navigateTo({ path: '/login', query: { redirect: safeRedirect } })
     }
   }
 })
