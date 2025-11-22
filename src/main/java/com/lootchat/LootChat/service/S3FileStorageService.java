@@ -55,6 +55,29 @@ public class S3FileStorageService {
                                 .build()
                 );
                 log.info("Created MinIO bucket: {}", bucketName);
+                
+                // Set bucket to private by default - only presigned URLs can access
+                String policy = """
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Deny",
+                            "Principal": {"AWS": "*"},
+                            "Action": "s3:GetObject",
+                            "Resource": "arn:aws:s3:::%s/*"
+                        }
+                    ]
+                }
+                """.formatted(bucketName);
+                
+                minioClient.setBucketPolicy(
+                        SetBucketPolicyArgs.builder()
+                                .bucket(bucketName)
+                                .config(policy)
+                                .build()
+                );
+                log.info("Set bucket policy to private for: {}", bucketName);
             } else {
                 log.info("MinIO bucket already exists: {}", bucketName);
             }
@@ -141,7 +164,11 @@ public class S3FileStorageService {
 
     public String getPresignedUrl(String filename, int expiryMinutes) {
         try {
-            // MinIO client is configured with public URL, so presigned URLs will be correct
+            // Validate filename to prevent path traversal
+            if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                throw new IllegalArgumentException("Invalid filename");
+            }
+            
             String presignedUrl = minioClient.getPresignedObjectUrl(
                     GetPresignedObjectUrlArgs.builder()
                             .method(Method.GET)
@@ -151,8 +178,11 @@ public class S3FileStorageService {
                             .build()
             );
 
-            log.debug("Generated presigned URL for {}: {}", filename, presignedUrl);
+            log.debug("Generated presigned URL for {} (expires in {} min)", filename, expiryMinutes);
             return presignedUrl;
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid presigned URL request: {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("Error generating presigned URL for: {}", filename, e);
             throw new RuntimeException("Could not generate presigned URL", e);

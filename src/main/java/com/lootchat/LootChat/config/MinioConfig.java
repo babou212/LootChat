@@ -13,9 +13,6 @@ public class MinioConfig {
     @Value("${minio.endpoint}")
     private String endpoint;
 
-    @Value("${minio.public-url:}")
-    private String publicUrl;
-
     @Value("${minio.access-key}")
     private String accessKey;
 
@@ -34,12 +31,11 @@ public class MinioConfig {
             throw new IllegalStateException("MinIO secret key is not configured. Set minio.secret-key property.");
         }
 
-        String clientEndpoint = (publicUrl != null && !publicUrl.isEmpty()) ? publicUrl : endpoint;
-        log.info("Initializing MinIO client with endpoint: {} (internal: {})", clientEndpoint, endpoint);
+        log.info("Initializing MinIO client with endpoint: {}", endpoint);
 
         try {
             return MinioClient.builder()
-                    .endpoint(clientEndpoint)
+                    .endpoint(endpoint)
                     .credentials(accessKey, secretKey)
                     .build();
         } catch (Exception e) {
