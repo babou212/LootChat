@@ -35,6 +35,11 @@ const getLoadedAvatarUrl = (userId: string | number): string => {
   return avatarUrls.value.get(userId) || ''
 }
 
+// Check if message is optimistic (pending server confirmation)
+const isOptimistic = (message: Message): boolean => {
+  return message.id < 0
+}
+
 // Watch messages and load avatars
 watch(() => props.messages, (newMessages) => {
   newMessages.forEach((message) => {
@@ -564,6 +569,7 @@ watch(() => props.messages, async (newMessages) => {
         v-for="message in messages"
         :key="message.id"
         class="flex gap-4 group"
+        :class="{ 'opacity-60': isOptimistic(message) }"
       >
         <UAvatar
           :src="getLoadedAvatarUrl(message.userId)"
@@ -578,7 +584,10 @@ watch(() => props.messages, async (newMessages) => {
             <span class="text-xs text-gray-500 dark:text-gray-400">
               {{ formatTime(message.timestamp) }}
             </span>
-            <span v-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
+            <span v-if="isOptimistic(message)" class="text-xs text-gray-400 dark:text-gray-500 italic">
+              (sending...)
+            </span>
+            <span v-else-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
               (edited)
             </span>
           </div>
@@ -626,13 +635,14 @@ watch(() => props.messages, async (newMessages) => {
                 ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
                 : 'bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'"
               :title="reactionGroup.usernames.join(', ')"
+              :disabled="isOptimistic(message)"
               @click="handleReactionClick(message.id, reactionGroup.emoji)"
             >
               <span>{{ reactionGroup.emoji }}</span>
               <span class="text-xs font-medium">{{ reactionGroup.count }}</span>
             </button>
 
-            <div class="relative">
+            <div v-if="!isOptimistic(message)" class="relative">
               <button
                 type="button"
                 class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
@@ -653,7 +663,7 @@ watch(() => props.messages, async (newMessages) => {
             </div>
 
             <button
-              v-if="canEdit(message) && editingMessageId !== message.id"
+              v-if="canEdit(message) && editingMessageId !== message.id && !isOptimistic(message)"
               type="button"
               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
               title="Edit message"
@@ -663,7 +673,7 @@ watch(() => props.messages, async (newMessages) => {
             </button>
 
             <button
-              v-if="canDelete(message)"
+              v-if="canDelete(message) && !isOptimistic(message)"
               type="button"
               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
               title="Delete message"

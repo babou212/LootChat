@@ -6,6 +6,8 @@ import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -23,13 +25,18 @@ public class UserService {
     private final CurrentUserService currentUserService;
     private final PasswordEncoder passwordEncoder;
     private final S3FileStorageService s3FileStorageService;
+    private final CacheManager cacheManager;
 
+    @Cacheable(cacheNames = "users", key = "'all'")
+    @Transactional(readOnly = true)
     public List<UserResponse> getAllUsers() {
         return userRepository.findAll().stream()
                 .map(this::mapToUserResponse)
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "user", key = "'id:' + #id")
+    @Transactional(readOnly = true)
     public UserResponse getUserById(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
@@ -104,7 +111,16 @@ public class UserService {
             // Update user's avatar
             user.setAvatar(avatarUrl);
             userRepository.save(user);
-
+            
+            var userCache = cacheManager.getCache("user");
+            if (userCache != null) {
+                userCache.evict("id:" + userId);
+            }
+            var usersCache = cacheManager.getCache("users");
+            if (usersCache != null) {
+                usersCache.evict("all");
+            }
+            
             return avatarUrl;
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to upload avatar: " + e.getMessage());
