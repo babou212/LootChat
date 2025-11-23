@@ -1,19 +1,6 @@
 <script setup lang="ts">
-import type { Channel } from '../../shared/types/chat'
-import type { MessageResponse } from '~/api/messageApi'
-import type { ChannelResponse } from '~/api/channelApi'
-import type { UserResponse } from '~/api/userApi'
-import MessageList from '~/components/MessageList.vue'
-import UserMenu from '~/components/UserMenu.vue'
-import EmojiPicker from '~/components/EmojiPicker.vue'
-import UserPanel from '~/components/UserPanel.vue'
-import type { UserPresence } from '~/components/UserPanel.vue'
 import type GifPicker from '~/components/GifPicker.vue'
-import type { StompSubscription } from '@stomp/stompjs'
-import type { UserPresenceUpdate } from '~/composables/useWebSocket'
-import { useAuthStore } from '../../stores/auth'
 import { useMessagesStore } from '../../stores/messages'
-import type { User } from '../../shared/types/user'
 
 definePageMeta({
   middleware: 'auth',
@@ -21,7 +8,6 @@ definePageMeta({
 })
 
 const { user } = useAuth()
-const authStore = useAuthStore()
 const messagesStore = useMessagesStore()
 
 const token = ref<string | null>(null)
@@ -37,13 +23,47 @@ const getAuthToken = async (): Promise<string | null> => {
   }
 }
 
-const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient, isConnected: wsConnected } = useWebSocket()
-
+const { connect, disconnect, getClient } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
+const channelsComposable = useChannels()
+const channels = channelsComposable.channels
+const selectedChannel = channelsComposable.selectedChannel
+const fetchChannels = channelsComposable.fetchChannels
+const markChannelAsRead = channelsComposable.markChannelAsRead
+const incrementUnreadCount = channelsComposable.incrementUnreadCount
 
-const channels = ref<Channel[]>([])
+const usersComposable = useUsers()
+const users = usersComposable.users
+const fetchUsers = usersComposable.fetchUsers
+const updateUserPresence = usersComposable.updateUserPresence
+const addUser = usersComposable.addUser
 
-const selectedChannel = ref<Channel | null>(null)
+const composerComposable = useMessageComposer()
+const newMessage = composerComposable.newMessage
+const selectedImage = composerComposable.selectedImage
+const imagePreviewUrl = composerComposable.imagePreviewUrl
+const fileInputRef = composerComposable.fileInputRef
+const showEmojiPicker = composerComposable.showEmojiPicker
+const showGifPicker = composerComposable.showGifPicker
+const handleImageSelectRaw = composerComposable.handleImageSelect
+const removeImage = composerComposable.removeImage
+const addEmoji = composerComposable.addEmoji
+const addGif = composerComposable.addGif
+const resetComposer = composerComposable.reset
+const cleanupComposer = composerComposable.cleanup
+
+const handleImageSelect = (event: Event) => {
+  try {
+    handleImageSelectRaw(event)
+    error.value = null
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Failed to select image'
+  }
+}
+
+const { sendMessage: sendMessageToServer } = useMessageSender()
+const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
+const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
 
 const messages = computed(() => {
   if (!selectedChannel.value) return []
@@ -61,29 +81,10 @@ const currentPage = computed(() => {
 })
 
 const loadingMoreMessages = ref(false)
-
-const users = ref<UserPresence[]>([])
-
-const stompClient = computed(() => getClient())
-
-let subscription: StompSubscription | null = null
-let allMessagesSubscription: StompSubscription | null = null
-let userPresenceSubscription: StompSubscription | null = null
-let channelReactionSubscription: StompSubscription | null = null
-let channelReactionRemovalSubscription: StompSubscription | null = null
-let channelMessageDeletionSubscription: StompSubscription | null = null
-let globalMessageDeletionSubscription: StompSubscription | null = null
-
-const newMessage = ref('')
 const loading = ref(true)
 const error = ref<string | null>(null)
 
-const selectedImage = ref<File | null>(null)
-const imagePreviewUrl = ref<string | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-
-const showEmojiPicker = ref(false)
-const showGifPicker = ref(false)
+const stompClient = computed(() => getClient())
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
 
@@ -96,232 +97,23 @@ useClickAway(
   { active: computed(() => showEmojiPicker.value || showGifPicker.value) }
 )
 
-const addEmoji = (emoji: string) => {
-  newMessage.value += (newMessage.value && !newMessage.value.endsWith(' ') ? ' ' : '') + emoji
-  showEmojiPicker.value = false
-}
-
-const addGifToMessage = (gifUrl: string) => {
-  const spacer = newMessage.value && !newMessage.value.endsWith(' ') ? ' ' : ''
-  newMessage.value = `${newMessage.value}${spacer}${gifUrl}`.trim()
-  showGifPicker.value = false
-}
-
-const handleImageSelect = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  if (file) {
-    const maxSizeInMB = 50
-    const fileSizeInMB = file.size / (1024 * 1024)
-
-    if (fileSizeInMB > maxSizeInMB) {
-      error.value = `File size (${fileSizeInMB.toFixed(2)}MB) exceeds maximum limit of ${maxSizeInMB}MB`
-      if (fileInputRef.value) {
-        fileInputRef.value.value = ''
-      }
-      return
-    }
-
-    if (!file.type.startsWith('image/')) {
-      error.value = 'Please select an image file'
-      if (fileInputRef.value) {
-        fileInputRef.value.value = ''
-      }
-      return
-    }
-    selectedImage.value = file
-    imagePreviewUrl.value = URL.createObjectURL(file)
-    error.value = null
-  }
-}
-
-const removeImage = () => {
-  if (imagePreviewUrl.value) {
-    URL.revokeObjectURL(imagePreviewUrl.value)
-  }
-  selectedImage.value = null
-  imagePreviewUrl.value = null
-  if (fileInputRef.value) {
-    fileInputRef.value.value = ''
-  }
-}
-
-const selectChannel = async (channel: Channel) => {
+const selectChannel = async (channel: typeof channels.value[0]) => {
   if (channel.channelType === 'VOICE') {
     return
   }
 
   selectedChannel.value = channel
-
-  const channelIndex = channels.value.findIndex(ch => ch.id === channel.id)
-  if (channelIndex !== -1) {
-    channels.value[channelIndex]!.unread = 0
-  }
-
+  markChannelAsRead(channel.id)
   loadingMoreMessages.value = false
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
     await fetchMessages()
 
-    if (subscription) {
-      subscription.unsubscribe()
-    }
-    if (channelReactionSubscription) {
-      channelReactionSubscription.unsubscribe()
-    }
-    if (channelReactionRemovalSubscription) {
-      channelReactionRemovalSubscription.unsubscribe()
-    }
-    if (channelMessageDeletionSubscription) {
-      channelMessageDeletionSubscription.unsubscribe()
-    }
-
     if (token.value) {
-      if (!wsConnected.value) {
-        let attempts = 0
-        while (!wsConnected.value && attempts < 20) {
-          await new Promise(resolve => setTimeout(resolve, 250))
-          attempts++
-        }
-
-        if (!wsConnected.value) {
-          console.error('WebSocket connection timeout - cannot subscribe to channel')
-          return
-        }
-      }
-
-      subscription = subscribeToChannel(channel.id, (newMessage) => {
-        messagesStore.addMessage(channel.id, messagesStore.convertToMessage(newMessage))
-      })
-
-      if (!subscription) {
-        console.warn('Failed to subscribe to channel messages - WebSocket may not be connected')
-      }
-
-      channelReactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {
-        if (reaction.messageId) {
-          messagesStore.addReaction(channel.id, reaction.messageId, {
-            id: reaction.id,
-            emoji: reaction.emoji,
-            userId: reaction.userId,
-            username: reaction.username,
-            createdAt: new Date(reaction.createdAt)
-          })
-        }
-      })
-
-      channelReactionRemovalSubscription = subscribeToChannelReactionRemovals(channel.id, (reaction) => {
-        if (reaction.messageId) {
-          messagesStore.removeReaction(channel.id, reaction.messageId, reaction.id)
-        }
-      })
-
-      channelMessageDeletionSubscription = subscribeToChannelMessageDeletions(channel.id, (payload) => {
-        if (payload && typeof payload.id === 'number') {
-          messagesStore.removeMessage(channel.id, payload.id)
-        }
-      })
+      await subscribeToChannelUpdates(channel, token.value)
     }
   } else {
-    if (subscription) {
-      subscription.unsubscribe()
-      subscription = null
-    }
-    if (channelReactionSubscription) {
-      channelReactionSubscription.unsubscribe()
-      channelReactionSubscription = null
-    }
-    if (channelReactionRemovalSubscription) {
-      channelReactionRemovalSubscription.unsubscribe()
-      channelReactionRemovalSubscription = null
-    }
-    if (channelMessageDeletionSubscription) {
-      channelMessageDeletionSubscription.unsubscribe()
-      channelMessageDeletionSubscription = null
-    }
-  }
-}
-
-const convertToChannel = (apiChannel: ChannelResponse): Channel => {
-  return {
-    id: apiChannel.id,
-    name: apiChannel.name,
-    description: apiChannel.description,
-    channelType: apiChannel.channelType || 'TEXT',
-    createdAt: apiChannel.createdAt,
-    updatedAt: apiChannel.updatedAt,
-    unread: 0
-  }
-}
-
-const fetchChannels = async () => {
-  try {
-    if (!user.value) {
-      return navigateTo('/login')
-    }
-
-    const apiChannels = await $fetch<ChannelResponse[]>('/api/channels')
-    channels.value = apiChannels.map(convertToChannel)
-  } catch (err) {
-    console.error('Failed to fetch channels:', err)
-    error.value = 'Failed to load channels'
-  }
-}
-
-const fetchUsers = async () => {
-  try {
-    if (!user.value) {
-      return navigateTo('/login')
-    }
-
-    const apiUsers = await $fetch<UserResponse[]>('/api/users')
-
-    let presenceMap: Record<number, boolean> = {}
-    try {
-      presenceMap = await $fetch<Record<number, boolean>>('/api/users/presence')
-    } catch {
-      // ignore errors for now
-    }
-
-    users.value = apiUsers.map((apiUser: UserResponse): UserPresence => {
-      const isOnline = presenceMap[apiUser.id] === true
-      return {
-        userId: apiUser.id,
-        username: apiUser.username,
-        email: apiUser.email,
-        firstName: apiUser.firstName,
-        lastName: apiUser.lastName,
-        role: apiUser.role,
-        avatar: apiUser.avatar,
-        status: isOnline ? 'online' : 'offline'
-      }
-    })
-
-    if (user.value && user.value.userId) {
-      const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
-      if (currentUserIndex !== -1) {
-        users.value[currentUserIndex]!.status = 'online'
-
-        const currentUserData = users.value[currentUserIndex]
-        if (currentUserData && currentUserData.avatar && !user.value.avatar) {
-          const updatedUser: User = { ...user.value, avatar: currentUserData.avatar }
-          authStore.setUser(updatedUser)
-        }
-      } else {
-        users.value.push({
-          userId: user.value.userId,
-          username: user.value.username,
-          email: user.value.email,
-          firstName: undefined,
-          lastName: undefined,
-          role: user.value.role,
-          avatar: user.value.avatar,
-          status: 'online'
-        })
-      }
-    }
-  } catch {
-    // ignore errors for now
+    unsubscribeChannel()
   }
 }
 
@@ -372,77 +164,17 @@ const sendMessage = async () => {
   const channelId = selectedChannel.value.id
   const messageContent = newMessage.value.trim()
   const imageToSend = selectedImage.value
-  let optimisticId: number | null = null
 
   try {
     error.value = null
-
-    if (!imageToSend && messageContent) {
-      optimisticId = -Date.now()
-      messagesStore.addOptimisticMessage(channelId, {
-        optimisticId,
-        userId: user.value.userId.toString(),
-        username: user.value.username,
-        content: messageContent,
-        timestamp: new Date(),
-        avatar: user.value.avatar,
-        channelId,
-        reactions: []
-      })
-    }
-
-    newMessage.value = ''
-
-    if (imageToSend) {
-      const formData = new FormData()
-      formData.append('image', imageToSend)
-      formData.append('channelId', channelId.toString())
-      if (messageContent) {
-        formData.append('content', messageContent)
-      }
-
-      const response = await $fetch<MessageResponse>('/api/messages/upload', {
-        method: 'POST',
-        body: formData
-      })
-
-      messagesStore.addMessage(channelId, messagesStore.convertToMessage(response))
-      removeImage()
-    } else {
-      const response = await $fetch<MessageResponse>('/api/messages', {
-        method: 'POST',
-        body: {
-          content: messageContent,
-          userId: user.value.userId,
-          channelId
-        }
-      })
-
-      if (optimisticId) {
-        messagesStore.confirmOptimisticMessage(
-          channelId,
-          optimisticId,
-          messagesStore.convertToMessage(response)
-        )
-      }
-    }
+    await sendMessageToServer(channelId, messageContent, imageToSend)
+    resetComposer()
   } catch (err: unknown) {
     console.error('Failed to send message:', err)
-
-    if (optimisticId) {
-      messagesStore.rollbackOptimisticMessage(channelId, optimisticId)
-    }
-
     if (messageContent && !newMessage.value) {
       newMessage.value = messageContent
     }
-
-    const errorMessage = err instanceof Error ? err.message : String(err)
-    error.value = errorMessage.includes('413')
-      ? 'Image file is too large. Maximum size is 50MB.'
-      : errorMessage.includes('upload')
-        ? 'Failed to upload image. Please try again.'
-        : 'Failed to send message. Please try again.'
+    error.value = err instanceof Error ? err.message : 'Failed to send message. Please try again.'
   }
 }
 
@@ -524,7 +256,6 @@ onMounted(async () => {
   isClient.value = true
 
   await getAuthToken()
-
   await fetchChannels()
   await fetchUsers()
 
@@ -533,47 +264,21 @@ onMounted(async () => {
       await connect(token.value)
 
       if (user.value && user.value.userId) {
-        const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
-        if (currentUserIndex !== -1) {
-          users.value[currentUserIndex]!.status = 'online'
-        }
+        updateUserPresence(user.value.userId, 'online')
       }
 
-      allMessagesSubscription = subscribeToAllMessages((newMessage) => {
-        if (newMessage.channelId && selectedChannel.value && newMessage.channelId !== selectedChannel.value.id) {
-          const channelIndex = channels.value.findIndex(ch => ch.id === newMessage.channelId)
-          if (channelIndex !== -1) {
-            const currentUnread = channels.value[channelIndex]!.unread || 0
-            channels.value[channelIndex]!.unread = currentUnread + 1
-          }
-        }
-      })
+      const selectedChannelId = computed(() => selectedChannel.value?.id ?? null)
 
-      globalMessageDeletionSubscription = subscribeToGlobalMessageDeletions((payload) => {
-        if (!payload) return
-        if (selectedChannel.value && payload.channelId === selectedChannel.value.id) {
-          messagesStore.removeMessage(selectedChannel.value.id, payload.id)
-        }
-      })
-
-      userPresenceSubscription = subscribeToUserPresence((update: UserPresenceUpdate) => {
-        const userIndex = users.value.findIndex(u => u.userId === update.userId)
-        if (userIndex !== -1) {
-          if (user.value && update.userId === user.value.userId) {
-            users.value[userIndex]!.status = 'online'
-          } else {
-            users.value[userIndex]!.status = update.status
+      subscribeToGlobal(
+        (channelId: number) => incrementUnreadCount(channelId),
+        (update: { userId: number, username: string, status: 'online' | 'offline' }) => {
+          updateUserPresence(update.userId, update.status)
+          if (!users.value.some((u: typeof users.value[0]) => u.userId === update.userId)) {
+            addUser(update.userId, update.username, update.status)
           }
-        } else {
-          users.value.push({
-            userId: update.userId,
-            username: update.username,
-            email: '',
-            role: 'USER',
-            status: update.status
-          })
-        }
-      })
+        },
+        selectedChannelId
+      )
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err)
     }
@@ -585,36 +290,15 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (subscription) {
-    subscription.unsubscribe()
-  }
-  if (allMessagesSubscription) {
-    allMessagesSubscription.unsubscribe()
-  }
-  if (userPresenceSubscription) {
-    userPresenceSubscription.unsubscribe()
-  }
-  if (channelReactionSubscription) {
-    channelReactionSubscription.unsubscribe()
-  }
-  if (channelReactionRemovalSubscription) {
-    channelReactionRemovalSubscription.unsubscribe()
-  }
-  if (channelMessageDeletionSubscription) {
-    channelMessageDeletionSubscription.unsubscribe()
-  }
-  if (globalMessageDeletionSubscription) {
-    globalMessageDeletionSubscription.unsubscribe()
-  }
-  if (imagePreviewUrl.value) {
-    URL.revokeObjectURL(imagePreviewUrl.value)
-  }
+  unsubscribeChannel()
+  unsubscribeGlobal()
+  cleanupComposer()
   disconnect()
 })
 
 watch(channels, (newChannels) => {
   if (newChannels.length > 0 && !selectedChannel.value) {
-    const firstTextChannel = newChannels.find(ch => !ch.channelType || ch.channelType === 'TEXT')
+    const firstTextChannel = newChannels.find((ch: typeof channels.value[0]) => !ch.channelType || ch.channelType === 'TEXT')
     if (firstTextChannel) {
       selectChannel(firstTextChannel)
     }
@@ -623,7 +307,7 @@ watch(channels, (newChannels) => {
 
 watch(() => user.value?.avatar, (newAvatar) => {
   if (user.value && user.value.userId) {
-    const userIndex = users.value.findIndex(u => u.userId === user.value!.userId)
+    const userIndex = users.value.findIndex((u: typeof users.value[0]) => u.userId === user.value!.userId)
     if (userIndex !== -1) {
       users.value[userIndex]!.avatar = newAvatar
     }
@@ -638,7 +322,7 @@ watch(showGifPicker, (open) => {
 
 watch(users, () => {
   if (user.value && user.value.userId) {
-    const currentUserIndex = users.value.findIndex(u => u.userId === user.value!.userId)
+    const currentUserIndex = users.value.findIndex((u: typeof users.value[0]) => u.userId === user.value!.userId)
     if (currentUserIndex !== -1 && users.value[currentUserIndex]!.status !== 'online') {
       users.value[currentUserIndex]!.status = 'online'
     }
@@ -743,7 +427,7 @@ watch(users, () => {
                   v-if="showGifPicker"
                   class="absolute bottom-full mb-2 left-0 z-20"
                 >
-                  <GifPicker ref="gifPickerRef" @select="addGifToMessage" />
+                  <GifPicker ref="gifPickerRef" @select="addGif" />
                 </div>
               </div>
 
