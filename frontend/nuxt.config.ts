@@ -7,19 +7,10 @@ export default defineNuxtConfig({
     '@nuxtjs/mdc',
     '@pinia/nuxt',
     'nuxt-auth-utils',
-    'nuxt-charts',
-    '@nuxt/image'
+    'nuxt-charts'
   ],
   devtools: {
     enabled: true
-  },
-
-  image: {
-    provider: 'none',
-    domains: ['localhost', '127.0.0.1'],
-    alias: {
-      minio: process.env.NUXT_PUBLIC_MINIO_URL || 'http://localhost:9000'
-    }
   },
 
   app: {
@@ -100,7 +91,7 @@ export default defineNuxtConfig({
             'style-src \'self\' \'unsafe-inline\'',
             'img-src \'self\' data: https: blob:',
             'font-src \'self\' data:',
-            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 ws: wss: https://tenor.googleapis.com https://api.iconify.design',
+            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 ws: wss: https://tenor.googleapis.com',
             'media-src \'self\' https:',
             'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
             'worker-src \'self\' blob:',
@@ -138,5 +129,11 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
+  },
+
+  image: {
+    quality: 80,
+    format: ['webp'],
+    domains: ['minio.dylancree.com']
   }
 })
