@@ -10,6 +10,9 @@ import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.ChannelRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +29,10 @@ public class ChannelService {
     private final CurrentUserService currentUserService;
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channels", key = "'all'"),
+        @CacheEvict(cacheNames = "channel", allEntries = true)
+    })
     public ChannelResponse createChannel(CreateChannelRequest request) {
         // Check if channel with the same name already exists
         User user = currentUserService.getCurrentUserOrThrow();
@@ -46,6 +53,7 @@ public class ChannelService {
         return mapToChannelResponse(savedChannel);
     }
 
+    @Cacheable(cacheNames = "channels", key = "'all'")
     @Transactional(readOnly = true)
     public List<ChannelResponse> getAllChannels() {
         return channelRepository.findAllByOrderByNameAsc().stream()
@@ -53,6 +61,7 @@ public class ChannelService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(cacheNames = "channel", key = "'id:' + #id")
     @Transactional(readOnly = true)
     public ChannelResponse getChannelById(Long id) {
         Channel channel = channelRepository.findById(id)
@@ -60,6 +69,7 @@ public class ChannelService {
         return mapToChannelResponse(channel);
     }
 
+    @Cacheable(cacheNames = "channel", key = "'name:' + #name")
     @Transactional(readOnly = true)
     public ChannelResponse getChannelByName(String name) {
         Channel channel = channelRepository.findByName(name)
@@ -68,6 +78,10 @@ public class ChannelService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channels", key = "'all'"),
+        @CacheEvict(cacheNames = "channel", allEntries = true)
+    })
     public ChannelResponse updateChannel(Long id, UpdateChannelRequest request) {
         Channel channel = channelRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + id));
@@ -93,6 +107,10 @@ public class ChannelService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channels", key = "'all'"),
+        @CacheEvict(cacheNames = "channel", allEntries = true)
+    })
     public void deleteChannel(Long id) {
         Channel channel = channelRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + id));

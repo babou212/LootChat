@@ -30,17 +30,30 @@ public class RedisConfig {
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(valueSerializer))
                 .disableCachingNullValues();
 
-    Map<String, RedisCacheConfiguration> initialCaches = Map.of(
-        "user", cacheConfig.entryTtl(Duration.ofMinutes(3)),
-        "messagesAll", cacheConfig.entryTtl(Duration.ofSeconds(30)),
-        "channelMessages", cacheConfig.entryTtl(Duration.ofSeconds(30)),
-        "message", cacheConfig.entryTtl(Duration.ofMinutes(5))
-    );
+        // Optimized TTL values based on data change frequency
+        Map<String, RedisCacheConfiguration> initialCaches = Map.of(
+            // User caches - moderate TTL with event-driven invalidation
+            "users", cacheConfig.entryTtl(Duration.ofMinutes(15)),
+            "user", cacheConfig.entryTtl(Duration.ofMinutes(15)),
+            
+            // Channel caches - long TTL (rarely change)
+            "channels", cacheConfig.entryTtl(Duration.ofHours(1)),
+            "channel", cacheConfig.entryTtl(Duration.ofHours(1)),
+            
+            // Message caches - shorter TTL with real-time invalidation
+            "channelMessages", cacheConfig.entryTtl(Duration.ofMinutes(5)),
+            "channelMessagesPaginated", cacheConfig.entryTtl(Duration.ofMinutes(5)),
+            "message", cacheConfig.entryTtl(Duration.ofMinutes(10)),
+            
+            // Presence cache - very short TTL for real-time updates
+            "userPresence", cacheConfig.entryTtl(Duration.ofMinutes(2)),
+            "allPresence", cacheConfig.entryTtl(Duration.ofMinutes(1))
+        );
 
-    return RedisCacheManager.builder(connectionFactory)
-        .cacheDefaults(cacheConfig)
-        .withInitialCacheConfigurations(initialCaches)
-        .transactionAware()
-        .build();
+        return RedisCacheManager.builder(connectionFactory)
+            .cacheDefaults(cacheConfig)
+            .withInitialCacheConfigurations(initialCaches)
+            .transactionAware()
+            .build();
     }
 }

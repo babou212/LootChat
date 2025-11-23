@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Channel, Message } from '../../shared/types/chat'
+import type { Channel } from '../../shared/types/chat'
 import type { MessageResponse } from '~/api/messageApi'
 import type { ChannelResponse } from '~/api/channelApi'
 import type { UserResponse } from '~/api/userApi'
@@ -12,6 +12,7 @@ import type GifPicker from '~/components/GifPicker.vue'
 import type { StompSubscription } from '@stomp/stompjs'
 import type { UserPresenceUpdate } from '~/composables/useWebSocket'
 import { useAuthStore } from '../../stores/auth'
+import { useMessagesStore } from '../../stores/messages'
 import type { User } from '../../shared/types/user'
 
 definePageMeta({
@@ -21,6 +22,7 @@ definePageMeta({
 
 const { user } = useAuth()
 const authStore = useAuthStore()
+const messagesStore = useMessagesStore()
 
 const token = ref<string | null>(null)
 
@@ -43,10 +45,21 @@ const channels = ref<Channel[]>([])
 
 const selectedChannel = ref<Channel | null>(null)
 
-const messages = ref<Message[]>([])
-const currentPage = ref(0)
-const pageSize = 30
-const hasMoreMessages = ref(true)
+const messages = computed(() => {
+  if (!selectedChannel.value) return []
+  return messagesStore.getChannelMessages(selectedChannel.value.id)
+})
+
+const hasMoreMessages = computed(() => {
+  if (!selectedChannel.value) return true
+  return messagesStore.hasMoreMessages(selectedChannel.value.id)
+})
+
+const currentPage = computed(() => {
+  if (!selectedChannel.value) return 0
+  return messagesStore.getCurrentPage(selectedChannel.value.id)
+})
+
 const loadingMoreMessages = ref(false)
 
 const users = ref<UserPresence[]>([])
@@ -145,12 +158,9 @@ const selectChannel = async (channel: Channel) => {
     channels.value[channelIndex]!.unread = 0
   }
 
-  currentPage.value = 0
-  hasMoreMessages.value = true
   loadingMoreMessages.value = false
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
-    messages.value = []
     await fetchMessages()
 
     if (subscription) {
@@ -167,7 +177,6 @@ const selectChannel = async (channel: Channel) => {
     }
 
     if (token.value) {
-      // Wait for WebSocket connection if not yet connected
       if (!wsConnected.value) {
         let attempts = 0
         while (!wsConnected.value && attempts < 20) {
@@ -182,17 +191,7 @@ const selectChannel = async (channel: Channel) => {
       }
 
       subscription = subscribeToChannel(channel.id, (newMessage) => {
-        const exists = messages.value.find(m => m.id === newMessage.id)
-        if (!exists) {
-          const converted = convertToMessage(newMessage)
-          messages.value.push(converted)
-          messages.value.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-        } else {
-          const index = messages.value.findIndex(m => m.id === newMessage.id)
-          if (index !== -1) {
-            messages.value[index] = convertToMessage(newMessage)
-          }
-        }
+        messagesStore.addMessage(channel.id, messagesStore.convertToMessage(newMessage))
       })
 
       if (!subscription) {
@@ -200,45 +199,30 @@ const selectChannel = async (channel: Channel) => {
       }
 
       channelReactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {
-        const messageIndex = messages.value.findIndex(m => m.id === reaction.messageId)
-        if (messageIndex !== -1) {
-          const message = messages.value[messageIndex]!
-          if (!message.reactions) {
-            message.reactions = []
-          }
-          const existingReactionIndex = message.reactions.findIndex(
-            r => r.id === reaction.id
-          )
-          if (existingReactionIndex === -1) {
-            message.reactions.push({
-              id: reaction.id,
-              emoji: reaction.emoji,
-              userId: reaction.userId,
-              username: reaction.username,
-              createdAt: new Date(reaction.createdAt)
-            })
-          }
+        if (reaction.messageId) {
+          messagesStore.addReaction(channel.id, reaction.messageId, {
+            id: reaction.id,
+            emoji: reaction.emoji,
+            userId: reaction.userId,
+            username: reaction.username,
+            createdAt: new Date(reaction.createdAt)
+          })
         }
       })
 
       channelReactionRemovalSubscription = subscribeToChannelReactionRemovals(channel.id, (reaction) => {
-        const messageIndex = messages.value.findIndex(m => m.id === reaction.messageId)
-        if (messageIndex !== -1) {
-          const message = messages.value[messageIndex]!
-          if (message.reactions) {
-            message.reactions = message.reactions.filter(r => r.id !== reaction.id)
-          }
+        if (reaction.messageId) {
+          messagesStore.removeReaction(channel.id, reaction.messageId, reaction.id)
         }
       })
 
       channelMessageDeletionSubscription = subscribeToChannelMessageDeletions(channel.id, (payload) => {
         if (payload && typeof payload.id === 'number') {
-          messages.value = messages.value.filter(m => m.id !== payload.id)
+          messagesStore.removeMessage(channel.id, payload.id)
         }
       })
     }
   } else {
-    messages.value = []
     if (subscription) {
       subscription.unsubscribe()
       subscription = null
@@ -267,30 +251,6 @@ const convertToChannel = (apiChannel: ChannelResponse): Channel => {
     createdAt: apiChannel.createdAt,
     updatedAt: apiChannel.updatedAt,
     unread: 0
-  }
-}
-
-const convertToMessage = (apiMessage: MessageResponse): Message => {
-  return {
-    id: apiMessage.id,
-    userId: apiMessage.userId.toString(),
-    username: apiMessage.username,
-    content: apiMessage.content,
-    timestamp: new Date(apiMessage.createdAt),
-    avatar: apiMessage.avatar,
-    imageUrl: apiMessage.imageUrl,
-    imageFilename: apiMessage.imageFilename,
-    channelId: apiMessage.channelId,
-    channelName: apiMessage.channelName,
-    reactions: apiMessage.reactions?.map(r => ({
-      id: r.id,
-      emoji: r.emoji,
-      userId: r.userId,
-      username: r.username,
-      createdAt: new Date(r.createdAt)
-    })) || [],
-    updatedAt: apiMessage.updatedAt ? new Date(apiMessage.updatedAt) : undefined,
-    edited: apiMessage.updatedAt ? new Date(apiMessage.updatedAt).getTime() !== new Date(apiMessage.createdAt).getTime() : false
   }
 }
 
@@ -373,41 +333,17 @@ const fetchMessages = async (append = false) => {
 
     const channelId = selectedChannel.value?.id
     if (!channelId) {
-      messages.value = []
       return
     }
 
     if (!append) {
       loading.value = true
-      currentPage.value = 0
     } else {
       loadingMoreMessages.value = true
     }
 
     const page = append ? currentPage.value + 1 : 0
-    const apiMessages = await $fetch<MessageResponse[]>('/api/messages', {
-      query: {
-        channelId,
-        page,
-        size: pageSize
-      }
-    })
-
-    if (apiMessages.length < pageSize) {
-      hasMoreMessages.value = false
-    }
-
-    const convertedMessages = apiMessages
-      .map(convertToMessage)
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-
-    if (append) {
-      messages.value = [...convertedMessages, ...messages.value]
-      currentPage.value = page
-    } else {
-      messages.value = convertedMessages
-      hasMoreMessages.value = apiMessages.length === pageSize
-    }
+    await messagesStore.fetchMessages(channelId, page)
 
     loading.value = false
     loadingMoreMessages.value = false
@@ -425,42 +361,82 @@ const loadMoreMessages = async () => {
 }
 
 const removeMessageById = (id: number) => {
-  messages.value = messages.value.filter(m => m.id !== id)
+  if (selectedChannel.value) {
+    messagesStore.removeMessage(selectedChannel.value.id, id)
+  }
 }
 
 const sendMessage = async () => {
   if ((!newMessage.value.trim() && !selectedImage.value) || !user.value || !selectedChannel.value) return
 
+  const channelId = selectedChannel.value.id
+  const messageContent = newMessage.value.trim()
+  const imageToSend = selectedImage.value
+  let optimisticId: number | null = null
+
   try {
     error.value = null
 
-    if (selectedImage.value) {
-      const formData = new FormData()
-      formData.append('image', selectedImage.value)
-      formData.append('channelId', selectedChannel.value.id.toString())
-      if (newMessage.value.trim()) {
-        formData.append('content', newMessage.value.trim())
-      }
-
-      await $fetch('/api/messages/upload', {
-        method: 'POST',
-        body: formData
-      })
-      removeImage()
-    } else {
-      await $fetch('/api/messages', {
-        method: 'POST',
-        body: {
-          content: newMessage.value,
-          userId: user.value.userId,
-          channelId: selectedChannel.value.id
-        }
+    if (!imageToSend && messageContent) {
+      optimisticId = -Date.now()
+      messagesStore.addOptimisticMessage(channelId, {
+        optimisticId,
+        userId: user.value.userId.toString(),
+        username: user.value.username,
+        content: messageContent,
+        timestamp: new Date(),
+        avatar: user.value.avatar,
+        channelId,
+        reactions: []
       })
     }
 
     newMessage.value = ''
+
+    if (imageToSend) {
+      const formData = new FormData()
+      formData.append('image', imageToSend)
+      formData.append('channelId', channelId.toString())
+      if (messageContent) {
+        formData.append('content', messageContent)
+      }
+
+      const response = await $fetch<MessageResponse>('/api/messages/upload', {
+        method: 'POST',
+        body: formData
+      })
+
+      messagesStore.addMessage(channelId, messagesStore.convertToMessage(response))
+      removeImage()
+    } else {
+      const response = await $fetch<MessageResponse>('/api/messages', {
+        method: 'POST',
+        body: {
+          content: messageContent,
+          userId: user.value.userId,
+          channelId
+        }
+      })
+
+      if (optimisticId) {
+        messagesStore.confirmOptimisticMessage(
+          channelId,
+          optimisticId,
+          messagesStore.convertToMessage(response)
+        )
+      }
+    }
   } catch (err: unknown) {
     console.error('Failed to send message:', err)
+
+    if (optimisticId) {
+      messagesStore.rollbackOptimisticMessage(channelId, optimisticId)
+    }
+
+    if (messageContent && !newMessage.value) {
+      newMessage.value = messageContent
+    }
+
     const errorMessage = err instanceof Error ? err.message : String(err)
     error.value = errorMessage.includes('413')
       ? 'Image file is too large. Maximum size is 50MB.'
@@ -486,7 +462,6 @@ const handleJoinVoice = async (channelId: number) => {
     return
   }
 
-  // Wait for the connection to be established if it's not connected yet
   if (!client.connected) {
     const waitForConnection = (timeoutMs = 5000, intervalMs = 100) => {
       return new Promise<boolean>((resolve) => {
@@ -577,7 +552,7 @@ onMounted(async () => {
       globalMessageDeletionSubscription = subscribeToGlobalMessageDeletions((payload) => {
         if (!payload) return
         if (selectedChannel.value && payload.channelId === selectedChannel.value.id) {
-          messages.value = messages.value.filter(m => m.id !== payload.id)
+          messagesStore.removeMessage(selectedChannel.value.id, payload.id)
         }
       })
 
@@ -646,7 +621,6 @@ watch(channels, (newChannels) => {
   }
 })
 
-// Update users list when current user's avatar changes
 watch(() => user.value?.avatar, (newAvatar) => {
   if (user.value && user.value.userId) {
     const userIndex = users.value.findIndex(u => u.userId === user.value!.userId)
