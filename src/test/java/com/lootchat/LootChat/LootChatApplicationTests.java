@@ -1,5 +1,6 @@
 package com.lootchat.LootChat;
 
+import io.minio.MinioClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -13,9 +14,12 @@ class LootChatApplicationTests {
 	@MockBean
 	private S3FileStorageService s3FileStorageService;
 
+	@MockBean
+	private MinioClient minioClient;
+
 	@Test
 	void contextLoads() {
-		// Context loads successfully with mocked S3 service
+		// Context loads successfully with mocked S3 service and MinioClient
 	}
 
 }
