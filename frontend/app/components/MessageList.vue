@@ -17,8 +17,32 @@ interface Props {
 const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
+const { getAvatarUrl } = useAvatarUrl()
 
 const presignedUrlCache = ref<Map<string, { url: string, expiry: number }>>(new Map())
+const avatarUrls = ref<Map<string | number, string>>(new Map())
+
+const loadAvatarUrl = async (userId: string | number, avatarPath: string | undefined) => {
+  if (avatarPath && !avatarUrls.value.has(userId)) {
+    const url = await getAvatarUrl(avatarPath)
+    if (url) {
+      avatarUrls.value.set(userId, url)
+    }
+  }
+}
+
+const getLoadedAvatarUrl = (userId: string | number): string => {
+  return avatarUrls.value.get(userId) || ''
+}
+
+// Watch messages and load avatars
+watch(() => props.messages, (newMessages) => {
+  newMessages.forEach((message) => {
+    if (message.avatar) {
+      loadAvatarUrl(message.userId, message.avatar)
+    }
+  })
+}, { immediate: true, deep: true })
 
 const getAuthenticatedImageUrl = async (imageUrl: string): Promise<string> => {
   if (!imageUrl) return ''
@@ -542,7 +566,7 @@ watch(() => props.messages, async (newMessages) => {
         class="flex gap-4 group"
       >
         <UAvatar
-          :src="message.avatar"
+          :src="getLoadedAvatarUrl(message.userId)"
           :alt="message.username"
           size="md"
         />

@@ -11,8 +11,10 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { getAvatarUrl } = useAvatarUrl()
 
 const isCollapsed = ref(false)
+const avatarUrls = ref<Map<number, string>>(new Map())
 
 const onlineUsers = computed(() =>
   props.users.filter(user => user.status === 'online')
@@ -30,6 +32,28 @@ const getInitials = (user: UserPresence) => {
   }
   return user.username.substring(0, 2).toUpperCase()
 }
+
+const loadAvatarUrl = async (user: UserPresence) => {
+  if (user.avatar && !avatarUrls.value.has(user.userId)) {
+    const url = await getAvatarUrl(user.avatar)
+    if (url) {
+      avatarUrls.value.set(user.userId, url)
+    }
+  }
+}
+
+const getLoadedAvatarUrl = (userId: number): string => {
+  return avatarUrls.value.get(userId) || ''
+}
+
+// Load avatar URLs for all users
+watch(() => props.users, (newUsers) => {
+  newUsers.forEach(user => {
+    if (user.avatar) {
+      loadAvatarUrl(user)
+    }
+  })
+}, { immediate: true, deep: true })
 </script>
 
 <template>
@@ -65,10 +89,10 @@ const getInitials = (user: UserPresence) => {
           >
             <div class="relative">
               <div
-                v-if="user.avatar"
+                v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
                 class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
               >
-                <img :src="user.avatar" :alt="user.username" class="w-full h-full object-cover">
+                <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
               </div>
               <div
                 v-else
@@ -76,7 +100,7 @@ const getInitials = (user: UserPresence) => {
               >
                 {{ getInitials(user) }}
               </div>
-              <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
+              <span class="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800" />
             </div>
             <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
               {{ user.username }}

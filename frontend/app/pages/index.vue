@@ -35,7 +35,7 @@ const getAuthToken = async (): Promise<string | null> => {
   }
 }
 
-const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient } = useWebSocket()
+const { connect, disconnect, subscribeToChannel, subscribeToAllMessages, subscribeToUserPresence, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, subscribeToGlobalMessageDeletions, getClient, isConnected: wsConnected } = useWebSocket()
 
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 
@@ -167,9 +167,18 @@ const selectChannel = async (channel: Channel) => {
     }
 
     if (token.value) {
-      const client = getClient()
-      if (client && !client.connected) {
-        await new Promise(resolve => setTimeout(resolve, 500))
+      // Wait for WebSocket connection if not yet connected
+      if (!wsConnected.value) {
+        let attempts = 0
+        while (!wsConnected.value && attempts < 20) {
+          await new Promise(resolve => setTimeout(resolve, 250))
+          attempts++
+        }
+
+        if (!wsConnected.value) {
+          console.error('WebSocket connection timeout - cannot subscribe to channel')
+          return
+        }
       }
 
       subscription = subscribeToChannel(channel.id, (newMessage) => {
@@ -633,6 +642,16 @@ watch(channels, (newChannels) => {
     const firstTextChannel = newChannels.find(ch => !ch.channelType || ch.channelType === 'TEXT')
     if (firstTextChannel) {
       selectChannel(firstTextChannel)
+    }
+  }
+})
+
+// Update users list when current user's avatar changes
+watch(() => user.value?.avatar, (newAvatar) => {
+  if (user.value && user.value.userId) {
+    const userIndex = users.value.findIndex(u => u.userId === user.value!.userId)
+    if (userIndex !== -1) {
+      users.value[userIndex]!.avatar = newAvatar
     }
   }
 })

@@ -40,6 +40,14 @@ export default defineEventHandler(async (event) => {
       body: backendFormData
     })
 
+    await setUserSession(event, {
+      ...session,
+      user: {
+        ...session.user,
+        avatar: response.avatarUrl
+      }
+    })
+
     return response
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {

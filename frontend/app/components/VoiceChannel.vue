@@ -9,6 +9,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { getAvatarUrl } = useAvatarUrl()
 
 const {
   participants,
@@ -24,6 +25,29 @@ const {
 const isConnected = computed(() => currentChannelId.value === props.channel.id)
 const isConnecting = ref(false)
 const error = ref<string | null>(null)
+const avatarUrls = ref<Map<string, string>>(new Map())
+
+const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
+  if (avatarPath && !avatarUrls.value.has(userId)) {
+    const url = await getAvatarUrl(avatarPath)
+    if (url) {
+      avatarUrls.value.set(userId, url)
+    }
+  }
+}
+
+const getLoadedAvatarUrl = (userId: string): string => {
+  return avatarUrls.value.get(userId) || ''
+}
+
+// Watch participants and load their avatars
+watch(() => participants.value, (newParticipants) => {
+  newParticipants.forEach(participant => {
+    if (participant.avatar) {
+      loadAvatarUrl(participant.userId, participant.avatar)
+    }
+  })
+}, { immediate: true, deep: true })
 
 const handleJoinChannel = async () => {
   if (!props.stompClient) {
@@ -161,6 +185,16 @@ const handleLeaveChannel = () => {
             >
               <div class="shrink-0 relative">
                 <div
+                  v-if="participant.avatar && getLoadedAvatarUrl(participant.userId)"
+                  class="w-10 h-10 rounded-full overflow-hidden transition-all duration-200"
+                  :class="{
+                    'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking
+                  }"
+                >
+                  <img :src="getLoadedAvatarUrl(participant.userId)" :alt="participant.username" class="w-full h-full object-cover">
+                </div>
+                <div
+                  v-else
                   class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center transition-all duration-200"
                   :class="{
                     'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking
