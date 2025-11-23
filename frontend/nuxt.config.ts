@@ -7,10 +7,19 @@ export default defineNuxtConfig({
     '@nuxtjs/mdc',
     '@pinia/nuxt',
     'nuxt-auth-utils',
-    'nuxt-charts'
+    'nuxt-charts',
+    '@nuxt/image'
   ],
   devtools: {
     enabled: true
+  },
+
+  image: {
+    provider: 'none',
+    domains: ['localhost', '127.0.0.1'],
+    alias: {
+      minio: process.env.NUXT_PUBLIC_MINIO_URL || 'http://localhost:9000'
+    }
   },
 
   app: {
