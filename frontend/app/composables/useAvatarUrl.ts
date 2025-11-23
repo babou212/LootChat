@@ -8,7 +8,7 @@ const avatarUrlCache = new Map<string, CachedUrl>()
 export const useAvatarUrl = () => {
   const getAvatarUrl = async (avatarPath: string | undefined): Promise<string> => {
     if (!avatarPath) return ''
-    
+
     const filename = avatarPath.split('/').pop()
     if (!filename) return ''
 

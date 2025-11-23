@@ -13,6 +13,7 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const { getAvatarUrl } = useAvatarUrl()
 
 const { user } = useAuth()
 
@@ -26,6 +27,7 @@ const {
 } = useWebRTC()
 
 const isConnecting = ref(false)
+const avatarUrls = ref<Map<string, string>>(new Map())
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -45,6 +47,28 @@ const getParticipantInitials = (username: string) => {
 const isCurrentUser = (userId: string) => {
   return user.value?.userId.toString() === userId
 }
+
+const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
+  if (avatarPath && !avatarUrls.value.has(userId)) {
+    const url = await getAvatarUrl(avatarPath)
+    if (url) {
+      avatarUrls.value.set(userId, url)
+    }
+  }
+}
+
+const getLoadedAvatarUrl = (userId: string): string => {
+  return avatarUrls.value.get(userId) || ''
+}
+
+// Watch participants and load their avatars
+watch(() => participants.value, (newParticipants) => {
+  newParticipants.forEach((participant) => {
+    if (participant.avatar) {
+      loadAvatarUrl(participant.userId, participant.avatar)
+    }
+  })
+}, { immediate: true, deep: true })
 
 const handleJoinVoice = async (channelId: number) => {
   if (isConnecting.value) return
@@ -116,8 +140,8 @@ const handleLeaveVoice = () => {
               }"
             >
               <UAvatar
-                v-if="participant.avatar"
-                :src="participant.avatar"
+                v-if="participant.avatar && getLoadedAvatarUrl(participant.userId)"
+                :src="getLoadedAvatarUrl(participant.userId)"
                 :alt="participant.username"
                 size="xs"
               />

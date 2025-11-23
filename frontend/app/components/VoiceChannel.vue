@@ -42,7 +42,7 @@ const getLoadedAvatarUrl = (userId: string): string => {
 
 // Watch participants and load their avatars
 watch(() => participants.value, (newParticipants) => {
-  newParticipants.forEach(participant => {
+  newParticipants.forEach((participant) => {
     if (participant.avatar) {
       loadAvatarUrl(participant.userId, participant.avatar)
     }

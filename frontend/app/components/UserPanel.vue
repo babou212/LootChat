@@ -48,7 +48,7 @@ const getLoadedAvatarUrl = (userId: number): string => {
 
 // Load avatar URLs for all users
 watch(() => props.users, (newUsers) => {
-  newUsers.forEach(user => {
+  newUsers.forEach((user) => {
     if (user.avatar) {
       loadAvatarUrl(user)
     }

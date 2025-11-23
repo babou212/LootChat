@@ -9,8 +9,26 @@ import AvatarUpload from '~/components/AvatarUpload.vue'
 definePageMeta({ layout: false, middleware: 'auth' })
 
 const { user, refreshSession } = useAuth()
+const { getAvatarUrl } = useAvatarUrl()
 
 const isAdmin = computed(() => user.value?.role === 'ADMIN')
+const currentAvatarUrl = ref<string>('')
+
+const loadCurrentAvatar = async () => {
+  if (user.value?.avatar) {
+    const url = await getAvatarUrl(user.value.avatar)
+    if (url) {
+      currentAvatarUrl.value = url
+    }
+  } else {
+    currentAvatarUrl.value = ''
+  }
+}
+
+// Load avatar when user changes
+watch(() => user.value?.avatar, () => {
+  loadCurrentAvatar()
+}, { immediate: true })
 
 const channels = ref<Channel[]>([])
 const showDeleteConfirm = ref(false)
@@ -137,11 +155,30 @@ watch(isAdmin, (admin) => {
           </h2>
         </template>
 
-        <AvatarUpload
-          :current-avatar="user.avatar"
-          @uploaded="handleAvatarUploaded"
-          @error="handleAvatarError"
-        />
+        <div class="space-y-4">
+          <div v-if="user.avatar || currentAvatarUrl" class="flex justify-center">
+            <div class="relative">
+              <div
+                v-if="currentAvatarUrl"
+                class="w-32 h-32 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden"
+              >
+                <img :src="currentAvatarUrl" :alt="user.username" class="w-full h-full object-cover">
+              </div>
+              <div
+                v-else
+                class="w-32 h-32 rounded-full bg-primary-500 flex items-center justify-center text-white text-4xl font-semibold"
+              >
+                {{ user.username.substring(0, 2).toUpperCase() }}
+              </div>
+            </div>
+          </div>
+
+          <AvatarUpload
+            :current-avatar="user.avatar"
+            @uploaded="handleAvatarUploaded"
+            @error="handleAvatarError"
+          />
+        </div>
       </UCard>
 
       <UCard>
