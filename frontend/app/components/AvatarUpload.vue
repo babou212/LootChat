@@ -12,16 +12,19 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const previewUrl = ref<string | null>(null)
 const uploading = ref(false)
-const showCropDialog = ref(false)
 const cropperCanvas = ref<HTMLCanvasElement | null>(null)
 const previewImage = ref<HTMLImageElement | null>(null)
 
-const cropData = {
-  x: 0,
-  y: 0,
-  size: 0,
-  scale: 1
-}
+const cropData = reactive({
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1,
+  imageWidth: 0,
+  imageHeight: 0
+})
+
+const isDragging = ref(false)
+const dragStart = { x: 0, y: 0 }
 
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -41,7 +44,6 @@ const handleFileSelect = (event: Event) => {
 
   selectedFile.value = file
   previewUrl.value = URL.createObjectURL(file)
-  showCropDialog.value = true
 }
 
 const initCropper = () => {
@@ -49,23 +51,20 @@ const initCropper = () => {
 
   const img = previewImage.value
   const canvas = cropperCanvas.value
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
 
   canvas.width = 300
   canvas.height = 300
 
-  const imgAspect = img.naturalWidth / img.naturalHeight
-  if (imgAspect > 1) {
-    // Landscape
-    cropData.size = img.naturalHeight
-    cropData.x = (img.naturalWidth - cropData.size) / 2
-    cropData.y = 0
-  } else {
-    cropData.size = img.naturalWidth
-    cropData.x = 0
-    cropData.y = (img.naturalHeight - cropData.size) / 2
-  }
+  // Calculate scale to fit image to circle
+  const circleSize = 300
+  const minDimension = Math.min(img.naturalWidth, img.naturalHeight)
+  cropData.scale = circleSize / minDimension
+  cropData.imageWidth = img.naturalWidth
+  cropData.imageHeight = img.naturalHeight
+
+  // Center the image
+  cropData.offsetX = (circleSize - img.naturalWidth * cropData.scale) / 2
+  cropData.offsetY = (circleSize - img.naturalHeight * cropData.scale) / 2
 
   drawCroppedImage()
 }
@@ -81,22 +80,29 @@ const drawCroppedImage = () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
   ctx.save()
+  ctx.drawImage(
+    img,
+    cropData.offsetX,
+    cropData.offsetY,
+    cropData.imageWidth * cropData.scale,
+    cropData.imageHeight * cropData.scale
+  )
+  ctx.restore()
+
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-in'
   ctx.beginPath()
   ctx.arc(150, 150, 150, 0, Math.PI * 2)
   ctx.closePath()
-  ctx.clip()
+  ctx.fill()
+  ctx.restore()
 
-  ctx.drawImage(
-    img,
-    cropData.x,
-    cropData.y,
-    cropData.size,
-    cropData.size,
-    0,
-    0,
-    300,
-    300
-  )
+  ctx.save()
+  ctx.strokeStyle = '#3b82f6'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(150, 150, 150, 0, Math.PI * 2)
+  ctx.stroke()
   ctx.restore()
 }
 
@@ -104,8 +110,34 @@ const handleImageLoad = () => {
   initCropper()
 }
 
+const handleMouseDown = (event: MouseEvent) => {
+  if (!cropperCanvas.value) return
+  isDragging.value = true
+  const rect = cropperCanvas.value.getBoundingClientRect()
+  dragStart.x = event.clientX - rect.left - cropData.offsetX
+  dragStart.y = event.clientY - rect.top - cropData.offsetY
+  cropperCanvas.value.style.cursor = 'grabbing'
+}
+
+const handleMouseMove = (event: MouseEvent) => {
+  if (!isDragging.value || !cropperCanvas.value) return
+
+  const rect = cropperCanvas.value.getBoundingClientRect()
+  cropData.offsetX = event.clientX - rect.left - dragStart.x
+  cropData.offsetY = event.clientY - rect.top - dragStart.y
+
+  drawCroppedImage()
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+  if (cropperCanvas.value) {
+    cropperCanvas.value.style.cursor = 'grab'
+  }
+}
+
 const handleUpload = async () => {
-  if (!selectedFile.value || !cropperCanvas.value) return
+  if (!selectedFile.value || !previewImage.value) return
 
   uploading.value = true
 
@@ -115,27 +147,24 @@ const handleUpload = async () => {
     finalCanvas.height = 200
     const finalCtx = finalCanvas.getContext('2d')
 
-    if (!finalCtx || !previewImage.value) {
+    if (!finalCtx) {
       throw new Error('Failed to create canvas context')
     }
 
-    finalCtx.save()
-    finalCtx.beginPath()
-    finalCtx.arc(100, 100, 100, 0, Math.PI * 2)
-    finalCtx.closePath()
-    finalCtx.clip()
+    const scaleFactor = 200 / 300
 
+    finalCtx.save()
     finalCtx.drawImage(
       previewImage.value,
-      cropData.x,
-      cropData.y,
-      cropData.size,
-      cropData.size,
-      0,
-      0,
-      200,
-      200
+      cropData.offsetX * scaleFactor,
+      cropData.offsetY * scaleFactor,
+      cropData.imageWidth * cropData.scale * scaleFactor,
+      cropData.imageHeight * cropData.scale * scaleFactor
     )
+    finalCtx.globalCompositeOperation = 'destination-in'
+    finalCtx.beginPath()
+    finalCtx.arc(100, 100, 100, 0, Math.PI * 2)
+    finalCtx.fill()
     finalCtx.restore()
 
     const blob = await new Promise<Blob>((resolve, reject) => {
@@ -154,7 +183,7 @@ const handleUpload = async () => {
     })
 
     emit('uploaded', response.avatarUrl)
-    closeDialog()
+    cancelEdit()
   } catch (err) {
     console.error('Failed to upload avatar:', err)
     emit('error', err instanceof Error ? err.message : 'Failed to upload avatar')
@@ -163,8 +192,7 @@ const handleUpload = async () => {
   }
 }
 
-const closeDialog = () => {
-  showCropDialog.value = false
+const cancelEdit = () => {
   selectedFile.value = null
   if (previewUrl.value) {
     URL.revokeObjectURL(previewUrl.value)
@@ -178,6 +206,23 @@ const closeDialog = () => {
 const triggerFileInput = () => {
   fileInput.value?.click()
 }
+
+onMounted(() => {
+  if (import.meta.client) {
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('mousemove', handleMouseMove)
+  }
+})
+
+onUnmounted(() => {
+  if (import.meta.client) {
+    window.removeEventListener('mouseup', handleMouseUp)
+    window.removeEventListener('mousemove', handleMouseMove)
+  }
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+})
 </script>
 
 <template>
@@ -207,6 +252,7 @@ const triggerFileInput = () => {
           @change="handleFileSelect"
         >
         <UButton
+          v-if="!selectedFile"
           color="primary"
           icon="i-lucide-upload"
           @click="triggerFileInput"
@@ -219,64 +265,45 @@ const triggerFileInput = () => {
       </div>
     </div>
 
-    <UModal v-model="showCropDialog">
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold">
-              Crop Avatar
-            </h3>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-x"
-              @click="closeDialog"
-            />
-          </div>
-        </template>
-
-        <div class="space-y-4">
-          <div class="flex justify-center">
-            <div class="relative">
-              <canvas
-                ref="cropperCanvas"
-                class="border-2 border-gray-300 dark:border-gray-600 rounded-lg"
-              />
-              <img
-                v-if="previewUrl"
-                ref="previewImage"
-                :src="previewUrl"
-                class="hidden"
-                @load="handleImageLoad"
-              >
-            </div>
-          </div>
-
-          <p class="text-sm text-gray-600 dark:text-gray-400 text-center">
-            Preview of your circular avatar
-          </p>
+    <div v-if="selectedFile" class="space-y-4">
+      <div class="flex justify-center">
+        <div class="relative inline-block">
+          <canvas
+            ref="cropperCanvas"
+            class="border-2 border-blue-500 dark:border-blue-400 rounded-lg cursor-grab active:cursor-grabbing"
+            @mousedown="handleMouseDown"
+          />
+          <img
+            v-if="previewUrl"
+            ref="previewImage"
+            :src="previewUrl"
+            class="hidden"
+            @load="handleImageLoad"
+          >
         </div>
+      </div>
 
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              @click="closeDialog"
-            >
-              Cancel
-            </UButton>
-            <UButton
-              color="primary"
-              :loading="uploading"
-              :disabled="uploading"
-              @click="handleUpload"
-            >
-              Upload
-            </UButton>
-          </div>
-        </template>
-      </UCard>
-    </UModal>
+      <p class="text-sm text-gray-600 dark:text-gray-400 text-center">
+        Drag the image to reposition it within the circle
+      </p>
+
+      <div class="flex justify-center gap-2">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          @click="cancelEdit"
+        >
+          Cancel
+        </UButton>
+        <UButton
+          color="primary"
+          :loading="uploading"
+          :disabled="uploading"
+          @click="handleUpload"
+        >
+          Upload
+        </UButton>
+      </div>
+    </div>
   </div>
 </template>
