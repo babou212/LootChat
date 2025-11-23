@@ -7,7 +7,8 @@ export default defineNuxtConfig({
     '@nuxtjs/mdc',
     '@pinia/nuxt',
     'nuxt-auth-utils',
-    'nuxt-charts'
+    'nuxt-charts',
+    '@nuxt/image'
   ],
   devtools: {
     enabled: true
