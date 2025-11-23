@@ -1,15 +1,31 @@
 <script setup lang="ts">
 const { user, logout } = useAuth()
 const router = useRouter()
+const { getAvatarUrl } = useAvatarUrl()
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
+const avatarUrl = ref<string>('')
 
 useClickAway(
   rootRef,
   () => { open.value = false },
   { active: open }
 )
+
+const loadAvatarUrl = async () => {
+  if (user.value?.avatar) {
+    const url = await getAvatarUrl(user.value.avatar)
+    if (url) {
+      avatarUrl.value = url
+    }
+  }
+}
+
+// Load avatar when user changes
+watch(() => user.value?.avatar, () => {
+  loadAvatarUrl()
+}, { immediate: true })
 
 const goProfile = () => {
   open.value = false
@@ -35,10 +51,10 @@ const getInitials = (username: string) => {
     >
       <div class="relative">
         <div
-          v-if="user.avatar"
+          v-if="user.avatar && avatarUrl"
           class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
         >
-          <img :src="user.avatar" :alt="user.username" class="w-full h-full object-cover">
+          <img :src="avatarUrl" :alt="user.username" class="w-full h-full object-cover">
         </div>
         <div
           v-else
