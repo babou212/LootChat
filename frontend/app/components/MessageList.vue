@@ -610,6 +610,8 @@ watch(() => props.messages, async (newMessages) => {
             :alt="message.imageFilename || 'Uploaded image'"
             class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
             loading="lazy"
+            width="448"
+            height="auto"
             @click="openImageModal(getLoadedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
           />
 
@@ -623,6 +625,8 @@ watch(() => props.messages, async (newMessages) => {
             alt="gif"
             class="mt-2 rounded max-w-xs"
             loading="lazy"
+            width="320"
+            height="auto"
           />
 
           <div class="flex items-center gap-2 mt-2 flex-wrap">
@@ -704,6 +708,8 @@ watch(() => props.messages, async (newMessages) => {
           :src="expandedImage"
           :alt="expandedImageAlt || 'Expanded image'"
           class="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default"
+          width="1920"
+          height="auto"
           @click.stop
         />
       </div>

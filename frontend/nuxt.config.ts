@@ -132,10 +132,8 @@ export default defineNuxtConfig({
     }
   },
 
-  // @ts-expect-error - @nuxt/image types not yet available
   image: {
-    quality: 80,
-    format: ['webp'],
-    domains: ['minio.dylancree.com']
+    provider: 'none',
+    domains: ['minio.dylancree.com', 'localhost']
   }
 })
