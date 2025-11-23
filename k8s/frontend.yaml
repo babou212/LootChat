@@ -35,7 +35,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: frontend
-        image: babou212/lootchat-frontend:master-869a20b-1763860414 # {"$imagepolicy": "flux-system:lootchat-frontend"}
+        image: babou212/lootchat-frontend:master-0251efb-1763907316 # {"$imagepolicy": "flux-system:lootchat-frontend"}
         imagePullPolicy: Always
         ports:
         - containerPort: 3000
