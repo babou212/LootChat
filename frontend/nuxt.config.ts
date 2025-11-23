@@ -91,7 +91,7 @@ export default defineNuxtConfig({
             'style-src \'self\' \'unsafe-inline\'',
             'img-src \'self\' data: https: blob:',
             'font-src \'self\' data:',
-            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 ws: wss: https://tenor.googleapis.com https://api.iconify.design',
+            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 ws: wss: https://tenor.googleapis.com',
             'media-src \'self\' https:',
             'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
             'worker-src \'self\' blob:',
@@ -129,5 +129,12 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
+  },
+
+  // @ts-expect-error - @nuxt/image types not yet available
+  image: {
+    quality: 80,
+    format: ['webp'],
+    domains: ['minio.dylancree.com']
   }
 })

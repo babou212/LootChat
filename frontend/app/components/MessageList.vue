@@ -604,26 +604,26 @@ watch(() => props.messages, async (newMessages) => {
             {{ contentWithoutMedia(message.content) || message.content }}
           </p>
 
-          <img
+          <NuxtImg
             v-if="message.imageUrl && getLoadedImageUrl(message.imageUrl)"
             :src="getLoadedImageUrl(message.imageUrl)"
             :alt="message.imageFilename || 'Uploaded image'"
             class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
             loading="lazy"
             @click="openImageModal(getLoadedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
-          >
+          />
 
           <YouTubePlayer
             v-if="firstYouTubeFrom(message.content)"
             :url="firstYouTubeFrom(message.content) as string"
           />
-          <img
+          <NuxtImg
             v-if="firstGifFrom(message.content)"
             :src="firstGifFrom(message.content) as string"
             alt="gif"
             class="mt-2 rounded max-w-xs"
             loading="lazy"
-          >
+          />
 
           <div class="flex items-center gap-2 mt-2 flex-wrap">
             <button
@@ -700,12 +700,12 @@ watch(() => props.messages, async (newMessages) => {
         >
           <UIcon name="i-lucide-x" class="text-4xl" />
         </button>
-        <img
+        <NuxtImg
           :src="expandedImage"
           :alt="expandedImageAlt || 'Expanded image'"
           class="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-default"
           @click.stop
-        >
+        />
       </div>
     </Teleport>
   </div>
