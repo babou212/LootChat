@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    const response = await $fetch<{ avatarUrl: string }>(`${config.backendUrl}/api/users/avatar`, {
+    const response = await $fetch<{ avatarUrl: string }>(`${config.apiUrl}/api/users/avatar`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.token}`
