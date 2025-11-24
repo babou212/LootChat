@@ -9,7 +9,9 @@ export const useMessageSender = () => {
     channelId: number,
     messageContent: string,
     imageFile: File | null,
-    replyToMessageId?: number
+    replyToMessageId?: number,
+    replyToUsername?: string,
+    replyToContent?: string
   ) => {
     if (!user.value) {
       throw new Error('User not authenticated')
@@ -29,7 +31,9 @@ export const useMessageSender = () => {
           avatar: user.value.avatar,
           channelId,
           reactions: [],
-          replyToMessageId
+          replyToMessageId,
+          replyToUsername,
+          replyToContent
         })
       }
 
@@ -51,14 +55,20 @@ export const useMessageSender = () => {
 
         messagesStore.addMessage(channelId, messagesStore.convertToMessage(response))
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const requestBody: Record<string, any> = {
+          content: messageContent,
+          userId: user.value.userId,
+          channelId: channelId
+        }
+
+        if (replyToMessageId !== undefined && replyToMessageId !== null) {
+          requestBody.replyToMessageId = replyToMessageId
+        }
+
         const response = await $fetch<MessageResponse>('/api/messages', {
           method: 'POST',
-          body: {
-            content: messageContent,
-            userId: user.value.userId,
-            channelId,
-            replyToMessageId
-          }
+          body: requestBody
         })
 
         if (optimisticId) {

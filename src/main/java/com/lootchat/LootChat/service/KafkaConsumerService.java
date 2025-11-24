@@ -113,7 +113,10 @@ public class KafkaConsumerService {
                 .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
-                .reactions(List.of()) 
+                .reactions(List.of())
+                .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                .replyToUsername(message.getReplyToUsername())
+                .replyToContent(message.getReplyToContent())
                 .build();
     }
 

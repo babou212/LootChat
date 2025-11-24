@@ -585,7 +585,7 @@ watch(() => props.messages, async (newMessages) => {
         v-for="message in messages"
         :key="message.id"
         :data-message-id="message.id"
-        class="flex gap-4 group"
+        class="flex gap-4 group relative p-2 -m-2 rounded-lg"
         :class="{ 'opacity-60': isOptimistic(message) }"
       >
         <UAvatar
@@ -620,10 +620,10 @@ watch(() => props.messages, async (newMessages) => {
           <template v-else>
             <div
               v-if="message.replyToMessageId"
-              class="mb-2 pl-3 border-l-2 border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 rounded-r p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              class="mb-2 pl-3 border-l-2 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-r p-2 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
               @click="scrollToMessage(message.replyToMessageId)"
             >
-              <div class="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 mb-1">
+              <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
                 <UIcon name="i-lucide-corner-down-right" class="w-3 h-3" />
                 <span class="font-semibold">{{ message.replyToUsername }}</span>
               </div>
@@ -773,15 +773,21 @@ watch(() => props.messages, async (newMessages) => {
 
 /* Highlight animation for scrolled-to messages */
 .highlight-message {
-  animation: highlight-pulse 2s ease-out;
+  animation: highlight-pulse 2s ease-in-out;
 }
 
 @keyframes highlight-pulse {
   0% {
+    background-color: rgb(59 130 246 / 0.2);
+    box-shadow: 0 0 0 0 rgb(59 130 246 / 0.4), inset 0 0 0 2px rgb(59 130 246 / 0.6);
+  }
+  50% {
     background-color: rgb(59 130 246 / 0.3);
+    box-shadow: 0 0 20px 0 rgb(59 130 246 / 0.3), inset 0 0 0 2px rgb(59 130 246 / 0.8);
   }
   100% {
     background-color: transparent;
+    box-shadow: 0 0 0 0 transparent, inset 0 0 0 0 transparent;
   }
 }
 </style>
