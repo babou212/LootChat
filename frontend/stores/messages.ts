@@ -113,7 +113,10 @@ export const useMessagesStore = defineStore('messages', {
           createdAt: new Date(r.createdAt)
         })) || [],
         updatedAt: apiMessage.updatedAt ? new Date(apiMessage.updatedAt) : undefined,
-        edited: apiMessage.updatedAt ? new Date(apiMessage.updatedAt).getTime() !== new Date(apiMessage.createdAt).getTime() : false
+        edited: apiMessage.updatedAt ? new Date(apiMessage.updatedAt).getTime() !== new Date(apiMessage.createdAt).getTime() : false,
+        replyToMessageId: apiMessage.replyToMessageId,
+        replyToUsername: apiMessage.replyToUsername,
+        replyToContent: apiMessage.replyToContent
       }
     },
 

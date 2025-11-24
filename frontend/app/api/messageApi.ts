@@ -13,6 +13,9 @@ export interface MessageResponse {
   channelId: number
   channelName: string
   reactions?: ReactionResponse[]
+  replyToMessageId?: number
+  replyToUsername?: string
+  replyToContent?: string
 }
 
 export interface ReactionResponse {
@@ -32,6 +35,7 @@ export interface CreateMessageRequest {
   content: string
   userId: number
   channelId: number
+  replyToMessageId?: number
 }
 
 export interface UpdateMessageRequest {

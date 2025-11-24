@@ -1,3 +1,5 @@
+import type { Message } from '../../shared/types/chat'
+
 export const useMessageComposer = () => {
   const newMessage = ref('')
   const selectedImage = ref<File | null>(null)
@@ -5,6 +7,7 @@ export const useMessageComposer = () => {
   const fileInputRef = ref<HTMLInputElement | null>(null)
   const showEmojiPicker = ref(false)
   const showGifPicker = ref(false)
+  const replyingTo = ref<Message | null>(null)
 
   const handleImageSelect = (event: Event) => {
     const target = event.target as HTMLInputElement
@@ -53,9 +56,18 @@ export const useMessageComposer = () => {
     showGifPicker.value = false
   }
 
+  const setReplyingTo = (message: Message | null) => {
+    replyingTo.value = message
+  }
+
+  const cancelReply = () => {
+    replyingTo.value = null
+  }
+
   const reset = () => {
     newMessage.value = ''
     removeImage()
+    replyingTo.value = null
   }
 
   const cleanup = () => {
@@ -71,10 +83,13 @@ export const useMessageComposer = () => {
     fileInputRef,
     showEmojiPicker,
     showGifPicker,
+    replyingTo,
     handleImageSelect,
     removeImage,
     addEmoji,
     addGif,
+    setReplyingTo,
+    cancelReply,
     reset,
     cleanup
   }

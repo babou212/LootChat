@@ -11,4 +11,5 @@ public class CreateMessageRequest {
     private String content;
     private Long userId;
     private Long channelId;
+    private Long replyToMessageId;
 }

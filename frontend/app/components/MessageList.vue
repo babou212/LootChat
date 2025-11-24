@@ -266,6 +266,7 @@ const saveEdit = async (messageId: number, content: string) => {
 const emit = defineEmits<{
   (e: 'message-deleted', id: number): void
   (e: 'load-more'): void
+  (e: 'reply-to-message', message: Message): void
 }>()
 
 const handleDeleteMessage = (message: Message) => {
@@ -397,6 +398,10 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
 const handleEmojiSelect = async (messageId: number, emoji: string) => {
   await handleReactionClick(messageId, emoji)
   closeEmojiPicker()
+}
+
+const handleReplyClick = (message: Message) => {
+  emit('reply-to-message', message)
 }
 
 const groupReactions = (reactions: Reaction[] = []) => {
@@ -600,9 +605,24 @@ watch(() => props.messages, async (newMessages) => {
             @cancel="cancelEdit"
           />
 
-          <p v-else class="text-gray-700 dark:text-gray-300">
-            {{ contentWithoutMedia(message.content) || message.content }}
-          </p>
+          <template v-else>
+            <div
+              v-if="message.replyToMessageId"
+              class="mb-2 pl-3 border-l-2 border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 rounded-r p-2"
+            >
+              <div class="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 mb-1">
+                <UIcon name="i-lucide-corner-down-right" class="w-3 h-3" />
+                <span class="font-semibold">{{ message.replyToUsername }}</span>
+              </div>
+              <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                {{ message.replyToContent }}
+              </p>
+            </div>
+
+            <p class="text-gray-700 dark:text-gray-300">
+              {{ contentWithoutMedia(message.content) || message.content }}
+            </p>
+          </template>
 
           <NuxtImg
             v-if="message.imageUrl && getLoadedImageUrl(message.imageUrl)"
@@ -674,6 +694,16 @@ watch(() => props.messages, async (newMessages) => {
               @click="startEdit(message)"
             >
               <UIcon name="i-lucide-pencil" class="text-gray-600 dark:text-gray-300" />
+            </button>
+
+            <button
+              v-if="!isOptimistic(message)"
+              type="button"
+              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+              title="Reply to message"
+              @click="handleReplyClick(message)"
+            >
+              <UIcon name="i-lucide-reply" class="text-gray-600 dark:text-gray-300" />
             </button>
 
             <button

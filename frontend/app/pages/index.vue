@@ -45,6 +45,9 @@ const imagePreviewUrl = composerComposable.imagePreviewUrl
 const fileInputRef = composerComposable.fileInputRef
 const showEmojiPicker = composerComposable.showEmojiPicker
 const showGifPicker = composerComposable.showGifPicker
+const replyingTo = composerComposable.replyingTo
+const setReplyingTo = composerComposable.setReplyingTo
+const cancelReply = composerComposable.cancelReply
 const handleImageSelectRaw = composerComposable.handleImageSelect
 const removeImage = composerComposable.removeImage
 const addEmoji = composerComposable.addEmoji
@@ -177,10 +180,11 @@ const sendMessage = async () => {
   const channelId = selectedChannel.value.id
   const messageContent = newMessage.value.trim()
   const imageToSend = selectedImage.value
+  const replyId = replyingTo.value?.id
 
   try {
     error.value = null
-    await sendMessageToServer(channelId, messageContent, imageToSend)
+    await sendMessageToServer(channelId, messageContent, imageToSend, replyId)
     resetComposer()
   } catch (err: unknown) {
     console.error('Failed to send message:', err)
@@ -387,11 +391,34 @@ watch(users, () => {
             :loading-more="loadingMoreMessages"
             @message-deleted="removeMessageById"
             @load-more="loadMoreMessages"
+            @reply-to-message="setReplyingTo"
           />
 
           <div
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
+            <div
+              v-if="replyingTo"
+              class="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 rounded-r flex items-center justify-between"
+            >
+              <div class="flex-1">
+                <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
+                  <UIcon name="i-lucide-reply" class="w-3 h-3" />
+                  <span class="font-semibold">Replying to {{ replyingTo.username }}</span>
+                </div>
+                <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-1">
+                  {{ replyingTo.content }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="ml-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                @click="cancelReply"
+              >
+                <UIcon name="i-lucide-x" class="w-4 h-4" />
+              </button>
+            </div>
+
             <div
               v-if="imagePreviewUrl"
               class="mb-2 relative inline-block"
