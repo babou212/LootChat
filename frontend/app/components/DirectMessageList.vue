@@ -253,7 +253,7 @@ const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
     return
   }
   activeEmojiPicker.value = messageId
-  
+
   // Calculate position
   nextTick(() => {
     if (!event) return
