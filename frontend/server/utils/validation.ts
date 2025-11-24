@@ -15,7 +15,8 @@ export const updateChannelSchema = z.object({
 export const createMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required').max(2000, 'Message too long'),
   channelId: z.number().int().positive(),
-  messageType: z.enum(['TEXT', 'FILE', 'IMAGE']).optional()
+  messageType: z.enum(['TEXT', 'FILE', 'IMAGE']).optional(),
+  replyToMessageId: z.number().int().positive().optional()
 })
 
 export const updateMessageSchema = z.object({

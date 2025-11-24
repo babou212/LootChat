@@ -181,10 +181,12 @@ const sendMessage = async () => {
   const messageContent = newMessage.value.trim()
   const imageToSend = selectedImage.value
   const replyId = replyingTo.value?.id
+  const replyUsername = replyingTo.value?.username
+  const replyContent = replyingTo.value?.content
 
   try {
     error.value = null
-    await sendMessageToServer(channelId, messageContent, imageToSend, replyId)
+    await sendMessageToServer(channelId, messageContent, imageToSend, replyId, replyUsername, replyContent)
     resetComposer()
   } catch (err: unknown) {
     console.error('Failed to send message:', err)

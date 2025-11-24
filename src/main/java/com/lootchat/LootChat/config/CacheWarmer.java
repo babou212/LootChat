@@ -1,5 +1,6 @@
 package com.lootchat.LootChat.config;
 
+import com.lootchat.LootChat.dto.ChannelResponse;
 import com.lootchat.LootChat.service.ChannelService;
 import com.lootchat.LootChat.service.MessageService;
 import com.lootchat.LootChat.service.UserService;
@@ -10,6 +11,8 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * Cache warming component that preloads frequently accessed data on application startup.
@@ -43,7 +46,7 @@ public class CacheWarmer {
             channelService.getAllChannels();
             
             log.debug("Warming message cache for active channels...");
-            var channels = channelService.getAllChannels();
+            List<ChannelResponse> channels = channelService.getAllChannels();
             channels.stream()
                     .limit(5)
                     .forEach(channel -> {

@@ -94,7 +94,7 @@ export const useMessagesStore = defineStore('messages', {
 
   actions: {
     convertToMessage(apiMessage: MessageResponse): Message {
-      return {
+      const converted = {
         id: apiMessage.id,
         userId: apiMessage.userId.toString(),
         username: apiMessage.username,
@@ -118,6 +118,8 @@ export const useMessagesStore = defineStore('messages', {
         replyToUsername: apiMessage.replyToUsername,
         replyToContent: apiMessage.replyToContent
       }
+
+      return converted
     },
 
     async fetchMessages(channelId: number, page = 0, forceRefresh = false): Promise<Message[]> {
