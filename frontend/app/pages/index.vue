@@ -353,7 +353,14 @@ watch(users, () => {
               {{ selectedChannel?.name || 'Select a channel' }}
             </h1>
           </div>
-          <div class="ml-auto">
+          <div class="ml-auto flex items-center gap-3">
+            <UButton
+              :icon="$colorMode.value === 'dark' ? 'i-lucide-moon' : 'i-lucide-sun'"
+              color="neutral"
+              variant="ghost"
+              :aria-label="$colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+              @click="$colorMode.preference = $colorMode.value === 'dark' ? 'light' : 'dark'"
+            />
             <UserMenu />
           </div>
         </div>
