@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -36,6 +37,7 @@ public class DirectMessageService {
     private final CurrentUserService currentUserService;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final S3FileStorageService s3FileStorageService;
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
@@ -136,6 +138,59 @@ public class DirectMessageService {
         
         publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
                 dm.getOtherUser(currentUserId).getId(), request.getContent());
+        
+        return mapToDirectMessageMessageResponse(savedMessage);
+    }
+    
+    @Transactional
+    public DirectMessageMessageResponse sendMessageWithImage(
+            String content, 
+            Long directMessageId, 
+            MultipartFile image, 
+            Long replyToMessageId,
+            String replyToUsername,
+            String replyToContent) {
+        Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
+        
+        DirectMessage dm = directMessageRepository.findByIdWithUsers(directMessageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Direct message not found"));
+        
+        if (!dm.includesUser(currentUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        
+        User sender = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        
+        String imageFilename = s3FileStorageService.storeFile(image);
+        String imageUrl = "/api/files/images/" + imageFilename;
+        
+        String messageContent = content != null ? content : "";
+        
+        DirectMessageMessage.DirectMessageMessageBuilder messageBuilder = DirectMessageMessage.builder()
+                .content(messageContent)
+                .sender(sender)
+                .directMessage(dm)
+                .imageUrl(imageUrl)
+                .imageFilename(imageFilename)
+                .isRead(false);
+        
+        if (replyToMessageId != null) {
+            DirectMessageMessage replyToMessage = directMessageMessageRepository.findById(replyToMessageId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reply message not found"));
+            messageBuilder.replyToMessage(replyToMessage)
+                    .replyToUsername(replyToUsername)
+                    .replyToContent(replyToContent);
+        }
+        
+        DirectMessageMessage message = messageBuilder.build();
+        DirectMessageMessage savedMessage = directMessageMessageRepository.save(message);
+        
+        dm.setLastMessageAt(LocalDateTime.now());
+        directMessageRepository.save(dm);
+        
+        publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
+                dm.getOtherUser(currentUserId).getId(), messageContent);
         
         return mapToDirectMessageMessageResponse(savedMessage);
     }
