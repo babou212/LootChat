@@ -22,8 +22,7 @@ export default defineEventHandler(async (event) => {
     })
 
     return message
-  }
-  catch (error: unknown) {
+  } catch (error: unknown) {
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw createError({
         statusCode: (error as { statusCode: number }).statusCode,
