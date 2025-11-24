@@ -19,7 +19,9 @@ export interface UserPresenceUpdate {
 const globalWebSocketState = {
   stompClient: null as Client | null,
   isConnected: ref(false),
-  connectionError: ref<string | null>(null)
+  connectionError: ref<string | null>(null),
+  isConnecting: false,
+  connectPromise: null as Promise<void> | null
 }
 
 export const useWebSocket = () => {
@@ -46,8 +48,30 @@ export const useWebSocket = () => {
   const connectionError = globalWebSocketState.connectionError
 
   const connect = (token: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
+    // If already connected, resolve immediately
+    if (globalWebSocketState.stompClient?.connected && isConnected.value) {
+      return Promise.resolve()
+    }
+
+    // If already connecting, return the existing promise
+    if (globalWebSocketState.isConnecting && globalWebSocketState.connectPromise) {
+      return globalWebSocketState.connectPromise
+    }
+
+    // Mark as connecting and create new connection promise
+    globalWebSocketState.isConnecting = true
+    globalWebSocketState.connectPromise = new Promise((resolve, reject) => {
       try {
+        // Clean up any existing client that's not connected
+        if (globalWebSocketState.stompClient && !globalWebSocketState.stompClient.connected) {
+          try {
+            globalWebSocketState.stompClient.deactivate()
+          } catch {
+            // Ignore errors during cleanup
+          }
+          globalWebSocketState.stompClient = null
+        }
+
         const wsUrl = getWebSocketUrl()
         // Create SockJS instance
         const socket = new SockJS(`${wsUrl}/ws`)
@@ -64,6 +88,7 @@ export const useWebSocket = () => {
           onConnect: () => {
             isConnected.value = true
             connectionError.value = null
+            globalWebSocketState.isConnecting = false
             // Small delay to ensure STOMP is fully ready
             setTimeout(() => resolve(), 100)
           },
@@ -71,12 +96,16 @@ export const useWebSocket = () => {
             console.error('STOMP error:', frame)
             connectionError.value = frame.headers['message'] || 'Unknown error'
             isConnected.value = false
+            globalWebSocketState.isConnecting = false
+            globalWebSocketState.connectPromise = null
             reject(new Error(frame.headers['message'] || 'WebSocket connection failed'))
           },
           onWebSocketError: (event) => {
             console.error('WebSocket error:', event)
             connectionError.value = 'WebSocket connection error'
             isConnected.value = false
+            globalWebSocketState.isConnecting = false
+            globalWebSocketState.connectPromise = null
             reject(new Error('WebSocket connection error'))
           },
           onDisconnect: () => {
@@ -84,19 +113,28 @@ export const useWebSocket = () => {
           }
         })
 
-        // Activate the client
         globalWebSocketState.stompClient?.activate()
       } catch (error) {
         console.error('Error creating WebSocket connection:', error)
         connectionError.value = 'Failed to create WebSocket connection'
+        globalWebSocketState.isConnecting = false
+        globalWebSocketState.connectPromise = null
         reject(error)
       }
     })
+
+    return globalWebSocketState.connectPromise
   }
 
   const disconnect = () => {
     if (globalWebSocketState.stompClient) {
-      globalWebSocketState.stompClient.deactivate()
+      try {
+        if (globalWebSocketState.stompClient.connected) {
+          globalWebSocketState.stompClient.deactivate()
+        }
+      } catch (error) {
+        console.warn('Error during WebSocket disconnect:', error)
+      }
       globalWebSocketState.stompClient = null
       isConnected.value = false
     }
