@@ -64,7 +64,8 @@ export const useWebSocket = () => {
           onConnect: () => {
             isConnected.value = true
             connectionError.value = null
-            resolve()
+            // Small delay to ensure STOMP is fully ready
+            setTimeout(() => resolve(), 100)
           },
           onStompError: (frame) => {
             console.error('STOMP error:', frame)
