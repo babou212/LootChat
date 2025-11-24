@@ -68,11 +68,7 @@ export const useUsers = () => {
   const updateUserPresence = (userId: number, status: 'online' | 'offline') => {
     const userIndex = users.value.findIndex(u => u.userId === userId)
     if (userIndex !== -1) {
-      if (user.value && userId === user.value.userId) {
-        users.value[userIndex]!.status = 'online'
-      } else {
-        users.value[userIndex]!.status = status
-      }
+      users.value[userIndex]!.status = status
     }
   }
 

@@ -123,10 +123,10 @@ watch(() => props.users, (newUsers) => {
           >
             <div class="relative">
               <div
-                v-if="user.avatar"
+                v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
                 class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
               >
-                <img :src="user.avatar" :alt="user.username" class="w-full h-full object-cover">
+                <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
               </div>
               <div
                 v-else
