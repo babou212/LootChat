@@ -404,6 +404,17 @@ const handleReplyClick = (message: Message) => {
   emit('reply-to-message', message)
 }
 
+const scrollToMessage = (messageId: number) => {
+  const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+  if (messageElement) {
+    messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    messageElement.classList.add('highlight-message')
+    setTimeout(() => {
+      messageElement.classList.remove('highlight-message')
+    }, 2000)
+  }
+}
+
 const groupReactions = (reactions: Reaction[] = []) => {
   const grouped = new Map<string, {
     emoji: string
@@ -573,6 +584,7 @@ watch(() => props.messages, async (newMessages) => {
       <div
         v-for="message in messages"
         :key="message.id"
+        :data-message-id="message.id"
         class="flex gap-4 group"
         :class="{ 'opacity-60': isOptimistic(message) }"
       >
@@ -608,7 +620,8 @@ watch(() => props.messages, async (newMessages) => {
           <template v-else>
             <div
               v-if="message.replyToMessageId"
-              class="mb-2 pl-3 border-l-2 border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 rounded-r p-2"
+              class="mb-2 pl-3 border-l-2 border-gray-400 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 rounded-r p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              @click="scrollToMessage(message.replyToMessageId)"
             >
               <div class="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 mb-1">
                 <UIcon name="i-lucide-corner-down-right" class="w-3 h-3" />
@@ -720,7 +733,6 @@ watch(() => props.messages, async (newMessages) => {
       </div>
     </template>
 
-    <!-- Image Lightbox Modal -->
     <Teleport to="body">
       <div
         v-if="expandedImage"
@@ -757,5 +769,19 @@ watch(() => props.messages, async (newMessages) => {
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/* Highlight animation for scrolled-to messages */
+.highlight-message {
+  animation: highlight-pulse 2s ease-out;
+}
+
+@keyframes highlight-pulse {
+  0% {
+    background-color: rgb(59 130 246 / 0.3);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 </style>
