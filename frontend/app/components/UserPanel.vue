@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { User } from '../../shared/types/user'
+import UserProfileCard from '~/components/UserProfileCard.vue'
 
 export interface UserPresence extends User {
   status: 'online' | 'offline'
@@ -81,31 +82,38 @@ watch(() => props.users, (newUsers) => {
           Online — {{ onlineUsers.length }}
         </h3>
         <div class="space-y-1">
-          <div
+          <UPopover
             v-for="user in onlineUsers"
             :key="user.userId"
-            class="flex items-center gap-3 px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
-            :title="`${user.username} - ${user.email}`"
+            :popper="{ placement: 'left', offsetDistance: 8 }"
           >
-            <div class="relative">
-              <div
-                v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
-                class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
-              >
-                <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
+            <div
+              class="flex items-center gap-3 px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+            >
+              <div class="relative">
+                <div
+                  v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
+                  class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
+                >
+                  <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
+                </div>
+                <div
+                  v-else
+                  class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-semibold"
+                >
+                  {{ getInitials(user) }}
+                </div>
+                <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
               </div>
-              <div
-                v-else
-                class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-semibold"
-              >
-                {{ getInitials(user) }}
-              </div>
-              <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
+              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {{ user.username }}
+              </span>
             </div>
-            <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {{ user.username }}
-            </span>
-          </div>
+
+            <template #content>
+              <UserProfileCard :user="user" />
+            </template>
+          </UPopover>
         </div>
       </div>
 
@@ -115,31 +123,38 @@ watch(() => props.users, (newUsers) => {
           Offline — {{ offlineUsers.length }}
         </h3>
         <div class="space-y-1">
-          <div
+          <UPopover
             v-for="user in offlineUsers"
             :key="user.userId"
-            class="flex items-center gap-3 px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer opacity-60"
-            :title="`${user.username} - ${user.email}`"
+            :popper="{ placement: 'left', offsetDistance: 8 }"
           >
-            <div class="relative">
-              <div
-                v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
-                class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
-              >
-                <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
+            <div
+              class="flex items-center gap-3 px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer opacity-60"
+            >
+              <div class="relative">
+                <div
+                  v-if="user.avatar && getLoadedAvatarUrl(user.userId)"
+                  class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
+                >
+                  <img :src="getLoadedAvatarUrl(user.userId)" :alt="user.username" class="w-full h-full object-cover">
+                </div>
+                <div
+                  v-else
+                  class="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-semibold"
+                >
+                  {{ getInitials(user) }}
+                </div>
+                <span class="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800" />
               </div>
-              <div
-                v-else
-                class="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs font-semibold"
-              >
-                {{ getInitials(user) }}
-              </div>
-              <span class="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800" />
+              <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {{ user.username }}
+              </span>
             </div>
-            <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {{ user.username }}
-            </span>
-          </div>
+
+            <template #content>
+              <UserProfileCard :user="user" />
+            </template>
+          </UPopover>
         </div>
       </div>
     </div>

@@ -1,19 +1,15 @@
 <script setup lang="ts">
-import type { Message, Reaction } from '../../shared/types/chat'
+import type { DirectMessageMessage, DirectMessageReaction } from '../../shared/types/directMessage.d'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
 import MessageEditor from '~/components/MessageEditor.vue'
-import UserProfileCard from '~/components/UserProfileCard.vue'
-import type { ReactionResponse } from '~/api/messageApi'
-import type { UserPresence } from '~/components/UserPanel.vue'
 import { useAuthStore } from '../../stores/auth'
+import { directMessageApi } from '../../app/api/directMessageApi'
 
 interface Props {
-  messages: Message[]
+  messages: DirectMessageMessage[]
   loading: boolean
   error: string | null
-  hasMore?: boolean
-  loadingMore?: boolean
 }
 
 const props = defineProps<Props>()
@@ -21,8 +17,22 @@ const authStore = useAuthStore()
 const toast = useToast()
 const { getAvatarUrl } = useAvatarUrl()
 
-const presignedUrlCache = ref<Map<string, { url: string, expiry: number }>>(new Map())
 const avatarUrls = ref<Map<string | number, string>>(new Map())
+const imageUrls = ref<Map<string, string>>(new Map())
+const activeEmojiPicker = ref<number | null>(null)
+const emojiPickerRef = ref<HTMLElement | null>(null)
+const messagesContainer = ref<HTMLElement | null>(null)
+const editingMessageId = ref<number | null>(null)
+const expandedImage = ref<string | null>(null)
+const expandedImageAlt = ref<string | null>(null)
+const inFlightReactions = new Set<string>()
+const openEmojiUpwards = ref(false)
+const PICKER_HEIGHT_ESTIMATE = 420
+
+const emit = defineEmits<{
+  (e: 'message-deleted', id: number): void
+  (e: 'reply-to-message', message: DirectMessageMessage): void
+}>()
 
 const loadAvatarUrl = async (userId: string | number, avatarPath: string | undefined) => {
   if (avatarPath && !avatarUrls.value.has(userId)) {
@@ -37,45 +47,19 @@ const getLoadedAvatarUrl = (userId: string | number): string => {
   return avatarUrls.value.get(userId) || ''
 }
 
-const isOptimistic = (message: Message): boolean => {
-  return message.id < 0
-}
-
-watch(() => props.messages, (newMessages) => {
-  newMessages.forEach((message) => {
-    if (message.avatar) {
-      loadAvatarUrl(message.userId, message.avatar)
-    }
-  })
-}, { immediate: true, deep: true })
-
 const getAuthenticatedImageUrl = async (imageUrl: string): Promise<string> => {
   if (!imageUrl) return ''
   const filename = imageUrl.split('/').pop()
   if (!filename) return ''
 
-  const cached = presignedUrlCache.value.get(filename)
-  if (cached && cached.expiry > Date.now()) {
-    return cached.url
-  }
-
   try {
-    const response = await $fetch<{ url: string, fileName: string }>(`/api/files/images/${filename}`)
-    const url = response.url
-
-    presignedUrlCache.value.set(filename, {
-      url,
-      expiry: Date.now() + (55 * 60 * 1000)
-    })
-
-    return url
+    const response = await $fetch<{ url: string }>(`/api/files/images/${filename}`)
+    return response.url
   } catch (error) {
     console.error('Failed to get presigned URL:', error)
     return ''
   }
 }
-
-const imageUrls = ref<Map<string, string>>(new Map())
 
 const loadImageUrl = async (imageUrl: string) => {
   if (!imageUrl) return
@@ -95,127 +79,30 @@ const getLoadedImageUrl = (imageUrl: string): string => {
   return imageUrls.value.get(filename) || ''
 }
 
-const messagesContainer = ref<HTMLElement | null>(null)
-const activeEmojiPicker = ref<number | null>(null)
-const emojiPickerRef = ref<HTMLElement | null>(null)
-const openEmojiUpwards = ref(false)
-const emojiAnchorEl = ref<HTMLElement | null>(null)
-const PICKER_HEIGHT_ESTIMATE = 320
-const inFlightReactions = new Set<string>()
-
-const editingMessageId = ref<number | null>(null)
-
-const expandedImage = ref<string | null>(null)
-const expandedImageAlt = ref<string | null>(null)
-
-const openImageModal = (imageUrl: string, altText: string) => {
-  expandedImage.value = imageUrl
-  expandedImageAlt.value = altText
-}
-
-const closeImageModal = () => {
-  expandedImage.value = null
-  expandedImageAlt.value = null
-}
-
-const handleKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && expandedImage.value) {
-    closeImageModal()
-  }
-}
-
-const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
-  if (activeEmojiPicker.value === messageId) {
-    activeEmojiPicker.value = null
-    openEmojiUpwards.value = false
-    emojiAnchorEl.value = null
-    return
-  }
-
-  activeEmojiPicker.value = messageId
-  emojiAnchorEl.value = (event?.currentTarget as HTMLElement) || null
-
-  nextTick(() => {
-    const container = messagesContainer.value
-    const anchor = emojiAnchorEl.value
-    if (!container || !anchor) return
-
-    const containerRect = container.getBoundingClientRect()
-    const anchorRect = anchor.getBoundingClientRect()
-
-    const spaceBelow = containerRect.bottom - anchorRect.bottom
-    const spaceAbove = anchorRect.top - containerRect.top
-
-    openEmojiUpwards.value = spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow
+watch(() => props.messages, (newMessages) => {
+  newMessages.forEach((message) => {
+    if (message.senderAvatar) {
+      loadAvatarUrl(message.senderId, message.senderAvatar)
+    }
+    if (message.imageUrl) {
+      loadImageUrl(message.imageUrl)
+    }
   })
-}
+}, { immediate: true, deep: true })
 
-const closeEmojiPicker = () => {
-  activeEmojiPicker.value = null
-  openEmojiUpwards.value = false
-  emojiAnchorEl.value = null
-}
-
-useClickAway(emojiPickerRef, closeEmojiPicker)
-
-const isLoadingMore = ref(false)
-const lastScrollTop = ref(0)
-const previousScrollHeight = ref(0)
-
-const handleMessagesScroll = () => {
-  if (activeEmojiPicker.value !== null) {
-    closeEmojiPicker()
-  }
-
-  const container = messagesContainer.value
-  if (!container) return
-
-  const currentScrollTop = container.scrollTop
-  const scrollingUp = currentScrollTop < lastScrollTop.value
-  lastScrollTop.value = currentScrollTop
-
-  if (scrollingUp && currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
-    previousScrollHeight.value = container.scrollHeight
-    isLoadingMore.value = true
-    emit('load-more')
-
-    setTimeout(() => {
-      isLoadingMore.value = false
-    }, 500)
-  }
-}
-
-onMounted(() => {
-  if (messagesContainer.value) {
-    messagesContainer.value.addEventListener('scroll', handleMessagesScroll, { passive: true } as AddEventListenerOptions)
-  }
-
-  window.addEventListener('keydown', handleKeyDown)
-})
-
-onUnmounted(() => {
-  if (messagesContainer.value) {
-    messagesContainer.value.removeEventListener('scroll', handleMessagesScroll)
-  }
-
-  window.removeEventListener('keydown', handleKeyDown)
-})
-
-const canDelete = (message: Message) => {
+const canDelete = (message: DirectMessageMessage) => {
   const current = authStore.user
   if (!current) return false
-  const isOwner = String(message.userId) === String(current.userId)
-  const isPrivileged = current.role === 'ADMIN' || current.role === 'MODERATOR'
-  return isOwner || isPrivileged
+  return String(message.senderId) === String(current.userId)
 }
 
-const canEdit = (message: Message) => {
+const canEdit = (message: DirectMessageMessage) => {
   const current = authStore.user
   if (!current) return false
-  return String(message.userId) === String(current.userId)
+  return String(message.senderId) === String(current.userId)
 }
 
-const startEdit = (message: Message) => {
+const startEdit = (message: DirectMessageMessage) => {
   editingMessageId.value = message.id
   closeEmojiPicker()
 }
@@ -226,23 +113,13 @@ const cancelEdit = () => {
 
 const saveEdit = async (messageId: number, content: string) => {
   try {
-    const response = await fetch(`/api/messages/${messageId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ content })
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to edit message')
-    }
+    const response = await directMessageApi.updateMessage(messageId, content)
 
     const message = props.messages.find(m => m.id === messageId)
     if (message) {
-      message.content = content
+      message.content = response.content
       message.edited = true
-      message.updatedAt = new Date()
+      message.updatedAt = new Date(response.updatedAt!)
     }
 
     cancelEdit()
@@ -263,22 +140,14 @@ const saveEdit = async (messageId: number, content: string) => {
   }
 }
 
-const emit = defineEmits<{
-  (e: 'message-deleted', id: number): void
-  (e: 'load-more'): void
-  (e: 'reply-to-message', message: Message): void
-}>()
-
-const handleDeleteMessage = (message: Message) => {
+const handleDeleteMessage = (message: DirectMessageMessage) => {
   const performDelete = async () => {
     try {
-      await $fetch(`/api/messages/${message.id}`, {
-        method: 'DELETE'
-      })
+      await directMessageApi.deleteMessage(message.id)
       emit('message-deleted', message.id)
       toast.add({
         title: 'Message deleted',
-        description: `Removed message by ${message.username}`,
+        description: 'Message has been removed',
         color: 'error',
         icon: 'i-lucide-trash-2'
       })
@@ -327,17 +196,14 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
   inFlightReactions.add(key)
 
   const existingIndex = message.reactions.findIndex(
-    r => r.emoji === emoji && r.userId === Number(currentUser.userId)
+    (r: DirectMessageReaction) => r.emoji === emoji && r.userId === Number(currentUser.userId)
   )
 
   if (existingIndex !== -1) {
     const removed = message.reactions[existingIndex]!
     message.reactions.splice(existingIndex, 1)
     try {
-      await $fetch(`/api/messages/${messageId}/reactions`, {
-        method: 'DELETE',
-        body: { emoji }
-      })
+      await directMessageApi.removeReaction(messageId, emoji)
     } catch (error) {
       console.error('Error removing reaction:', error)
       message.reactions.splice(existingIndex, 0, removed)
@@ -348,7 +214,7 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
   }
 
   const tempId = -Date.now()
-  const tempReaction: Reaction = {
+  const tempReaction: DirectMessageReaction = {
     id: tempId,
     emoji,
     userId: Number(currentUser.userId),
@@ -359,15 +225,9 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
   message.reactions.push(tempReaction)
 
   try {
-    const serverReaction = await $fetch<ReactionResponse>(`/api/messages/${messageId}/reactions`, {
-      method: 'POST',
-      body: { emoji }
-    })
-    const serverIdx = message.reactions.findIndex(r => r.id === serverReaction.id)
-    const tempIdx = message.reactions.findIndex(r => r.id === tempId)
-    if (serverIdx !== -1 && tempIdx !== -1) {
-      message.reactions.splice(tempIdx, 1)
-    } else if (tempIdx !== -1) {
+    const serverReaction = await directMessageApi.addReaction(messageId, emoji)
+    const tempIdx = message.reactions.findIndex((r: DirectMessageReaction) => r.id === tempId)
+    if (tempIdx !== -1) {
       message.reactions[tempIdx] = {
         id: serverReaction.id,
         emoji: serverReaction.emoji,
@@ -376,31 +236,53 @@ const handleReactionClick = async (messageId: number, emoji: string) => {
         createdAt: new Date(serverReaction.createdAt),
         messageId: serverReaction.messageId
       }
-    } else if (serverIdx === -1) {
-      message.reactions.push({
-        id: serverReaction.id,
-        emoji: serverReaction.emoji,
-        userId: serverReaction.userId,
-        username: serverReaction.username,
-        createdAt: new Date(serverReaction.createdAt),
-        messageId: serverReaction.messageId
-      })
     }
   } catch (error) {
     console.error('Error adding reaction:', error)
-    const idx = message.reactions.findIndex(r => r.id === tempId)
+    const idx = message.reactions.findIndex((r: DirectMessageReaction) => r.id === tempId)
     if (idx !== -1) message.reactions.splice(idx, 1)
   } finally {
     inFlightReactions.delete(key)
   }
 }
 
+const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
+  if (activeEmojiPicker.value === messageId) {
+    activeEmojiPicker.value = null
+    openEmojiUpwards.value = false
+    return
+  }
+  activeEmojiPicker.value = messageId
+
+  // Calculate position
+  nextTick(() => {
+    if (!event) return
+    const button = event.currentTarget as HTMLElement
+    if (!button) return
+
+    const buttonRect = button.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+
+    const spaceBelow = viewportHeight - buttonRect.bottom
+    const spaceAbove = buttonRect.top
+
+    openEmojiUpwards.value = spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow
+  })
+}
+
+const closeEmojiPicker = () => {
+  activeEmojiPicker.value = null
+  openEmojiUpwards.value = false
+}
+
+useClickAway(emojiPickerRef, closeEmojiPicker)
+
 const handleEmojiSelect = async (messageId: number, emoji: string) => {
   await handleReactionClick(messageId, emoji)
   closeEmojiPicker()
 }
 
-const handleReplyClick = (message: Message) => {
+const handleReplyClick = (message: DirectMessageMessage) => {
   emit('reply-to-message', message)
 }
 
@@ -415,20 +297,17 @@ const scrollToMessage = (messageId: number) => {
   }
 }
 
-const getUserPresence = (message: Message): UserPresence => {
-  return {
-    userId: Number.parseInt(message.userId),
-    username: message.username,
-    email: '',
-    firstName: '',
-    lastName: '',
-    avatar: message.avatar,
-    status: 'online' as const,
-    role: 'USER'
-  }
+const openImageModal = (imageUrl: string, altText: string) => {
+  expandedImage.value = imageUrl
+  expandedImageAlt.value = altText
 }
 
-const groupReactions = (reactions: Reaction[] = []) => {
+const closeImageModal = () => {
+  expandedImage.value = null
+  expandedImageAlt.value = null
+}
+
+const groupReactions = (reactions: DirectMessageReaction[] = []) => {
   const grouped = new Map<string, {
     emoji: string
     count: number
@@ -490,6 +369,7 @@ const firstYouTubeFrom = (text: string): string | null => {
   const m = text.match(youtubeRegex)
   return m && m[0] ? m[0] as string : null
 }
+
 const contentWithoutMedia = (text: string): string => {
   return text
     .replace(new RegExp(gifRegex, 'gi'), '')
@@ -497,56 +377,22 @@ const contentWithoutMedia = (text: string): string => {
     .trim()
 }
 
-const hasInitiallyScrolled = ref(false)
+const isOptimistic = (message: DirectMessageMessage): boolean => {
+  return message.id < 0
+}
 
-watch(() => props.messages.length, (newLength, oldLength) => {
-  if (newLength === 0 && oldLength > 0) {
-    hasInitiallyScrolled.value = false
-    previousScrollHeight.value = 0
-    return
-  }
+watch(() => props.messages.length, () => {
+  nextTick(() => scrollToBottom())
+})
 
-  nextTick(() => {
-    if (!messagesContainer.value) return
-    const container = messagesContainer.value
-
-    if (oldLength === 0 && newLength > 0) {
-      scrollToBottom()
-      hasInitiallyScrolled.value = true
-      return
-    }
-
-    if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
-      const newScrollHeight = container.scrollHeight
-      const heightDifference = newScrollHeight - previousScrollHeight.value
-      container.scrollTop = container.scrollTop + heightDifference
-      previousScrollHeight.value = 0
-      return
-    }
-
-    if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
-      if (isNearBottom) {
-        scrollToBottom()
-      }
+onMounted(() => {
+  scrollToBottom()
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && expandedImage.value) {
+      closeImageModal()
     }
   })
 })
-
-watch(() => props.loading, (isLoading) => {
-  if (!isLoading && props.messages.length > 0 && !hasInitiallyScrolled.value) {
-    scrollToBottom()
-    hasInitiallyScrolled.value = true
-  }
-})
-
-watch(() => props.messages, async (newMessages) => {
-  for (const message of newMessages) {
-    if (message.imageUrl) {
-      await loadImageUrl(message.imageUrl)
-    }
-  }
-}, { immediate: true, deep: true })
 </script>
 
 <template>
@@ -555,19 +401,10 @@ watch(() => props.messages, async (newMessages) => {
     class="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide"
   >
     <div
-      v-if="loadingMore"
-      class="flex justify-center py-2"
-    >
-      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
-    </div>
-
-    <div
       v-if="loading"
       class="h-full"
-      aria-busy="true"
-      aria-live="polite"
     >
-      <div class="space-y-4 animate-pulse" role="status">
+      <div class="space-y-4 animate-pulse">
         <div
           v-for="i in 8"
           :key="i"
@@ -580,11 +417,9 @@ watch(() => props.messages, async (newMessages) => {
               <div class="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
             </div>
             <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-11/12" />
-            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-8/12" />
           </div>
         </div>
       </div>
-      <span class="sr-only">Loading messages…</span>
     </div>
 
     <div v-else-if="error" class="flex items-center justify-center h-full">
@@ -602,38 +437,19 @@ watch(() => props.messages, async (newMessages) => {
         :class="{ 'opacity-60': isOptimistic(message) }"
       >
         <UAvatar
-          :src="getLoadedAvatarUrl(message.userId)"
-          :alt="message.username"
+          :src="getLoadedAvatarUrl(message.senderId)"
+          :alt="message.senderUsername"
           size="md"
         />
         <div class="flex-1">
           <div class="flex items-baseline gap-2 mb-1">
-            <UPopover
-              v-if="message.userId !== authStore.user?.userId?.toString()"
-              :popper="{ placement: 'right', offsetDistance: 8 }"
-            >
-              <button
-                class="font-semibold text-gray-900 dark:text-white hover:underline cursor-pointer"
-              >
-                {{ message.username }}
-              </button>
-              <template #content>
-                <UserProfileCard :user="getUserPresence(message)" />
-              </template>
-            </UPopover>
-            <span
-              v-else
-              class="font-semibold text-gray-900 dark:text-white"
-            >
-              {{ message.username }}
+            <span class="font-semibold text-gray-900 dark:text-white">
+              {{ message.senderUsername }}
             </span>
             <span class="text-xs text-gray-500 dark:text-gray-400">
               {{ formatTime(message.timestamp) }}
             </span>
-            <span v-if="isOptimistic(message)" class="text-xs text-gray-400 dark:text-gray-500 italic">
-              (sending...)
-            </span>
-            <span v-else-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
+            <span v-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
               (edited)
             </span>
           </div>
@@ -670,7 +486,7 @@ watch(() => props.messages, async (newMessages) => {
             v-if="message.imageUrl && getLoadedImageUrl(message.imageUrl)"
             :src="getLoadedImageUrl(message.imageUrl)"
             :alt="message.imageFilename || 'Uploaded image'"
-            class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
+            class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
             loading="lazy"
             width="448"
             height="auto"
@@ -701,14 +517,13 @@ watch(() => props.messages, async (newMessages) => {
                 ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
                 : 'bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'"
               :title="reactionGroup.usernames.join(', ')"
-              :disabled="isOptimistic(message)"
               @click="handleReactionClick(message.id, reactionGroup.emoji)"
             >
               <span>{{ reactionGroup.emoji }}</span>
               <span class="text-xs font-medium">{{ reactionGroup.count }}</span>
             </button>
 
-            <div v-if="!isOptimistic(message)" class="relative">
+            <div class="relative">
               <button
                 type="button"
                 class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
@@ -729,7 +544,7 @@ watch(() => props.messages, async (newMessages) => {
             </div>
 
             <button
-              v-if="canEdit(message) && editingMessageId !== message.id && !isOptimistic(message)"
+              v-if="canEdit(message) && editingMessageId !== message.id"
               type="button"
               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
               title="Edit message"
@@ -739,7 +554,6 @@ watch(() => props.messages, async (newMessages) => {
             </button>
 
             <button
-              v-if="!isOptimistic(message)"
               type="button"
               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
               title="Reply to message"
@@ -749,7 +563,7 @@ watch(() => props.messages, async (newMessages) => {
             </button>
 
             <button
-              v-if="canDelete(message) && !isOptimistic(message)"
+              v-if="canDelete(message)"
               type="button"
               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
               title="Delete message"
@@ -789,18 +603,15 @@ watch(() => props.messages, async (newMessages) => {
 </template>
 
 <style scoped>
-/* Hide scrollbar for Chrome, Safari and Opera */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
 .scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* Highlight animation for scrolled-to messages */
 .highlight-message {
   animation: highlight-pulse 2s ease-in-out;
 }
@@ -808,15 +619,12 @@ watch(() => props.messages, async (newMessages) => {
 @keyframes highlight-pulse {
   0% {
     background-color: rgb(59 130 246 / 0.2);
-    box-shadow: 0 0 0 0 rgb(59 130 246 / 0.4), inset 0 0 0 2px rgb(59 130 246 / 0.6);
   }
   50% {
     background-color: rgb(59 130 246 / 0.3);
-    box-shadow: 0 0 20px 0 rgb(59 130 246 / 0.3), inset 0 0 0 2px rgb(59 130 246 / 0.8);
   }
   100% {
     background-color: transparent;
-    box-shadow: 0 0 0 0 transparent, inset 0 0 0 0 transparent;
   }
 }
 </style>

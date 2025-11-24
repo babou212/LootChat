@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type GifPicker from '~/components/GifPicker.vue'
 import { useMessagesStore } from '../../stores/messages'
+import { useDirectMessagesStore } from '../../stores/directMessages'
 
 definePageMeta({
   middleware: 'auth',
@@ -9,6 +10,7 @@ definePageMeta({
 
 const { user } = useAuth()
 const messagesStore = useMessagesStore()
+const directMessagesStore = useDirectMessagesStore()
 
 const token = ref<string | null>(null)
 
@@ -23,7 +25,7 @@ const getAuthToken = async (): Promise<string | null> => {
   }
 }
 
-const { connect, disconnect, getClient, isConnected } = useWebSocket()
+const { connect, disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 const channelsComposable = useChannels()
 const channels = channelsComposable.channels
@@ -90,6 +92,7 @@ const error = ref<string | null>(null)
 const stompClient = computed(() => getClient())
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
+let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 
 useClickAway(
   pickerWrapperRef,
@@ -298,6 +301,22 @@ onMounted(async () => {
         },
         selectedChannelId
       )
+
+      // Subscribe to direct messages for notifications
+      if (user.value?.userId) {
+        dmSubscription = subscribeToUserDirectMessages(user.value.userId, (message) => {
+          // Update DM list if not on messages page
+          const dm = directMessagesStore.directMessages.find(d => d.id === message.directMessageId)
+          if (dm) {
+            dm.lastMessageContent = message.content
+            dm.lastMessageAt = new Date(message.createdAt)
+            dm.unreadCount = (dm.unreadCount || 0) + 1
+          } else {
+            // Refresh DM list if we received a message for a new DM
+            directMessagesStore.fetchAllDirectMessages()
+          }
+        })
+      }
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err)
     }
@@ -312,6 +331,9 @@ onUnmounted(() => {
   unsubscribeChannel()
   unsubscribeGlobal()
   cleanupComposer()
+  if (dmSubscription) {
+    dmSubscription.unsubscribe()
+  }
   disconnect()
 })
 

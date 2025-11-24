@@ -2,6 +2,7 @@
 import type { Channel } from '../../shared/types/chat'
 import type { Client } from '@stomp/stompjs'
 import VoiceChannelSection from '~/components/VoiceChannelSection.vue'
+import { useDirectMessagesStore } from '../../stores/directMessages'
 
 interface Props {
   channels: Channel[]
@@ -17,6 +18,8 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const router = useRouter()
+const directMessagesStore = useDirectMessagesStore()
 
 const isCollapsed = ref(false)
 
@@ -27,6 +30,10 @@ const textChannels = computed(() =>
 const totalUnread = computed(() =>
   props.channels.reduce((sum, channel) => sum + (channel.unread || 0), 0)
 )
+
+const navigateToMessages = () => {
+  router.push('/messages')
+}
 
 const handleSelectChannel = (channel: Channel) => {
   emit('selectChannel', channel)
@@ -43,6 +50,11 @@ const handleLeaveVoice = () => {
 const toggleSidebar = () => {
   isCollapsed.value = !isCollapsed.value
 }
+
+// Fetch DMs on mount to show unread count
+onMounted(() => {
+  directMessagesStore.fetchAllDirectMessages()
+})
 </script>
 
 <template>
@@ -79,6 +91,36 @@ const toggleSidebar = () => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
+      <!-- Direct Messages Section -->
+      <div class="mb-4">
+        <h3
+          v-show="!isCollapsed"
+          class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase px-2 mb-2"
+        >
+          Direct Messages
+        </h3>
+        <UButton
+          variant="ghost"
+          color="primary"
+          :title="isCollapsed ? 'Direct Messages' : 'View all direct messages'"
+          class="w-full mb-1"
+          :class="isCollapsed ? 'justify-center' : 'justify-between'"
+          @click="navigateToMessages"
+        >
+          <span class="flex items-center gap-2">
+            <UIcon name="i-lucide-message-circle" class="text-lg" />
+            <span v-show="!isCollapsed">Messages</span>
+          </span>
+          <UBadge
+            v-if="directMessagesStore.getTotalUnreadCount > 0 && !isCollapsed"
+            color="error"
+            :label="directMessagesStore.getTotalUnreadCount.toString()"
+            size="xs"
+          />
+        </UButton>
+      </div>
+
+      <!-- Text Channels Section -->
       <div class="mb-4">
         <h3
           v-show="!isCollapsed"

@@ -1,6 +1,7 @@
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import type { MessageResponse } from '~/api/messageApi'
+import type { DirectMessageMessageResponse } from '~/api/directMessageApi'
 import type { Reaction } from '~/../../shared/types/chat'
 
 interface MessageDeletionPayload {
@@ -285,6 +286,106 @@ export const useWebSocket = () => {
     return subscription
   }
 
+  const subscribeToUserDirectMessages = (userId: number, callback: (message: DirectMessageMessageResponse) => void) => {
+    if (!globalWebSocketState.stompClient || !isConnected.value) {
+      return null
+    }
+
+    const subscription = globalWebSocketState.stompClient.subscribe(
+      `/topic/user/${userId}/direct-messages`,
+      (message) => {
+        try {
+          const dmMessage = JSON.parse(message.body) as DirectMessageMessageResponse
+          callback(dmMessage)
+        } catch (error) {
+          console.error('Error parsing direct message:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToDirectMessageReactions = (userId: number, directMessageId: number, callback: (reaction: { id: number, emoji: string, userId: number, username: string, messageId: number, createdAt: string }) => void) => {
+    if (!globalWebSocketState.stompClient || !isConnected.value) {
+      return null
+    }
+
+    const subscription = globalWebSocketState.stompClient.subscribe(
+      `/topic/user/${userId}/direct-messages/${directMessageId}/reactions`,
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as { id: number, emoji: string, userId: number, username: string, messageId: number, createdAt: string }
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing DM reaction:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToDirectMessageReactionRemovals = (userId: number, directMessageId: number, callback: (reaction: { id: number, messageId: number }) => void) => {
+    if (!globalWebSocketState.stompClient || !isConnected.value) {
+      return null
+    }
+
+    const subscription = globalWebSocketState.stompClient.subscribe(
+      `/topic/user/${userId}/direct-messages/${directMessageId}/reactions/remove`,
+      (message) => {
+        try {
+          const reaction = JSON.parse(message.body) as { id: number, messageId: number }
+          callback(reaction)
+        } catch (error) {
+          console.error('Error parsing DM reaction removal:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToDirectMessageEdits = (userId: number, directMessageId: number, callback: (message: DirectMessageMessageResponse) => void) => {
+    if (!globalWebSocketState.stompClient || !isConnected.value) {
+      return null
+    }
+
+    const subscription = globalWebSocketState.stompClient.subscribe(
+      `/topic/user/${userId}/direct-messages/${directMessageId}/edits`,
+      (message) => {
+        try {
+          const editedMessage = JSON.parse(message.body) as DirectMessageMessageResponse
+          callback(editedMessage)
+        } catch (error) {
+          console.error('Error parsing DM edit:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
+  const subscribeToDirectMessageDeletions = (directMessageId: number, callback: (payload: { id: number }) => void) => {
+    if (!globalWebSocketState.stompClient || !isConnected.value) {
+      return null
+    }
+
+    const subscription = globalWebSocketState.stompClient.subscribe(
+      `/topic/direct-messages/${directMessageId}/delete`,
+      (message) => {
+        try {
+          const payload = JSON.parse(message.body) as { id: number }
+          callback(payload)
+        } catch (error) {
+          console.error('Error parsing DM deletion:', error)
+        }
+      }
+    )
+
+    return subscription
+  }
+
   return {
     connect,
     disconnect,
@@ -297,6 +398,11 @@ export const useWebSocket = () => {
     subscribeToChannelReactionRemovals,
     subscribeToGlobalMessageDeletions,
     subscribeToChannelMessageDeletions,
+    subscribeToUserDirectMessages,
+    subscribeToDirectMessageReactions,
+    subscribeToDirectMessageReactionRemovals,
+    subscribeToDirectMessageEdits,
+    subscribeToDirectMessageDeletions,
     isConnected: readonly(isConnected),
     connectionError: readonly(connectionError),
     getClient: () => globalWebSocketState.stompClient
