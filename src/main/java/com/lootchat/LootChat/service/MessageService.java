@@ -81,6 +81,15 @@ public class MessageService {
         @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
     })
     public MessageResponse createMessage(String content, Long channelId) {
+        return createMessage(content, channelId, null);
+    }
+
+    @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
+    })
+    public MessageResponse createMessage(String content, Long channelId, Long replyToMessageId) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
@@ -88,12 +97,20 @@ public class MessageService {
         Channel channel = channelRepository.findById(channelId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Channel not found with id: " + channelId));
 
-        Message message = Message.builder()
+        Message.MessageBuilder messageBuilder = Message.builder()
                 .content(content)
                 .user(user)
-                .channel(channel)
-                .build();
+                .channel(channel);
 
+        if (replyToMessageId != null) {
+            Message replyToMessage = messageRepository.findById(replyToMessageId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reply message not found with id: " + replyToMessageId));
+            messageBuilder.replyToMessage(replyToMessage)
+                    .replyToUsername(replyToMessage.getUser().getUsername())
+                    .replyToContent(replyToMessage.getContent());
+        }
+
+        Message message = messageBuilder.build();
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
@@ -108,6 +125,15 @@ public class MessageService {
         @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
     })
     public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image) {
+        return createMessageWithImage(content, channelId, image, null);
+    }
+
+    @Transactional
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
+        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
+    })
+    public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image, Long replyToMessageId) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));
@@ -120,14 +146,22 @@ public class MessageService {
 
         String messageContent = content != null ? content : "";
 
-        Message message = Message.builder()
+        Message.MessageBuilder messageBuilder = Message.builder()
                 .content(messageContent)
                 .user(user)
                 .channel(channel)
                 .imageUrl(imageUrl)
-                .imageFilename(imageFilename)
-                .build();
+                .imageFilename(imageFilename);
 
+        if (replyToMessageId != null) {
+            Message replyToMessage = messageRepository.findById(replyToMessageId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Reply message not found with id: " + replyToMessageId));
+            messageBuilder.replyToMessage(replyToMessage)
+                    .replyToUsername(replyToMessage.getUser().getUsername())
+                    .replyToContent(replyToMessage.getContent());
+        }
+
+        Message message = messageBuilder.build();
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
@@ -307,6 +341,9 @@ public class MessageService {
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .reactions(reactions)
+                .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                .replyToUsername(message.getReplyToUsername())
+                .replyToContent(message.getReplyToContent())
                 .build();
     }
 

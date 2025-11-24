@@ -33,6 +33,9 @@ export interface Message {
   reactions?: Reaction[]
   updatedAt?: Date
   edited?: boolean
+  replyToMessageId?: number
+  replyToUsername?: string
+  replyToContent?: string
 }
 
 export enum WebRTCSignalType {

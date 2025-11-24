@@ -8,7 +8,8 @@ export const useMessageSender = () => {
   const sendMessage = async (
     channelId: number,
     messageContent: string,
-    imageFile: File | null
+    imageFile: File | null,
+    replyToMessageId?: number
   ) => {
     if (!user.value) {
       throw new Error('User not authenticated')
@@ -27,7 +28,8 @@ export const useMessageSender = () => {
           timestamp: new Date(),
           avatar: user.value.avatar,
           channelId,
-          reactions: []
+          reactions: [],
+          replyToMessageId
         })
       }
 
@@ -37,6 +39,9 @@ export const useMessageSender = () => {
         formData.append('channelId', channelId.toString())
         if (messageContent) {
           formData.append('content', messageContent)
+        }
+        if (replyToMessageId) {
+          formData.append('replyToMessageId', replyToMessageId.toString())
         }
 
         const response = await $fetch<MessageResponse>('/api/messages/upload', {
@@ -51,7 +56,8 @@ export const useMessageSender = () => {
           body: {
             content: messageContent,
             userId: user.value.userId,
-            channelId
+            channelId,
+            replyToMessageId
           }
         })
 

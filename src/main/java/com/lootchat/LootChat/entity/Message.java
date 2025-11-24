@@ -28,6 +28,16 @@ public class Message {
     private String imageFilename;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reply_to_message_id")
+    private Message replyToMessage;
+
+    @Column(name = "reply_to_username")
+    private String replyToUsername;
+
+    @Column(name = "reply_to_content", columnDefinition = "TEXT")
+    private String replyToContent;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 

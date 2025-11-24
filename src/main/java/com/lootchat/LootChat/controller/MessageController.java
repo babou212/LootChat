@@ -24,7 +24,7 @@ public class MessageController {
     public ResponseEntity<MessageResponse> createMessage(@RequestBody CreateMessageRequest request) {
         MessageResponse message;
         if (request.getChannelId() != null) {
-            message = messageService.createMessage(request.getContent(), request.getChannelId());
+            message = messageService.createMessage(request.getContent(), request.getChannelId(), request.getReplyToMessageId());
         } else {
             message = messageService.createMessage(request.getContent());
         }
@@ -35,8 +35,9 @@ public class MessageController {
     public ResponseEntity<MessageResponse> createMessageWithImage(
             @RequestParam("channelId") Long channelId,
             @RequestParam(value = "content", required = false) String content,
-            @RequestParam("image") MultipartFile image) {
-        MessageResponse message = messageService.createMessageWithImage(content, channelId, image);
+            @RequestParam("image") MultipartFile image,
+            @RequestParam(value = "replyToMessageId", required = false) Long replyToMessageId) {
+        MessageResponse message = messageService.createMessageWithImage(content, channelId, image, replyToMessageId);
         return ResponseEntity.status(HttpStatus.CREATED).body(message);
     }
 

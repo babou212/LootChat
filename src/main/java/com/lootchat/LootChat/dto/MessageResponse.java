@@ -27,4 +27,7 @@ public class MessageResponse {
     private LocalDateTime updatedAt;
     @Builder.Default
     private List<ReactionResponse> reactions = new ArrayList<>();
+    private Long replyToMessageId;
+    private String replyToUsername;
+    private String replyToContent;
 }
