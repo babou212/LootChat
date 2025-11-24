@@ -23,7 +23,7 @@ const getAuthToken = async (): Promise<string | null> => {
   }
 }
 
-const { connect, disconnect, getClient } = useWebSocket()
+const { connect, disconnect, getClient, isConnected } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 const channelsComposable = useChannels()
 const channels = channelsComposable.channels
@@ -110,6 +110,19 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
     await fetchMessages()
 
     if (token.value) {
+      if (!isConnected.value) {
+        let attempts = 0
+        while (!isConnected.value && attempts < 20) {
+          await new Promise(resolve => setTimeout(resolve, 250))
+          attempts++
+        }
+
+        if (!isConnected.value) {
+          console.error('WebSocket connection timeout - cannot subscribe to channel')
+          return
+        }
+      }
+
       await subscribeToChannelUpdates(channel, token.value)
     }
   } else {

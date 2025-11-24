@@ -100,7 +100,7 @@ watch(() => props.users, (newUsers) => {
               >
                 {{ getInitials(user) }}
               </div>
-              <span class="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 rounded-full border-2 border-white dark:border-gray-800" />
+              <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
             </div>
             <span class="text-sm font-medium text-gray-900 dark:text-white truncate">
               {{ user.username }}

@@ -4,7 +4,7 @@ import { useMessagesStore } from '../../stores/messages'
 
 export const useChannelSubscriptions = () => {
   const messagesStore = useMessagesStore()
-  const { subscribeToChannel, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions, isConnected } = useWebSocket()
+  const { subscribeToChannel, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions } = useWebSocket()
 
   let channelSubscription: StompSubscription | null = null
   let reactionSubscription: StompSubscription | null = null
@@ -14,25 +14,13 @@ export const useChannelSubscriptions = () => {
   const subscribeToChannelUpdates = async (channel: Channel, _token: string) => {
     unsubscribeAll()
 
-    if (!isConnected.value) {
-      let attempts = 0
-      while (!isConnected.value && attempts < 20) {
-        await new Promise(resolve => setTimeout(resolve, 250))
-        attempts++
-      }
-
-      if (!isConnected.value) {
-        console.error('WebSocket connection timeout - cannot subscribe to channel')
-        return
-      }
-    }
-
     channelSubscription = subscribeToChannel(channel.id, (newMessage) => {
       messagesStore.addMessage(channel.id, messagesStore.convertToMessage(newMessage))
     })
 
     if (!channelSubscription) {
       console.warn('Failed to subscribe to channel messages - WebSocket may not be connected')
+      return
     }
 
     reactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {

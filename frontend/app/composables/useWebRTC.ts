@@ -557,6 +557,11 @@ export const useWebRTC = () => {
   const joinVoiceChannel = async (channelId: number, client: Client, channelName?: string) => {
     if (!user.value) return
 
+    // If already in a voice channel, leave it first
+    if (currentChannelId.value !== null && currentChannelId.value !== channelId) {
+      leaveVoiceChannel()
+    }
+
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.')
