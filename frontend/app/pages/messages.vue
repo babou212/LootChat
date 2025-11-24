@@ -150,7 +150,7 @@ watch(() => directMessagesStore.directMessages, (dms) => {
     if (dm.otherUserAvatar && !avatarUrls.value.has(dm.otherUserId)) {
       loadAvatarUrl(dm.otherUserId, dm.otherUserAvatar)
     }
-    
+
     // Ensure DM users are in the users list for presence tracking
     const userExists = users.value.find(u => u.userId === dm.otherUserId)
     if (!userExists) {
@@ -209,7 +209,7 @@ onUnmounted(() => {
 onMounted(async () => {
   await usersComposable.fetchUsers()
   await directMessagesStore.fetchAllDirectMessages()
-  
+
   // Ensure presence is fetched for all DM users after DMs are loaded
   await usersComposable.fetchUsers()
 
