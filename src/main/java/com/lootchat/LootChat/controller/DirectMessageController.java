@@ -5,6 +5,7 @@ import com.lootchat.LootChat.service.DirectMessageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -36,6 +37,18 @@ public class DirectMessageController {
     @PostMapping("/messages")
     public ResponseEntity<DirectMessageMessageResponse> sendMessage(@RequestBody SendDirectMessageRequest request) {
         return ResponseEntity.ok(directMessageService.sendMessage(request));
+    }
+    
+    @PostMapping("/upload")
+    public ResponseEntity<DirectMessageMessageResponse> sendMessageWithImage(
+            @RequestParam("directMessageId") Long directMessageId,
+            @RequestParam(value = "content", required = false) String content,
+            @RequestParam("image") MultipartFile image,
+            @RequestParam(value = "replyToMessageId", required = false) Long replyToMessageId,
+            @RequestParam(value = "replyToUsername", required = false) String replyToUsername,
+            @RequestParam(value = "replyToContent", required = false) String replyToContent) {
+        return ResponseEntity.ok(directMessageService.sendMessageWithImage(
+            content, directMessageId, image, replyToMessageId, replyToUsername, replyToContent));
     }
     
     @PostMapping("/{directMessageId}/mark-read")

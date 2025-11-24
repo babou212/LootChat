@@ -13,6 +13,8 @@ const { user } = useAuth()
 const usersComposable = useUsers()
 const users = usersComposable.users
 const updateUserPresence = usersComposable.updateUserPresence
+const { getAvatarUrl } = useAvatarUrl()
+const avatarUrls = ref<Map<number, string>>(new Map())
 const {
   subscribeToUserDirectMessages,
   subscribeToDirectMessageReactions,
@@ -143,6 +145,42 @@ watch(showGifPicker, (open) => {
   }
 })
 
+watch(() => directMessagesStore.directMessages, (dms) => {
+  dms.forEach((dm) => {
+    if (dm.otherUserAvatar && !avatarUrls.value.has(dm.otherUserId)) {
+      loadAvatarUrl(dm.otherUserId, dm.otherUserAvatar)
+    }
+    
+    // Ensure DM users are in the users list for presence tracking
+    const userExists = users.value.find(u => u.userId === dm.otherUserId)
+    if (!userExists) {
+      users.value.push({
+        userId: dm.otherUserId,
+        username: dm.otherUsername,
+        email: '',
+        firstName: '',
+        lastName: '',
+        role: 'USER',
+        avatar: dm.otherUserAvatar,
+        status: 'offline' // Will be updated by presence subscription
+      })
+    }
+  })
+}, { deep: true, immediate: true })
+
+const loadAvatarUrl = async (userId: number, avatarPath: string | undefined) => {
+  if (avatarPath && !avatarUrls.value.has(userId)) {
+    const url = await getAvatarUrl(avatarPath)
+    if (url) {
+      avatarUrls.value.set(userId, url)
+    }
+  }
+}
+
+const getLoadedAvatarUrl = (userId: number): string => {
+  return avatarUrls.value.get(userId) || ''
+}
+
 onUnmounted(() => {
   if (imagePreviewUrl.value) {
     URL.revokeObjectURL(imagePreviewUrl.value)
@@ -171,6 +209,9 @@ onUnmounted(() => {
 onMounted(async () => {
   await usersComposable.fetchUsers()
   await directMessagesStore.fetchAllDirectMessages()
+  
+  // Ensure presence is fetched for all DM users after DMs are loaded
+  await usersComposable.fetchUsers()
 
   if (directMessagesStore.selectedDirectMessageId) {
     await directMessagesStore.fetchMessages(directMessagesStore.selectedDirectMessageId)
@@ -313,32 +354,69 @@ const sendMessage = async () => {
     error.value = null
     loading.value = true
 
-    let imageUrl: string | undefined
-    let imageFilename: string | undefined
+    const optimisticId = -Date.now()
 
     if (imageToSend) {
+      // Add optimistic message for image upload
+      directMessagesStore.addOptimisticMessage(dmId, {
+        optimisticId,
+        content: messageContent || '',
+        senderId: user.value.userId,
+        senderUsername: user.value.username,
+        senderAvatar: user.value.avatar,
+        directMessageId: dmId,
+        imageUrl: URL.createObjectURL(imageToSend),
+        imageFilename: imageToSend.name,
+        replyToMessageId: replyId,
+        replyToUsername: replyUsername,
+        replyToContent: replyContent,
+        isRead: false,
+        timestamp: new Date(),
+        reactions: []
+      })
+
       const formData = new FormData()
       formData.append('image', imageToSend)
+      formData.append('directMessageId', dmId.toString())
 
-      const uploadResponse = await $fetch<{ url: string, filename: string }>('/api/messages/upload', {
+      if (replyId) {
+        formData.append('replyToMessageId', replyId.toString())
+      }
+      if (replyUsername) {
+        formData.append('replyToUsername', replyUsername)
+      }
+      if (replyContent) {
+        formData.append('replyToContent', replyContent)
+      }
+      if (messageContent) {
+        formData.append('content', messageContent)
+      }
+
+      const uploadResponse = await $fetch<DirectMessageMessageResponse>('/api/direct-messages/upload', {
         method: 'POST',
         body: formData
       })
 
-      imageUrl = uploadResponse.url
-      imageFilename = uploadResponse.filename
+      // Image was uploaded, use the response directly
+      directMessagesStore.confirmOptimisticMessage(
+        dmId,
+        optimisticId,
+        directMessagesStore.convertToDirectMessageMessage(uploadResponse)
+      )
+
+      newMessage.value = ''
+      removeImage()
+      replyingTo.value = null
+      return
     }
 
-    const optimisticId = -Date.now()
     directMessagesStore.addOptimisticMessage(dmId, {
       optimisticId,
-      content: messageContent || (imageUrl ? '' : 'Image'),
+      content: messageContent,
       senderId: user.value.userId,
       senderUsername: user.value.username,
       senderAvatar: user.value.avatar,
       directMessageId: dmId,
-      imageUrl,
-      imageFilename,
       replyToMessageId: replyId,
       replyToUsername: replyUsername,
       replyToContent: replyContent,
@@ -348,16 +426,13 @@ const sendMessage = async () => {
     })
 
     newMessage.value = ''
-    removeImage()
     replyingTo.value = null
 
     const response = await $fetch('/api/direct-messages/messages', {
       method: 'POST',
       body: {
-        content: messageContent || (imageUrl ? '' : 'Image'),
+        content: messageContent,
         directMessageId: dmId,
-        imageUrl,
-        imageFilename,
         replyToMessageId: replyId,
         replyToUsername: replyUsername,
         replyToContent: replyContent
@@ -449,6 +524,7 @@ const isUserOnline = (userId: number): boolean => {
           <div class="flex items-start gap-3">
             <div class="relative">
               <UAvatar
+                :src="getLoadedAvatarUrl(dm.otherUserId)"
                 :alt="dm.otherUsername"
                 size="md"
               />
@@ -494,6 +570,7 @@ const isUserOnline = (userId: number): boolean => {
         <div v-if="directMessagesStore.getSelectedDirectMessage" class="flex items-center gap-3">
           <div class="relative">
             <UAvatar
+              :src="getLoadedAvatarUrl(directMessagesStore.getSelectedDirectMessage.otherUserId)"
               :alt="directMessagesStore.getSelectedDirectMessage.otherUsername"
               size="md"
             />
