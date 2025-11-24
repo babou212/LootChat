@@ -1,37 +1,54 @@
-export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
-  const cookies = parseCookies(event)
-  const token = cookies.token
+import type { H3Event } from 'h3'
 
-  if (!token) {
+export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
+  const session = await getUserSession(event)
+
+  if (!session || !session.token) {
     throw createError({
       statusCode: 401,
-      message: 'Unauthorized'
+      message: 'Not authenticated'
+    })
+  }
+
+  const config = useRuntimeConfig()
+  const formData = await readMultipartFormData(event)
+
+  if (!formData) {
+    throw createError({
+      statusCode: 400,
+      message: 'No form data provided'
     })
   }
 
   try {
-    const formData = await readFormData(event)
+    const backendFormData = new FormData()
+
+    for (const part of formData) {
+      if (part.filename) {
+        const arrayBuffer = part.data.buffer.slice(
+          part.data.byteOffset,
+          part.data.byteOffset + part.data.byteLength
+        ) as ArrayBuffer
+        const blob = new Blob([arrayBuffer], { type: part.type })
+        backendFormData.append(part.name || 'image', blob, part.filename)
+      } else {
+        backendFormData.append(part.name || 'field', part.data.toString())
+      }
+    }
 
     const message: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/direct-messages/upload`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${session.token}`
       },
-      body: formData
+      body: backendFormData
     })
-
     return message
   } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'statusCode' in error) {
-      throw createError({
-        statusCode: (error as { statusCode: number }).statusCode,
-        message: (error as { message?: string }).message || 'Upload failed'
-      })
-    }
+    console.error('Failed to upload direct message with image:', error)
     throw createError({
       statusCode: 500,
-      message: 'Failed to upload image'
+      message: 'Failed to upload direct message with image'
     })
   }
 })
