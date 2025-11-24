@@ -2,6 +2,10 @@
 import type GifPicker from '~/components/GifPicker.vue'
 import type { DirectMessageMessage } from '../../shared/types/directMessage.d'
 import { useDirectMessagesStore } from '../../stores/directMessages'
+import { useUserPresenceStore } from '../../stores/userPresence'
+import { useAvatarStore } from '../../stores/avatars'
+import { useComposerStore } from '../../stores/composer'
+import { useWebSocketStore } from '../../stores/websocket'
 import type { DirectMessageMessageResponse } from '../../app/api/directMessageApi'
 
 definePageMeta({
@@ -9,12 +13,14 @@ definePageMeta({
 })
 
 const directMessagesStore = useDirectMessagesStore()
+const userPresenceStore = useUserPresenceStore()
+const avatarStore = useAvatarStore()
+const composerStore = useComposerStore()
+const websocketStore = useWebSocketStore()
 const { user } = useAuth()
 const usersComposable = useUsers()
 const users = usersComposable.users
 const updateUserPresence = usersComposable.updateUserPresence
-const { getAvatarUrl } = useAvatarUrl()
-const avatarUrls = ref<Map<number, string>>(new Map())
 const {
   subscribeToUserDirectMessages,
   subscribeToDirectMessageReactions,
@@ -25,11 +31,6 @@ const {
   isConnected,
   connect
 } = useWebSocket()
-
-const newMessage = ref('')
-const loading = ref(false)
-const error = ref<string | null>(null)
-const replyingTo = ref<DirectMessageMessage | null>(null)
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 let reactionSubscription: ReturnType<typeof subscribeToDirectMessageReactions> | null = null
 let reactionRemovalSubscription: ReturnType<typeof subscribeToDirectMessageReactionRemovals> | null = null
@@ -37,38 +38,21 @@ let editSubscription: ReturnType<typeof subscribeToDirectMessageEdits> | null = 
 let deleteSubscription: ReturnType<typeof subscribeToDirectMessageDeletions> | null = null
 let presenceSubscription: ReturnType<typeof subscribeToUserPresence> | null = null
 
-const getAuthToken = async (): Promise<string | null> => {
-  try {
-    const response = await $fetch<{ token: string }>('/api/auth/token')
-    return response.token
-  } catch {
-    return null
-  }
-}
-
-const selectedImage = ref<File | null>(null)
-const imagePreviewUrl = ref<string | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-
-const showEmojiPicker = ref(false)
-const showGifPicker = ref(false)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
-const openPickerUpwards = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
 
 const toggleEmojiPicker = () => {
-  showEmojiPicker.value = !showEmojiPicker.value
-  showGifPicker.value = false
-  if (showEmojiPicker.value) {
+  composerStore.toggleEmojiPicker()
+  if (composerStore.showEmojiPicker) {
     calculatePickerPosition()
   }
 }
 
 const toggleGifPicker = () => {
-  showGifPicker.value = !showGifPicker.value
-  showEmojiPicker.value = false
-  if (showGifPicker.value) {
+  composerStore.toggleGifPicker()
+  if (composerStore.showGifPicker) {
     calculatePickerPosition()
   }
 }
@@ -84,17 +68,16 @@ const calculatePickerPosition = () => {
     const spaceBelow = viewportHeight - wrapperRect.bottom
     const spaceAbove = wrapperRect.top
 
-    openPickerUpwards.value = spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow
+    composerStore.setPickerPosition(spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow)
   })
 }
 
 useClickAway(
   pickerWrapperRef,
   () => {
-    showEmojiPicker.value = false
-    showGifPicker.value = false
+    composerStore.closePickers()
   },
-  { active: computed(() => showEmojiPicker.value || showGifPicker.value) }
+  { active: computed(() => composerStore.isPickerOpen) }
 )
 
 const handleImageSelect = (event: Event) => {
@@ -104,42 +87,35 @@ const handleImageSelect = (event: Event) => {
   if (!file) return
 
   if (!file.type.startsWith('image/')) {
-    error.value = 'Please select an image file'
+    composerStore.setError('Please select an image file')
     return
   }
 
   if (file.size > 5 * 1024 * 1024) {
-    error.value = 'Image size must be less than 5MB'
+    composerStore.setError('Image size must be less than 5MB')
     return
   }
 
-  selectedImage.value = file
-  imagePreviewUrl.value = URL.createObjectURL(file)
-  error.value = null
+  composerStore.setImage(file)
+  composerStore.setError(null)
 }
 
 const removeImage = () => {
-  if (imagePreviewUrl.value) {
-    URL.revokeObjectURL(imagePreviewUrl.value)
-  }
-  selectedImage.value = null
-  imagePreviewUrl.value = null
+  composerStore.removeImage()
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
 }
 
 const addEmoji = (emoji: string) => {
-  newMessage.value += emoji
-  showEmojiPicker.value = false
+  composerStore.addEmoji(emoji)
 }
 
 const addGif = (gifUrl: string) => {
-  newMessage.value += `\n${gifUrl}`
-  showGifPicker.value = false
+  composerStore.addGif(gifUrl)
 }
 
-watch(showGifPicker, (open) => {
+watch(() => composerStore.showGifPicker, (open) => {
   if (!open && gifPickerRef.value) {
     gifPickerRef.value.reset()
   }
@@ -147,44 +123,23 @@ watch(showGifPicker, (open) => {
 
 watch(() => directMessagesStore.directMessages, (dms) => {
   dms.forEach((dm) => {
-    if (dm.otherUserAvatar && !avatarUrls.value.has(dm.otherUserId)) {
-      loadAvatarUrl(dm.otherUserId, dm.otherUserAvatar)
+    if (dm.otherUserAvatar) {
+      avatarStore.loadAvatar(dm.otherUserId, dm.otherUserAvatar)
     }
 
-    // Ensure DM users are in the users list for presence tracking
-    const userExists = users.value.find(u => u.userId === dm.otherUserId)
-    if (!userExists) {
-      users.value.push({
-        userId: dm.otherUserId,
-        username: dm.otherUsername,
-        email: '',
-        firstName: '',
-        lastName: '',
-        role: 'USER',
-        avatar: dm.otherUserAvatar,
-        status: 'offline' // Will be updated by presence subscription
-      })
+    // Initialize DM user presence as offline, will be updated by presence subscription
+    if (userPresenceStore.getUserStatus(dm.otherUserId) === undefined) {
+      userPresenceStore.setUserPresence(dm.otherUserId, 'offline')
     }
   })
 }, { deep: true, immediate: true })
 
-const loadAvatarUrl = async (userId: number, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
-
 const getLoadedAvatarUrl = (userId: number): string => {
-  return avatarUrls.value.get(userId) || ''
+  return avatarStore.getAvatarUrl(userId) || ''
 }
 
 onUnmounted(() => {
-  if (imagePreviewUrl.value) {
-    URL.revokeObjectURL(imagePreviewUrl.value)
-  }
+  composerStore.cleanup()
 
   if (dmSubscription) {
     dmSubscription.unsubscribe()
@@ -210,8 +165,13 @@ onMounted(async () => {
   await usersComposable.fetchUsers()
   await directMessagesStore.fetchAllDirectMessages()
 
-  // Ensure presence is fetched for all DM users after DMs are loaded
-  await usersComposable.fetchUsers()
+  // Initialize presence for DM users from the global users list
+  directMessagesStore.directMessages.forEach((dm) => {
+    const user = users.value.find(u => u.userId === dm.otherUserId)
+    if (user) {
+      userPresenceStore.setUserPresence(dm.otherUserId, user.status)
+    }
+  })
 
   if (directMessagesStore.selectedDirectMessageId) {
     await directMessagesStore.fetchMessages(directMessagesStore.selectedDirectMessageId)
@@ -219,7 +179,7 @@ onMounted(async () => {
 
   if (user.value?.userId) {
     if (!isConnected.value) {
-      const token = await getAuthToken()
+      const token = await websocketStore.fetchToken()
       if (token) {
         try {
           await connect(token)
@@ -242,6 +202,8 @@ onMounted(async () => {
 
     presenceSubscription = subscribeToUserPresence((update: { userId: number, status: 'online' | 'offline' }) => {
       updateUserPresence(update.userId, update.status)
+      // Also update presence store
+      userPresenceStore.updateUserPresence(update)
     })
 
     dmSubscription = subscribeToUserDirectMessages(user.value.userId, (message: DirectMessageMessageResponse) => {
@@ -341,18 +303,18 @@ const formatTime = (date: Date) => {
 }
 
 const sendMessage = async () => {
-  if ((!newMessage.value.trim() && !selectedImage.value) || !directMessagesStore.selectedDirectMessageId || !user.value) return
+  if (!composerStore.hasContent || !directMessagesStore.selectedDirectMessageId || !user.value) return
 
   const dmId = directMessagesStore.selectedDirectMessageId
-  const messageContent = newMessage.value.trim()
-  const imageToSend = selectedImage.value
-  const replyId = replyingTo.value?.id
-  const replyUsername = replyingTo.value?.senderUsername
-  const replyContent = replyingTo.value?.content
+  const messageContent = composerStore.newMessage.trim()
+  const imageToSend = composerStore.selectedImage
+  const replyId = composerStore.replyingTo?.id
+  const replyUsername = (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
+  const replyContent = composerStore.replyingTo?.content
 
   try {
-    error.value = null
-    loading.value = true
+    composerStore.setError(null)
+    composerStore.setLoading(true)
 
     const optimisticId = -Date.now()
 
@@ -404,9 +366,7 @@ const sendMessage = async () => {
         directMessagesStore.convertToDirectMessageMessage(uploadResponse)
       )
 
-      newMessage.value = ''
-      removeImage()
-      replyingTo.value = null
+      composerStore.reset()
       return
     }
 
@@ -425,8 +385,8 @@ const sendMessage = async () => {
       reactions: []
     })
 
-    newMessage.value = ''
-    replyingTo.value = null
+    composerStore.clearMessage()
+    composerStore.cancelReply()
 
     const response = await $fetch('/api/direct-messages/messages', {
       method: 'POST',
@@ -448,19 +408,19 @@ const sendMessage = async () => {
     }
   } catch (err: unknown) {
     console.error('Failed to send message:', err)
-    newMessage.value = messageContent
-    error.value = err instanceof Error ? err.message : 'Failed to send message'
+    composerStore.setMessage(messageContent)
+    composerStore.setError(err instanceof Error ? err.message : 'Failed to send message')
   } finally {
-    loading.value = false
+    composerStore.setLoading(false)
   }
 }
 
 const setReplyingTo = (message: DirectMessageMessage) => {
-  replyingTo.value = message
+  composerStore.setReplyingTo(message)
 }
 
 const cancelReply = () => {
-  replyingTo.value = null
+  composerStore.cancelReply()
 }
 
 const removeMessageById = (id: number) => {
@@ -470,6 +430,13 @@ const removeMessageById = (id: number) => {
 }
 
 const isUserOnline = (userId: number): boolean => {
+  // First check presence store
+  const status = userPresenceStore.getUserStatus(userId)
+  if (status !== undefined) {
+    return status === 'online'
+  }
+
+  // Fallback to global users list
   const foundUser = users.value.find(u => u.userId === userId)
   return foundUser?.status === 'online'
 }
@@ -599,21 +566,21 @@ const isUserOnline = (userId: number): boolean => {
       />
 
       <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-        <div v-if="error" class="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400 text-sm">
-          {{ error }}
+        <div v-if="composerStore.error" class="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400 text-sm">
+          {{ composerStore.error }}
         </div>
 
         <div
-          v-if="replyingTo"
+          v-if="composerStore.replyingTo"
           class="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 rounded-r flex items-center justify-between"
         >
           <div class="flex-1">
             <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
               <UIcon name="i-lucide-reply" class="w-3 h-3" />
-              <span class="font-semibold">Replying to {{ replyingTo.senderUsername }}</span>
+              <span class="font-semibold">Replying to {{ (composerStore.replyingTo as any).senderUsername }}</span>
             </div>
             <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-1">
-              {{ replyingTo.content }}
+              {{ composerStore.replyingTo.content }}
             </p>
           </div>
           <button
@@ -626,10 +593,10 @@ const isUserOnline = (userId: number): boolean => {
         </div>
 
         <div
-          v-if="imagePreviewUrl"
+          v-if="composerStore.imagePreviewUrl"
           class="mb-2 relative inline-block"
         >
-          <img :src="imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
+          <img :src="composerStore.imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
           <button
             type="button"
             class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
@@ -663,9 +630,9 @@ const isUserOnline = (userId: number): boolean => {
               @click="toggleEmojiPicker"
             />
             <div
-              v-if="showEmojiPicker"
+              v-if="composerStore.showEmojiPicker"
               class="absolute left-0 z-100"
-              :class="openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+              :class="composerStore.openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
             >
               <EmojiPicker @select="addEmoji" />
             </div>
@@ -678,21 +645,21 @@ const isUserOnline = (userId: number): boolean => {
               @click="toggleGifPicker"
             />
             <div
-              v-if="showGifPicker"
+              v-if="composerStore.showGifPicker"
               class="absolute left-0 z-100"
-              :class="openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+              :class="composerStore.openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
             >
               <GifPicker ref="gifPickerRef" @select="addGif" />
             </div>
           </div>
 
           <UTextarea
-            v-model="newMessage"
+            v-model="composerStore.newMessage"
             placeholder="Type a message..."
             :rows="1"
             autoresize
             class="flex-1"
-            :disabled="loading"
+            :disabled="composerStore.loading"
             @keydown.enter.exact.prevent="sendMessage"
           />
 
@@ -700,7 +667,7 @@ const isUserOnline = (userId: number): boolean => {
             type="submit"
             icon="i-lucide-send"
             color="primary"
-            :disabled="(!newMessage.trim() && !selectedImage) || loading"
+            :disabled="!composerStore.hasContent || composerStore.loading"
           >
             Send
           </UButton>

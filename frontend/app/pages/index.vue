@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import type GifPicker from '~/components/GifPicker.vue'
+import type { Message } from '../../shared/types/chat'
+import type { DirectMessageMessage } from '../../shared/types/directMessage'
 import { useMessagesStore } from '../../stores/messages'
 import { useDirectMessagesStore } from '../../stores/directMessages'
+import { useUserPresenceStore } from '../../stores/userPresence'
+import { useChannelsStore } from '../../stores/channels'
+import { useUsersStore } from '../../stores/users'
+import { useComposerStore } from '../../stores/composer'
+import { useWebSocketStore } from '../../stores/websocket'
 
 definePageMeta({
   middleware: 'auth',
@@ -11,64 +18,33 @@ definePageMeta({
 const { user } = useAuth()
 const messagesStore = useMessagesStore()
 const directMessagesStore = useDirectMessagesStore()
-
-const token = ref<string | null>(null)
-
-const getAuthToken = async (): Promise<string | null> => {
-  try {
-    const response = await $fetch<{ token: string }>('/api/auth/token')
-    token.value = response.token
-    return response.token
-  } catch {
-    token.value = null
-    return null
-  }
-}
+const userPresenceStore = useUserPresenceStore()
+const channelsStore = useChannelsStore()
+const usersStore = useUsersStore()
+const composerStore = useComposerStore()
+const websocketStore = useWebSocketStore()
 
 const { connect, disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
-const channelsComposable = useChannels()
-const channels = channelsComposable.channels
-const selectedChannel = channelsComposable.selectedChannel
-const fetchChannels = channelsComposable.fetchChannels
-const markChannelAsRead = channelsComposable.markChannelAsRead
-const incrementUnreadCount = channelsComposable.incrementUnreadCount
+const { sendMessage: sendMessageToServer } = useMessageSender()
+const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
+const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
 
+// Keep usersComposable for full user data with email/role for UserPanel
 const usersComposable = useUsers()
-const users = usersComposable.users
+const usersWithFullData = usersComposable.users
 const fetchUsers = usersComposable.fetchUsers
 const updateUserPresence = usersComposable.updateUserPresence
 const addUser = usersComposable.addUser
 
-const composerComposable = useMessageComposer()
-const newMessage = composerComposable.newMessage
-const selectedImage = composerComposable.selectedImage
-const imagePreviewUrl = composerComposable.imagePreviewUrl
-const fileInputRef = composerComposable.fileInputRef
-const showEmojiPicker = composerComposable.showEmojiPicker
-const showGifPicker = composerComposable.showGifPicker
-const replyingTo = composerComposable.replyingTo
-const setReplyingTo = composerComposable.setReplyingTo
-const cancelReply = composerComposable.cancelReply
-const handleImageSelectRaw = composerComposable.handleImageSelect
-const removeImage = composerComposable.removeImage
-const addEmoji = composerComposable.addEmoji
-const addGif = composerComposable.addGif
-const resetComposer = composerComposable.reset
-const cleanupComposer = composerComposable.cleanup
+const channels = computed(() => channelsStore.channels)
+const selectedChannel = computed({
+  get: () => channelsStore.selectedChannel,
+  set: value => channelsStore.selectChannel(value)
+})
+const users = computed(() => usersStore.users)
 
-const handleImageSelect = (event: Event) => {
-  try {
-    handleImageSelectRaw(event)
-    error.value = null
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Failed to select image'
-  }
-}
-
-const { sendMessage: sendMessageToServer } = useMessageSender()
-const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
-const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const messages = computed(() => {
   if (!selectedChannel.value) return []
@@ -94,13 +70,60 @@ const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 
+// Composer helper functions
+const handleImageSelect = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    error.value = 'Please select an image file'
+    return
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    error.value = 'Image size must be less than 5MB'
+    return
+  }
+
+  composerStore.setImage(file)
+  error.value = null
+}
+
+const removeImage = () => {
+  composerStore.removeImage()
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+const addEmoji = (emoji: string) => {
+  composerStore.addEmoji(emoji)
+}
+
+const addGif = (gifUrl: string) => {
+  composerStore.addGif(gifUrl)
+}
+
+const setReplyingTo = (message: Message | DirectMessageMessage) => {
+  composerStore.setReplyingTo(message)
+}
+
+const cancelReply = () => {
+  composerStore.cancelReply()
+}
+
+const resetComposer = () => {
+  composerStore.reset()
+}
+
 useClickAway(
   pickerWrapperRef,
   () => {
-    showEmojiPicker.value = false
-    showGifPicker.value = false
+    composerStore.closePickers()
   },
-  { active: computed(() => showEmojiPicker.value || showGifPicker.value) }
+  { active: computed(() => composerStore.isPickerOpen) }
 )
 
 const selectChannel = async (channel: typeof channels.value[0]) => {
@@ -108,14 +131,26 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
     return
   }
 
-  selectedChannel.value = channel
-  markChannelAsRead(channel.id)
+  channelsStore.selectChannel(channel)
+  channelsStore.markChannelAsRead(channel.id)
   loadingMoreMessages.value = false
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
     await fetchMessages()
 
-    if (token.value) {
+    const token = websocketStore.token
+    if (token) {
+      // Ensure we're connected before subscribing
+      if (!isConnected.value) {
+        console.log('WebSocket not connected, attempting to connect...')
+        try {
+          await connect(token)
+        } catch (err) {
+          console.error('Failed to connect WebSocket:', err)
+        }
+      }
+
+      // Wait for connection with timeout
       if (!isConnected.value) {
         let attempts = 0
         while (!isConnected.value && attempts < 20) {
@@ -129,7 +164,7 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
         }
       }
 
-      await subscribeToChannelUpdates(channel, token.value)
+      await subscribeToChannelUpdates(channel, token)
     }
   } else {
     unsubscribeChannel()
@@ -178,14 +213,14 @@ const removeMessageById = (id: number) => {
 }
 
 const sendMessage = async () => {
-  if ((!newMessage.value.trim() && !selectedImage.value) || !user.value || !selectedChannel.value) return
+  if (!composerStore.hasContent || !user.value || !selectedChannel.value) return
 
   const channelId = selectedChannel.value.id
-  const messageContent = newMessage.value.trim()
-  const imageToSend = selectedImage.value
-  const replyId = replyingTo.value?.id
-  const replyUsername = replyingTo.value?.username
-  const replyContent = replyingTo.value?.content
+  const messageContent = composerStore.newMessage.trim()
+  const imageToSend = composerStore.selectedImage
+  const replyId = composerStore.replyingTo?.id
+  const replyUsername = (composerStore.replyingTo as Message)?.username || (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
+  const replyContent = composerStore.replyingTo?.content
 
   try {
     error.value = null
@@ -193,8 +228,8 @@ const sendMessage = async () => {
     resetComposer()
   } catch (err: unknown) {
     console.error('Failed to send message:', err)
-    if (messageContent && !newMessage.value) {
-      newMessage.value = messageContent
+    if (messageContent && !composerStore.newMessage) {
+      composerStore.setMessage(messageContent)
     }
     error.value = err instanceof Error ? err.message : 'Failed to send message. Please try again.'
   }
@@ -246,12 +281,6 @@ const handleJoinVoice = async (channelId: number) => {
 
   try {
     await joinVoiceChannel(channelId, client)
-    toast.add({
-      title: 'Connected',
-      description: 'You joined the voice channel',
-      color: 'success',
-      icon: 'i-lucide-mic'
-    })
   } catch (err) {
     console.error('Failed to join voice channel:', err)
     const errorMessage = err instanceof Error ? err.message : 'Failed to join voice channel'
@@ -266,36 +295,44 @@ const handleJoinVoice = async (channelId: number) => {
 
 const handleLeaveVoice = () => {
   leaveVoiceChannel()
-  toast.add({
-    title: 'Disconnected',
-    description: 'You left the voice channel',
-    color: 'neutral',
-    icon: 'i-lucide-phone-off'
-  })
 }
 
 onMounted(async () => {
   isClient.value = true
 
-  await getAuthToken()
-  await fetchChannels()
+  await websocketStore.fetchToken()
+  await channelsStore.fetchChannels()
   await fetchUsers()
 
-  if (token.value) {
+  if (websocketStore.token) {
     try {
-      await connect(token.value)
+      await connect(websocketStore.token)
+
+      // Wait for connection to be fully established
+      let attempts = 0
+      while (!isConnected.value && attempts < 20) {
+        await new Promise(resolve => setTimeout(resolve, 250))
+        attempts++
+      }
+
+      if (!isConnected.value) {
+        console.error('WebSocket connection timeout - real-time features will not work')
+        return
+      }
 
       if (user.value && user.value.userId) {
         updateUserPresence(user.value.userId, 'online')
+        userPresenceStore.setUserPresence(user.value.userId, 'online')
       }
 
       const selectedChannelId = computed(() => selectedChannel.value?.id ?? null)
 
       subscribeToGlobal(
-        (channelId: number) => incrementUnreadCount(channelId),
+        (channelId: number) => channelsStore.incrementUnreadCount(channelId),
         (update: { userId: number, username: string, status: 'online' | 'offline' }) => {
           updateUserPresence(update.userId, update.status)
-          if (!users.value.some((u: typeof users.value[0]) => u.userId === update.userId)) {
+          userPresenceStore.updateUserPresence({ userId: update.userId, status: update.status })
+          if (!usersWithFullData.value.some((u: typeof usersWithFullData.value[0]) => u.userId === update.userId)) {
             addUser(update.userId, update.username, update.status)
           }
         },
@@ -330,7 +367,7 @@ onMounted(async () => {
 onUnmounted(() => {
   unsubscribeChannel()
   unsubscribeGlobal()
-  cleanupComposer()
+  composerStore.cleanup()
   if (dmSubscription) {
     dmSubscription.unsubscribe()
   }
@@ -355,19 +392,26 @@ watch(() => user.value?.avatar, (newAvatar) => {
   }
 })
 
-watch(showGifPicker, (open) => {
+watch(() => composerStore.showGifPicker, (open) => {
   if (!open && gifPickerRef.value) {
     gifPickerRef.value.reset()
   }
 })
 
-watch(users, () => {
+watch(usersWithFullData, () => {
   if (user.value && user.value.userId) {
-    const currentUserIndex = users.value.findIndex((u: typeof users.value[0]) => u.userId === user.value!.userId)
-    if (currentUserIndex !== -1 && users.value[currentUserIndex]!.status !== 'online') {
-      users.value[currentUserIndex]!.status = 'online'
+    const currentUserIndex = usersWithFullData.value.findIndex((u: typeof usersWithFullData.value[0]) => u.userId === user.value!.userId)
+    if (currentUserIndex !== -1 && usersWithFullData.value[currentUserIndex]!.status !== 'online') {
+      usersWithFullData.value[currentUserIndex]!.status = 'online'
+      updateUserPresence(user.value.userId, 'online')
+      userPresenceStore.setUserPresence(user.value.userId, 'online')
     }
   }
+
+  // Sync all users to presence store
+  usersWithFullData.value.forEach((u) => {
+    userPresenceStore.setUserPresence(u.userId, u.status)
+  })
 }, { deep: true })
 </script>
 
@@ -422,16 +466,16 @@ watch(users, () => {
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
             <div
-              v-if="replyingTo"
+              v-if="composerStore.replyingTo"
               class="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 rounded-r flex items-center justify-between"
             >
               <div class="flex-1">
                 <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
                   <UIcon name="i-lucide-reply" class="w-3 h-3" />
-                  <span class="font-semibold">Replying to {{ replyingTo.username }}</span>
+                  <span class="font-semibold">Replying to {{ (composerStore.replyingTo as any).username || (composerStore.replyingTo as any).senderUsername }}</span>
                 </div>
                 <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-1">
-                  {{ replyingTo.content }}
+                  {{ composerStore.replyingTo.content }}
                 </p>
               </div>
               <button
@@ -444,10 +488,10 @@ watch(users, () => {
             </div>
 
             <div
-              v-if="imagePreviewUrl"
+              v-if="composerStore.imagePreviewUrl"
               class="mb-2 relative inline-block"
             >
-              <img :src="imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
+              <img :src="composerStore.imagePreviewUrl" alt="Preview" class="max-h-32 rounded">
               <button
                 type="button"
                 class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
@@ -478,10 +522,10 @@ watch(users, () => {
                   variant="ghost"
                   icon="i-lucide-smile"
                   aria-label="Insert emoji"
-                  @click="showEmojiPicker = !showEmojiPicker; showGifPicker = false"
+                  @click="composerStore.toggleEmojiPicker()"
                 />
                 <div
-                  v-if="showEmojiPicker"
+                  v-if="composerStore.showEmojiPicker"
                   class="absolute bottom-full mb-2 left-0 z-20"
                 >
                   <EmojiPicker @select="addEmoji" />
@@ -492,10 +536,10 @@ watch(users, () => {
                   variant="ghost"
                   icon="i-lucide-image"
                   aria-label="Insert GIF"
-                  @click="showGifPicker = !showGifPicker; showEmojiPicker = false"
+                  @click="composerStore.toggleGifPicker()"
                 />
                 <div
-                  v-if="showGifPicker"
+                  v-if="composerStore.showGifPicker"
                   class="absolute bottom-full mb-2 left-0 z-20"
                 >
                   <GifPicker ref="gifPickerRef" @select="addGif" />
@@ -503,7 +547,7 @@ watch(users, () => {
               </div>
 
               <UTextarea
-                v-model="newMessage"
+                v-model="composerStore.newMessage"
                 placeholder="Type a message..."
                 :rows="1"
                 autoresize
@@ -515,7 +559,7 @@ watch(users, () => {
                 type="submit"
                 icon="i-lucide-send"
                 color="primary"
-                :disabled="!newMessage.trim() && !selectedImage"
+                :disabled="!composerStore.hasContent"
               >
                 Send
               </UButton>
@@ -530,7 +574,7 @@ watch(users, () => {
         />
       </div>
 
-      <UserPanel :users="users" />
+      <UserPanel :users="usersWithFullData" />
     </div>
   </ClientOnly>
 </template>

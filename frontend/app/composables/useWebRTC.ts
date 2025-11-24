@@ -302,14 +302,31 @@ export const useWebRTC = () => {
   }
 
   const sendSignal = (signal: WebRTCSignalRequest) => {
-    if (globalVoiceState.stompClient && globalVoiceState.stompClient.connected) {
-      globalVoiceState.stompClient.publish({
-        destination: '/app/webrtc/signal',
-        body: JSON.stringify(signal)
-      })
-    } else {
-      console.error('Cannot send signal - STOMP client not connected')
+    if (!globalVoiceState.stompClient) {
+      console.warn('Cannot send signal - STOMP client not initialized')
+      return
     }
+
+    if (!globalVoiceState.stompClient.connected) {
+      console.warn('Cannot send signal - STOMP client not connected, queueing for retry...')
+      // Retry after a short delay
+      setTimeout(() => {
+        if (globalVoiceState.stompClient?.connected) {
+          globalVoiceState.stompClient.publish({
+            destination: '/app/webrtc/signal',
+            body: JSON.stringify(signal)
+          })
+        } else {
+          console.error('Cannot send signal - STOMP client still not connected after retry')
+        }
+      }, 500)
+      return
+    }
+
+    globalVoiceState.stompClient.publish({
+      destination: '/app/webrtc/signal',
+      body: JSON.stringify(signal)
+    })
   }
 
   const handleSignal = async (signal: WebRTCSignalResponse) => {
