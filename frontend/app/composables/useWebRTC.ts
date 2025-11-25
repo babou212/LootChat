@@ -214,7 +214,10 @@ export const useWebRTC = () => {
     const pc = new RTCPeerConnection(getRTCConfiguration())
 
     if (localStream.value) {
-      localStream.value.getTracks().forEach((track) => {
+      const tracks = localStream.value.getTracks()
+      console.log(`[Voice] Adding ${tracks.length} tracks to peer connection for user ${userId}`)
+      tracks.forEach((track) => {
+        console.log(`[Voice] Adding track: kind=${track.kind}, enabled=${track.enabled}, readyState=${track.readyState}`)
         if (localStream.value) {
           const sender = pc.addTrack(track, localStream.value)
           if (track.kind === 'audio') {
@@ -234,6 +237,7 @@ export const useWebRTC = () => {
 
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams
+      console.log(`[Voice] Received track from peer ${userId}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
 
       if (remoteStream) {
         let audio = peers.value.get(userId)?.audioEl
@@ -242,7 +246,10 @@ export const useWebRTC = () => {
           audio.autoplay = true
         }
         audio.srcObject = remoteStream
-        audio.play().catch(err => console.error('Error playing audio:', err))
+        console.log(`[Voice] Playing remote audio from user ${userId}`)
+        audio.play().then(() => {
+          console.log(`[Voice] Successfully started playing audio from user ${userId}`)
+        }).catch(err => console.error(`[Voice] Error playing audio from user ${userId}:`, err))
 
         const { analyser, context } = setupAudioAnalyser(remoteStream)
 
@@ -305,7 +312,7 @@ export const useWebRTC = () => {
   }
 
   const sendSignal = (signal: WebRTCSignalRequest) => {
-    const { getClient } = useWebSocket()
+    const { getClient, isConnected } = useWebSocket()
     const client = getClient()
 
     if (!client) {
@@ -314,7 +321,7 @@ export const useWebRTC = () => {
     }
 
     if (!client.connected) {
-      console.warn('Cannot send signal - STOMP client not connected, queueing for retry...')
+      console.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), queueing for retry...`)
       // Retry after a short delay
       setTimeout(() => {
         const retryClient = getClient()
@@ -341,6 +348,8 @@ export const useWebRTC = () => {
 
     const { type, fromUserId, data } = signal
     const myId = user.value.userId.toString()
+
+    console.log(`[Voice] Received signal: ${type} from ${fromUserId} (toUserId: ${signal.toUserId || 'broadcast'})`)
 
     const shouldInitiateOffer = (peerId: string) => {
       try {
@@ -587,11 +596,34 @@ export const useWebRTC = () => {
     }
 
     try {
-      const { getClient } = useWebSocket()
-      const client = getClient()
+      const { getClient, isConnected } = useWebSocket()
 
-      if (!client || !client.connected) {
-        throw new Error('WebSocket not connected. Please try again.')
+      // Wait for WebSocket connection with timeout
+      const waitForConnection = async (timeoutMs = 5000) => {
+        const startTime = Date.now()
+        while (!isConnected.value && Date.now() - startTime < timeoutMs) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        return isConnected.value
+      }
+
+      if (!isConnected.value) {
+        console.log('WebSocket not connected, waiting...')
+        const connected = await waitForConnection()
+        if (!connected) {
+          throw new Error('WebSocket connection timeout. Please try again.')
+        }
+      }
+
+      const client = getClient()
+      if (!client) {
+        throw new Error('WebSocket client not available. Please try again.')
+      }
+
+      console.log(`[Voice] Joining channel ${channelId}, client connected: ${client.connected}, isConnected ref: ${isConnected.value}`)
+
+      if (!client.connected) {
+        throw new Error('WebSocket client not connected. Please try again.')
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -607,6 +639,12 @@ export const useWebRTC = () => {
           channelCount: 2
         },
         video: false
+      })
+
+      const tracks = localStream.value.getTracks()
+      console.log(`[Voice] Got local media stream with ${tracks.length} tracks`)
+      tracks.forEach((track) => {
+        console.log(`[Voice] Local track: kind=${track.kind}, enabled=${track.enabled}, readyState=${track.readyState}, label=${track.label}`)
       })
 
       currentChannelId.value = channelId
@@ -636,6 +674,8 @@ export const useWebRTC = () => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
       })
+
+      console.log(`[Voice] Subscribed to WebRTC channels, now sending JOIN signal for user ${user.value.userId}`)
 
       sendSignal({
         channelId,
