@@ -280,7 +280,7 @@ const handleJoinVoice = async (channelId: number) => {
   }
 
   try {
-    await joinVoiceChannel(channelId, client)
+    await joinVoiceChannel(channelId)
   } catch (err) {
     console.error('Failed to join voice channel:', err)
     const errorMessage = err instanceof Error ? err.message : 'Failed to join voice channel'

@@ -20,7 +20,6 @@ const globalVoiceState = {
   signalSubscription: null as StompSubscription | null,
   channelWebRTCSub: null as StompSubscription | null,
   userSignalSub: null as StompSubscription | null,
-  stompClient: null as Client | null,
   beforeUnloadHandler: null as ((e: BeforeUnloadEvent) => void) | null,
   stompHandlersBound: false,
   localAnalyser: null as AnalyserNode | null,
@@ -140,20 +139,24 @@ export const useWebRTC = () => {
         } catch {
           // ignore
         }
-        globalVoiceState.channelWebRTCSub = client.subscribe(`/topic/channels/${currentChannelId.value}/webrtc`, (message: { body: string }) => {
-          const signal = JSON.parse(message.body) as WebRTCSignalResponse
-          handleSignal(signal)
-        })
-        globalVoiceState.userSignalSub = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
-          const signal = JSON.parse(message.body) as WebRTCSignalResponse
-          handleSignal(signal)
-        })
-        sendSignal({
-          channelId: currentChannelId.value,
-          type: 'JOIN' as WebRTCSignalType,
-          fromUserId: user.value.userId.toString()
-        })
-        maybeToast('stomp-reconnect', 'Reconnected to voice', 'Re-syncing…')
+        const { getClient } = useWebSocket()
+        const wsClient = getClient()
+        if (wsClient?.connected) {
+          globalVoiceState.channelWebRTCSub = wsClient.subscribe(`/topic/channels/${currentChannelId.value}/webrtc`, (message: { body: string }) => {
+            const signal = JSON.parse(message.body) as WebRTCSignalResponse
+            handleSignal(signal)
+          })
+          globalVoiceState.userSignalSub = wsClient.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
+            const signal = JSON.parse(message.body) as WebRTCSignalResponse
+            handleSignal(signal)
+          })
+          sendSignal({
+            channelId: currentChannelId.value,
+            type: 'JOIN' as WebRTCSignalType,
+            fromUserId: user.value.userId.toString()
+          })
+          maybeToast('stomp-reconnect', 'Reconnected to voice', 'Re-syncing…')
+        }
       }
     }
 
@@ -302,17 +305,21 @@ export const useWebRTC = () => {
   }
 
   const sendSignal = (signal: WebRTCSignalRequest) => {
-    if (!globalVoiceState.stompClient) {
+    const { getClient } = useWebSocket()
+    const client = getClient()
+
+    if (!client) {
       console.warn('Cannot send signal - STOMP client not initialized')
       return
     }
 
-    if (!globalVoiceState.stompClient.connected) {
+    if (!client.connected) {
       console.warn('Cannot send signal - STOMP client not connected, queueing for retry...')
       // Retry after a short delay
       setTimeout(() => {
-        if (globalVoiceState.stompClient?.connected) {
-          globalVoiceState.stompClient.publish({
+        const retryClient = getClient()
+        if (retryClient?.connected) {
+          retryClient.publish({
             destination: '/app/webrtc/signal',
             body: JSON.stringify(signal)
           })
@@ -323,7 +330,7 @@ export const useWebRTC = () => {
       return
     }
 
-    globalVoiceState.stompClient.publish({
+    client.publish({
       destination: '/app/webrtc/signal',
       body: JSON.stringify(signal)
     })
@@ -571,7 +578,7 @@ export const useWebRTC = () => {
     }
   }
 
-  const joinVoiceChannel = async (channelId: number, client: Client, channelName?: string) => {
+  const joinVoiceChannel = async (channelId: number, channelName?: string) => {
     if (!user.value) return
 
     // If already in a voice channel, leave it first
@@ -580,6 +587,13 @@ export const useWebRTC = () => {
     }
 
     try {
+      const { getClient } = useWebSocket()
+      const client = getClient()
+
+      if (!client || !client.connected) {
+        throw new Error('WebSocket not connected. Please try again.')
+      }
+
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.')
       }
@@ -597,7 +611,6 @@ export const useWebRTC = () => {
 
       currentChannelId.value = channelId
       currentChannelName.value = channelName || null
-      globalVoiceState.stompClient = client
       bindStompReconnectHandlers(client)
 
       const { analyser, context } = setupAudioAnalyser(localStream.value)
@@ -692,7 +705,6 @@ export const useWebRTC = () => {
     participants.value = []
     currentChannelId.value = null
     currentChannelName.value = null
-    globalVoiceState.stompClient = null
 
     if (typeof window !== 'undefined' && globalVoiceState.beforeUnloadHandler) {
       window.removeEventListener('beforeunload', globalVoiceState.beforeUnloadHandler)

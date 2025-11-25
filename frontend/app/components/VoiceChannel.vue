@@ -87,7 +87,7 @@ const handleJoinChannel = async () => {
   error.value = null
 
   try {
-    await joinVoiceChannel(props.channel.id, props.stompClient, props.channel.name)
+    await joinVoiceChannel(props.channel.id, props.channel.name)
   } catch (err) {
     console.error('Failed to join voice channel:', err)
 
