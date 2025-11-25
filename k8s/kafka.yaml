@@ -14,6 +14,14 @@ spec:
       labels:
         app: lootchat-kafka
     spec:
+      priorityClassName: lootchat-critical
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: Exists
       containers:
       - name: kafka
         image: confluentinc/cp-kafka:latest
@@ -22,6 +30,16 @@ spec:
           name: plaintext
         - containerPort: 9093
           name: controller
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /var/lib/kafka/data
         env:
         - name: KAFKA_NODE_ID
           valueFrom:
@@ -88,6 +106,12 @@ spec:
             configMapKeyRef:
               name: lootchat-config
               key: CLUSTER_ID
+        - name: KAFKA_LOG_DIRS
+          value: /var/lib/kafka/data
+      volumes:
+      - name: kafka-data
+        persistentVolumeClaim:
+          claimName: kafka-data
 ---
 apiVersion: v1
 kind: Service
