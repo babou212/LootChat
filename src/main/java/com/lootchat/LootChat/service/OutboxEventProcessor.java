@@ -26,10 +26,10 @@ public class OutboxEventProcessor {
     private final KafkaTemplate<String, String> kafkaTemplate;
     
     /**
-     * Process outbox events every 100ms
-     * Fast enough for real-time feel, efficient batching
+     * Process outbox events every 1 second
+     * Balance between responsiveness and database load
      */
-    @Scheduled(fixedDelay = 100)
+    @Scheduled(fixedDelay = 1000)
     @Transactional
     public void processOutboxEvents() {
         List<OutboxEvent> events = outboxRepository.findByProcessedFalseOrderByCreatedAtAsc();
