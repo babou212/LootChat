@@ -7,10 +7,10 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: hcloud-volumes
+  storageClassName: local-storage
   resources:
     requests:
-      storage: 20Gi
+      storage: 15Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,6 +28,13 @@ spec:
         app: minio
     spec:
       priorityClassName: lootchat-high
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: Exists
       containers:
       - name: minio
         image: minio/minio:latest

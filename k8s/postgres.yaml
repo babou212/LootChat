@@ -15,6 +15,13 @@ spec:
         app: lootchat-db
     spec:
       priorityClassName: lootchat-critical
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: Exists
       securityContext:
         fsGroup: 70
         runAsUser: 70
