@@ -5,6 +5,7 @@ import com.lootchat.LootChat.service.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,17 +14,18 @@ import org.springframework.web.socket.messaging.SessionConnectedEvent;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class WebSocketEventListener {
+    private static final String SESSION_KEY_PREFIX = "ws:session:";
+    private static final long SESSION_TTL_MINUTES = 10; // Auto-expire stale sessions
+    
     private final UserPresenceService userPresenceService;
     private final UserRepository userRepository;
-    
-    private final Map<String, String> sessionUsers = new ConcurrentHashMap<>();
+    private final RedisTemplate<String, String> redisTemplate;
 
     @EventListener
     public void handleWebSocketConnectListener(SessionConnectedEvent event) {
@@ -43,8 +45,11 @@ public class WebSocketEventListener {
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             String username = userDetails.getUsername();
             
-            if (!sessionUsers.containsKey(sessionId)) {
-                sessionUsers.put(sessionId, username);
+            String sessionKey = SESSION_KEY_PREFIX + sessionId;
+            String existingUser = redisTemplate.opsForValue().get(sessionKey);
+            
+            if (existingUser == null) {
+                redisTemplate.opsForValue().set(sessionKey, username, SESSION_TTL_MINUTES, TimeUnit.MINUTES);
                 
                 var user = userRepository.findByUsername(username);
                 if (user != null) {
@@ -60,7 +65,9 @@ public class WebSocketEventListener {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = headerAccessor.getSessionId();
         
-        String username = sessionUsers.remove(sessionId);
+        String sessionKey = SESSION_KEY_PREFIX + sessionId;
+        String username = redisTemplate.opsForValue().get(sessionKey);
+        redisTemplate.delete(sessionKey);
         
         if (username != null) {
             var user = userRepository.findByUsername(username);
