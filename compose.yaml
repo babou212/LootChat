@@ -80,8 +80,6 @@ services:
     ports:
       - "9200:9200"
       - "9300:9300"
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1" ]
       interval: 10s
