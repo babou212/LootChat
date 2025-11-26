@@ -46,6 +46,7 @@ public class MessageService {
     private final CurrentUserService currentUserService;
     private final S3FileStorageService s3FileStorageService;
     private final KafkaProducerService kafkaProducerService;
+    private final MessageSearchService messageSearchService;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
 
@@ -113,6 +114,8 @@ public class MessageService {
         Message message = messageBuilder.build();
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
+
+        messageSearchService.indexMessage(savedMessage);
         
         publishMessageToKafka(savedMessage.getId(), content, channelId, userId);
         
@@ -275,6 +278,9 @@ public class MessageService {
         message.setContent(content);
         Message updatedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(updatedMessage);
+
+        messageSearchService.updateMessage(updatedMessage);
+
         // Evict channel caches for this message's channel if applicable
         if (updatedMessage.getChannel() != null && updatedMessage.getChannel().getId() != null) {
             var channelMessagesCache = cacheManager.getCache("channelMessages");
@@ -305,6 +311,8 @@ public class MessageService {
         }
 
         reactionRepository.deleteByMessageId(id);
+
+        messageSearchService.deleteMessage(id);
 
         if (message.getImageFilename() != null) {
             s3FileStorageService.deleteFile(message.getImageFilename());
