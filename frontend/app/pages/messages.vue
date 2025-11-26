@@ -5,7 +5,6 @@ import { useDirectMessagesStore } from '../../stores/directMessages'
 import { useUserPresenceStore } from '../../stores/userPresence'
 import { useAvatarStore } from '../../stores/avatars'
 import { useComposerStore } from '../../stores/composer'
-import { useWebSocketStore } from '../../stores/websocket'
 import type { DirectMessageMessageResponse } from '../../app/api/directMessageApi'
 
 definePageMeta({
@@ -16,7 +15,6 @@ const directMessagesStore = useDirectMessagesStore()
 const userPresenceStore = useUserPresenceStore()
 const avatarStore = useAvatarStore()
 const composerStore = useComposerStore()
-const websocketStore = useWebSocketStore()
 const { user } = useAuth()
 const usersComposable = useUsers()
 const users = usersComposable.users
@@ -28,8 +26,7 @@ const {
   subscribeToDirectMessageEdits,
   subscribeToDirectMessageDeletions,
   subscribeToUserPresence,
-  isConnected,
-  connect
+  isConnected
 } = useWebSocket()
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 let reactionSubscription: ReturnType<typeof subscribeToDirectMessageReactions> | null = null
