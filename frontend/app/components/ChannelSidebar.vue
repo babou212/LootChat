@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
-import type { Client } from '@stomp/stompjs'
 import VoiceChannelSection from '~/components/VoiceChannelSection.vue'
 import { useDirectMessagesStore } from '../../stores/directMessages'
 
 interface Props {
   channels: Channel[]
   selectedChannel: Channel | null
-  stompClient: Client | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  stompClient: any
 }
 
 interface Emits {
@@ -91,7 +91,6 @@ onMounted(() => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-2">
-      <!-- Direct Messages Section -->
       <div class="mb-4">
         <h3
           v-show="!isCollapsed"
@@ -120,7 +119,6 @@ onMounted(() => {
         </UButton>
       </div>
 
-      <!-- Text Channels Section -->
       <div class="mb-4">
         <h3
           v-show="!isCollapsed"

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
-import type { Client } from '@stomp/stompjs'
 
 interface Props {
   channel: Channel
-  stompClient: Client | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  stompClient: any
   wsConnected?: boolean
 }
 
@@ -27,6 +27,8 @@ const isConnecting = ref(false)
 const error = ref<string | null>(null)
 const avatarUrls = ref<Map<string, string>>(new Map())
 
+const showAudioSettings = ref(false)
+
 const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
   if (avatarPath && !avatarUrls.value.has(userId)) {
     const url = await getAvatarUrl(avatarPath)
@@ -40,11 +42,11 @@ const getLoadedAvatarUrl = (userId: string): string => {
   return avatarUrls.value.get(userId) || ''
 }
 
-// Watch participants and load their avatars
 watch(() => participants.value, (newParticipants) => {
-  newParticipants.forEach((participant) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  newParticipants.forEach((participant: any) => {
     if (participant.avatar) {
-      loadAvatarUrl(participant.userId, participant.avatar)
+      loadAvatarUrl(String(participant.userId), participant.avatar)
     }
   })
 }, { immediate: true, deep: true })
@@ -57,7 +59,8 @@ const handleJoinChannel = async () => {
   }
 
   if (!props.stompClient.connected) {
-    const waitForConnected = (client: Client, timeoutMs = 5000, intervalMs = 100) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const waitForConnected = (client: any, timeoutMs = 5000, intervalMs = 100) => {
       return new Promise<boolean>((resolve) => {
         const start = Date.now()
         const timer = setInterval(() => {
@@ -105,6 +108,10 @@ const handleLeaveChannel = () => {
   leaveVoiceChannel()
   error.value = null
 }
+
+const openAudioSettings = () => {
+  showAudioSettings.value = true
+}
 </script>
 
 <template>
@@ -120,6 +127,10 @@ const handleLeaveChannel = () => {
         <p v-if="channel.description" class="text-gray-600 dark:text-gray-400">
           {{ channel.description }}
         </p>
+
+        <div v-if="isConnected" class="flex justify-center mt-4">
+          <VoiceQualityIndicator :show-details="true" :show-metrics="true" />
+        </div>
       </div>
 
       <UAlert
@@ -149,16 +160,27 @@ const handleLeaveChannel = () => {
             Join this voice channel to start talking with others
           </p>
 
-          <UButton
-            size="lg"
-            color="primary"
-            icon="i-lucide-phone-call"
-            :loading="isConnecting"
-            :disabled="isConnecting || !wsConnected"
-            @click="handleJoinChannel"
-          >
-            {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
-          </UButton>
+          <div class="flex flex-col items-center gap-3">
+            <UButton
+              size="lg"
+              color="primary"
+              icon="i-lucide-phone-call"
+              :loading="isConnecting"
+              :disabled="isConnecting || !wsConnected"
+              @click="handleJoinChannel"
+            >
+              {{ isConnecting ? 'Connecting...' : 'Join Voice Channel' }}
+            </UButton>
+
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-settings"
+              @click="openAudioSettings"
+            >
+              Audio Settings
+            </UButton>
+          </div>
         </div>
       </div>
 
@@ -246,9 +268,17 @@ const handleLeaveChannel = () => {
         </div>
 
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Voice Controls
-          </h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              Voice Controls
+            </h3>
+            <button
+              class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              @click="openAudioSettings"
+            >
+              🎙️ Audio Settings
+            </button>
+          </div>
 
           <div class="flex gap-4 justify-center">
             <UButton
@@ -294,5 +324,17 @@ const handleLeaveChannel = () => {
         </div>
       </div>
     </div>
+    <UModal v-model="showAudioSettings">
+      <div class="p-8 bg-white dark:bg-gray-800 rounded-lg">
+        <h2 class="text-2xl font-bold mb-4">
+          Audio Settings Test
+        </h2>
+        <p>If you can see this, the modal works!</p>
+        <AudioSettingsPanel @close="showAudioSettings = false" />
+        <UButton class="mt-4" @click="showAudioSettings = false">
+          Close
+        </UButton>
+      </div>
+    </UModal>
   </div>
 </template>

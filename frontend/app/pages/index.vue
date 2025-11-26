@@ -24,7 +24,7 @@ const usersStore = useUsersStore()
 const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
-const { connect, disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
+const { disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
@@ -140,18 +140,9 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
 
     const token = websocketStore.token
     if (token) {
-      // Ensure we're connected before subscribing
+      // Wait for WebSocket connection (plugin handles auto-connect)
       if (!isConnected.value) {
-        console.log('WebSocket not connected, attempting to connect...')
-        try {
-          await connect(token)
-        } catch (err) {
-          console.error('Failed to connect WebSocket:', err)
-        }
-      }
-
-      // Wait for connection with timeout
-      if (!isConnected.value) {
+        console.log('Waiting for WebSocket connection...')
         let attempts = 0
         while (!isConnected.value && attempts < 20) {
           await new Promise(resolve => setTimeout(resolve, 250))
@@ -300,26 +291,18 @@ const handleLeaveVoice = () => {
 onMounted(async () => {
   isClient.value = true
 
-  await websocketStore.fetchToken()
   await channelsStore.fetchChannels()
   await fetchUsers()
 
-  if (websocketStore.token) {
+  // Wait for WebSocket connection (plugin handles auto-connect and token refresh)
+  let attempts = 0
+  while (!isConnected.value && attempts < 20) {
+    await new Promise(resolve => setTimeout(resolve, 250))
+    attempts++
+  }
+
+  if (isConnected.value) {
     try {
-      await connect(websocketStore.token)
-
-      // Wait for connection to be fully established
-      let attempts = 0
-      while (!isConnected.value && attempts < 20) {
-        await new Promise(resolve => setTimeout(resolve, 250))
-        attempts++
-      }
-
-      if (!isConnected.value) {
-        console.error('WebSocket connection timeout - real-time features will not work')
-        return
-      }
-
       if (user.value && user.value.userId) {
         updateUserPresence(user.value.userId, 'online')
         userPresenceStore.setUserPresence(user.value.userId, 'online')
