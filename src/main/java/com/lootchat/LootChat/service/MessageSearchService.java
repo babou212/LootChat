@@ -68,4 +68,12 @@ public class MessageSearchService {
         Page<MessageDocument> results = messageSearchRepository.findChannelIdContainingMessage(channelId, query, pageable);
         return results.getContent();
     }
+
+    public List<MessageDocument> searchMessagesByUser(Long userId, String query, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "CreatedAt");
+        Page<MessageDocument> results = messageSearchRepository.findUserIdContainingMessage(userId, query, pageable);
+        return results.getContent();
+    }
+
+
 }
