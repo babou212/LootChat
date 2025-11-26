@@ -171,10 +171,9 @@ const handleMessagesScroll = () => {
   if (!container) return
 
   const currentScrollTop = container.scrollTop
-  const scrollingUp = currentScrollTop < lastScrollTop.value
-  lastScrollTop.value = currentScrollTop
 
-  if (scrollingUp && currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
+  // Trigger load-more if we're near the top (regardless of scroll direction)
+  if (currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
     previousScrollHeight.value = container.scrollHeight
     isLoadingMore.value = true
     emit('load-more')
@@ -183,6 +182,8 @@ const handleMessagesScroll = () => {
       isLoadingMore.value = false
     }, 500)
   }
+
+  lastScrollTop.value = currentScrollTop
 }
 
 onMounted(() => {
@@ -511,7 +512,8 @@ watch(() => props.messages.length, (newLength, oldLength) => {
     const container = messagesContainer.value
 
     if (oldLength === 0 && newLength > 0) {
-      scrollToBottom()
+      // Force scroll to absolute bottom on initial load
+      container.scrollTop = container.scrollHeight
       hasInitiallyScrolled.value = true
       return
     }
@@ -535,8 +537,13 @@ watch(() => props.messages.length, (newLength, oldLength) => {
 
 watch(() => props.loading, (isLoading) => {
   if (!isLoading && props.messages.length > 0 && !hasInitiallyScrolled.value) {
-    scrollToBottom()
-    hasInitiallyScrolled.value = true
+    nextTick(() => {
+      if (messagesContainer.value) {
+        // Force scroll to absolute bottom
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+      }
+      hasInitiallyScrolled.value = true
+    })
   }
 })
 
