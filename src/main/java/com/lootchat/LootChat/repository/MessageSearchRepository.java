@@ -10,13 +10,13 @@ import org.springframework.stereotype.Repository;
 public interface MessageSearchRepository extends ElasticsearchRepository<MessageDocument, String> {
 
     //full text search
-    Page<MessageDocument> findMessageContaining(String content, Pageable pageable);
+    Page<MessageDocument> findByContentContaining(String content, Pageable pageable);
 
     //search by channel
-    Page<MessageDocument> findChannelIdContainingMessage(Long channelId, String content, Pageable pageable);
+    Page<MessageDocument> findByChannelIdAndContentContaining(Long channelId, String content, Pageable pageable);
 
     //search by user
-    Page<MessageDocument> findUserIdContainingMessage(Long userId, String content, Pageable pageable);
+    Page<MessageDocument> findByUserIdAndContentContaining(Long userId, String content, Pageable pageable);
 
     // find the OG messageID in database
     MessageDocument findByMessageId(Long messageId);
