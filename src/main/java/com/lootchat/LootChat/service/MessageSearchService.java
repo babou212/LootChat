@@ -13,6 +13,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -73,6 +74,34 @@ public class MessageSearchService {
         Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "CreatedAt");
         Page<MessageDocument> results = messageSearchRepository.findUserIdContainingMessage(userId, query, pageable);
         return results.getContent();
+    }
+
+    /**
+     * this is for the initial bulk indexing of messages, good for the initial messages we are loading in from
+     * sql injection, couldnt be bothered finding out how to do this so I asked claude
+     */
+    public void indexAllMessages(List<Message> messages) {
+        try {
+            List<MessageDocument> documents = messages.stream()
+                    .map(message -> MessageDocument.builder()
+                            .id(String.valueOf(message.getId()))
+                            .messageId(message.getId())
+                            .content(message.getContent())
+                            .userId(message.getUser().getId())
+                            .username(message.getUser().getUsername())
+                            .channelId(message.getChannel() != null ? message.getChannel().getId() : null)
+                            .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
+                            .imageUrl(message.getImageUrl())
+                            .createdAt(message.getCreatedAt())
+                            .updatedAt(message.getUpdatedAt())
+                            .build())
+                    .collect(Collectors.toList());
+
+            messageSearchRepository.saveAll(documents);
+            log.info("Bulk indexed {} messages in Elasticsearch", documents.size());
+        } catch (Exception e) {
+            log.error("Failed to bulk index messages", e);
+        }
     }
 
 
