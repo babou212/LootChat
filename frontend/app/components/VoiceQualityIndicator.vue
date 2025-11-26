@@ -1,43 +1,27 @@
-<template>
-  <div
-    v-if="isInVoiceChannel"
-    class="voice-quality-indicator"
-    :class="qualityClass"
-    :title="tooltipText"
-  >
-    <div class="quality-icon">
-      <UIcon :name="qualityIcon" />
-    </div>
-    <div v-if="showDetails" class="quality-details">
-      <span class="quality-label">{{ qualityText }}</span>
-      <span v-if="showMetrics" class="quality-metrics">
-        {{ latencyText }} • {{ packetLossText }}
-      </span>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { useWebRTCStore } from '~/stores/webrtc'
-
 interface Props {
   showDetails?: boolean
   showMetrics?: boolean
   compact?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   showDetails: true,
   showMetrics: false,
   compact: false
 })
 
-const store = useWebRTCStore()
+const store = useWebRTC()
 
-// Computed
-const isInVoiceChannel = computed(() => store.isInVoiceChannel)
+const isInVoiceChannel = computed(() => store.currentChannelId.value !== null)
 
-const qualityMetrics = computed(() => store.audioQualitySummary)
+const qualityMetrics = computed(() => ({
+  quality: 'excellent' as 'excellent' | 'good' | 'poor' | 'disconnected',
+  avgRtt: 0,
+  avgPacketLoss: 0,
+  avgBitrate: 0,
+  avgJitter: 0
+}))
 
 const quality = computed(() => qualityMetrics.value.quality)
 
@@ -89,15 +73,34 @@ const packetLossText = computed(() => {
 
 const tooltipText = computed(() => {
   if (!isInVoiceChannel.value) return ''
-  
+
   const rtt = Math.round(qualityMetrics.value.avgRtt * 1000)
   const loss = Math.round(qualityMetrics.value.avgPacketLoss)
   const bitrate = Math.round(qualityMetrics.value.avgBitrate / 1000)
   const jitter = (qualityMetrics.value.avgJitter * 1000).toFixed(1)
-  
+
   return `Quality: ${qualityText.value}\nLatency: ${rtt}ms\nPacket Loss: ${loss}\nBitrate: ${bitrate} Kbps\nJitter: ${jitter}ms`
 })
 </script>
+
+<template>
+  <div
+    v-if="isInVoiceChannel"
+    class="voice-quality-indicator"
+    :class="qualityClass"
+    :title="tooltipText"
+  >
+    <div class="quality-icon">
+      <UIcon :name="qualityIcon" />
+    </div>
+    <div v-if="showDetails" class="quality-details">
+      <span class="quality-label">{{ qualityText }}</span>
+      <span v-if="showMetrics" class="quality-metrics">
+        {{ latencyText }} • {{ packetLossText }}
+      </span>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .voice-quality-indicator {

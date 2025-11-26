@@ -178,26 +178,16 @@ onMounted(async () => {
   }
 
   if (user.value?.userId) {
+    // Wait for WebSocket connection (plugin handles auto-connect)
+    let attempts = 0
+    while (!isConnected.value && attempts < 20) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+      attempts++
+    }
+
     if (!isConnected.value) {
-      const token = await websocketStore.fetchToken()
-      if (token) {
-        try {
-          await connect(token)
-        } catch (err) {
-          console.error('Failed to connect WebSocket:', err)
-        }
-      }
-
-      let attempts = 0
-      while (!isConnected.value && attempts < 20) {
-        await new Promise(resolve => setTimeout(resolve, 250))
-        attempts++
-      }
-
-      if (!isConnected.value) {
-        console.error('WebSocket not connected - direct messages will not update in real-time')
-        return
-      }
+      console.error('WebSocket not connected - direct messages will not update in real-time')
+      return
     }
 
     presenceSubscription = subscribeToUserPresence((update: { userId: number, status: 'online' | 'offline' }) => {

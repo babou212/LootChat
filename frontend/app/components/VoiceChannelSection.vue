@@ -28,6 +28,7 @@ const {
 
 const isConnecting = ref(false)
 const avatarUrls = ref<Map<string, string>>(new Map())
+const showAudioSettings = ref(false)
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -61,7 +62,6 @@ const getLoadedAvatarUrl = (userId: string): string => {
   return avatarUrls.value.get(userId) || ''
 }
 
-// Watch participants and load their avatars
 watch(() => participants.value, (newParticipants) => {
   newParticipants.forEach((participant) => {
     if (participant.avatar) {
@@ -238,15 +238,46 @@ const handleLeaveVoice = () => {
           {{ isDeafened ? 'Undeafen' : 'Deafen' }}
         </UButton>
       </div>
-      <UButton
-        color="error"
-        size="sm"
-        icon="i-lucide-phone-off"
-        class="w-full mt-2"
-        @click="handleLeaveVoice"
+      <div class="flex gap-2 mt-2">
+        <UButton
+          color="neutral"
+          variant="soft"
+          size="sm"
+          icon="i-lucide-settings"
+          class="flex-1"
+          @click="showAudioSettings = !showAudioSettings"
+        >
+          Settings
+        </UButton>
+        <UButton
+          color="error"
+          size="sm"
+          icon="i-lucide-phone-off"
+          class="flex-1"
+          @click="handleLeaveVoice"
+        >
+          Leave
+        </UButton>
+      </div>
+
+      <div
+        v-if="showAudioSettings"
+        class="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg"
       >
-        Disconnect
-      </UButton>
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+            🎙️ Audio Settings
+          </h4>
+          <button
+            class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            @click="showAudioSettings = false"
+          >
+            <UIcon name="i-lucide-x" class="text-lg" />
+          </button>
+        </div>
+
+        <AudioSettingsPanel @close="showAudioSettings = false" />
+      </div>
     </div>
 
     <div

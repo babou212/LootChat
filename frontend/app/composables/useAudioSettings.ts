@@ -1,9 +1,9 @@
-import { useWebRTCStore, type AudioProfile, AUDIO_PROFILES } from '~/stores/webrtc'
+import { useWebRTCStore, type AudioProfile, AUDIO_PROFILES } from '../../stores/webrtc'
 import { useAppLogger } from './useLogger'
 
 /**
  * Audio Settings Composable
- * 
+ *
  * Provides an interface for managing audio quality settings including:
  * - Audio profiles (balanced, high-quality, bandwidth-saving, noise-canceling)
  * - Audio device selection
@@ -13,7 +13,6 @@ export const useAudioSettings = () => {
   const store = useWebRTCStore()
   const logger = useAppLogger()
 
-  // Computed properties
   const currentProfile = computed(() => store.audioProfile)
   const availableProfiles = computed(() => Object.keys(AUDIO_PROFILES) as AudioProfile[])
   const audioDevices = computed(() => store.availableAudioDevices)
@@ -30,8 +29,8 @@ export const useAudioSettings = () => {
       sampleRate: config.sampleRate,
       channels: config.channelCount,
       echoCancellation: config.echoCancellation,
-      noiseSuppression: typeof config.noiseSuppression === 'object' 
-        ? config.noiseSuppression.ideal 
+      noiseSuppression: typeof config.noiseSuppression === 'object'
+        ? config.noiseSuppression.ideal
         : config.noiseSuppression,
       autoGainControl: config.autoGainControl,
       latency: config.latency,
@@ -108,16 +107,16 @@ export const useAudioSettings = () => {
   const requestPermissions = async () => {
     try {
       logger.debug('Requesting microphone permissions...')
-      
+
       // Request a temporary stream to trigger permission prompt
       const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      
+
       // Stop the temporary stream immediately
       tempStream.getTracks().forEach(track => track.stop())
-      
+
       // Now enumerate devices (they will have labels after permission is granted)
       await refreshDevices()
-      
+
       logger.info('Microphone permissions granted')
       return true
     } catch (error) {
@@ -131,7 +130,7 @@ export const useAudioSettings = () => {
    */
   const getRecommendedProfile = (): AudioProfile => {
     const quality = store.averageConnectionQuality
-    
+
     switch (quality) {
       case 'excellent':
         return 'high-quality'
@@ -162,41 +161,40 @@ export const useAudioSettings = () => {
    */
   const testAudioLevel = async (durationMs: number = 3000): Promise<number[]> => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: currentConstraints.value 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: currentConstraints.value
       })
-      
+
       const context = new AudioContext()
       const source = context.createMediaStreamSource(stream)
       const analyser = context.createAnalyser()
       analyser.fftSize = 512
       source.connect(analyser)
-      
+
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
       const samples: number[] = []
-      
+
       const startTime = Date.now()
       const sampleInterval = 100 // Sample every 100ms
-      
+
       return new Promise((resolve) => {
         const sampleAudio = () => {
           if (Date.now() - startTime >= durationMs) {
-            // Cleanup
             stream.getTracks().forEach(track => track.stop())
             context.close()
             resolve(samples)
             return
           }
-          
+
           analyser.getByteFrequencyData(dataArray)
           const sum = dataArray.reduce((a, b) => a + b, 0)
           const average = sum / dataArray.length
           const level = average > 0 ? 20 * Math.log10(average / 255) : -100
           samples.push(level)
-          
+
           setTimeout(sampleAudio, sampleInterval)
         }
-        
+
         sampleAudio()
       })
     } catch (error) {
@@ -206,14 +204,11 @@ export const useAudioSettings = () => {
   }
 
   return {
-    // State
     currentProfile,
     availableProfiles,
     audioDevices,
     selectedDevice,
     currentConstraints,
-    
-    // Methods
     getProfileDetails,
     getProfileDescription,
     setProfile,

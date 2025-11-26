@@ -2,7 +2,7 @@ import { useWebSocketStore } from '../../stores/websocket'
 
 /**
  * WebSocket Auto-Connect Plugin
- * 
+ *
  * Automatically establishes WebSocket connection when user is authenticated
  * Handles token refresh and reconnection on auth state changes
  */
@@ -18,9 +18,9 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     if (newUser && !oldUser) {
       // User logged in - establish connection
       try {
-        const token = await wsStore.refreshToken()
-        if (token) {
-          await wsStore.connect(token)
+        await wsStore.refreshToken()
+        if (wsStore.token) {
+          await wsStore.connect(wsStore.token)
         }
       } catch (error) {
         console.error('[WebSocket Plugin] Failed to connect:', error)
@@ -32,14 +32,13 @@ export default defineNuxtPlugin(async (nuxtApp) => {
     }
   }, { immediate: true })
 
-  // Handle app unmount
-  nuxtApp.hook('app:beforeUnmount', async () => {
-    await wsStore.disconnect()
+  // Handle page navigation away
+  nuxtApp.hook('page:finish', async () => {
+    // Cleanup handled by component unmount
   })
 
   // Expose wsStore to nuxtApp for debugging
   if (import.meta.dev) {
-    // @ts-expect-error - Adding debug property
     nuxtApp.$wsStore = wsStore
   }
 })

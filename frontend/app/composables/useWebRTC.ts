@@ -1,6 +1,6 @@
-import type { Client } from '@stomp/stompjs'
+import type { StompSubscription } from '@stomp/stompjs'
 import type { WebRTCSignalRequest, WebRTCSignalResponse, WebRTCSignalType, VoiceParticipant } from '../../shared/types/chat'
-import { useWebRTCStore } from '~/stores/webrtc'
+import { useWebRTCStore } from '../../stores/webrtc'
 import { useVoiceLogger } from './useLogger'
 
 export const useWebRTC = () => {
@@ -17,18 +17,15 @@ export const useWebRTC = () => {
   const currentChannelId = computed(() => store.currentChannelId)
   const currentChannelName = computed(() => store.currentChannelName)
 
-  // Local state for subscriptions and handlers
-  const channelWebRTCSub = ref<ReturnType<typeof useWebSocket>['subscribe']>()
-  const userSignalSub = ref<ReturnType<typeof useWebSocket>['subscribe']>()
+  const channelWebRTCSub = ref<StompSubscription | null>(null)
+  const userSignalSub = ref<StompSubscription | null>(null)
   const beforeUnloadHandler = ref<((e: BeforeUnloadEvent) => void) | null>(null)
   const stompHandlersBound = ref(false)
   const speakingCheckFrame = ref<number | null>(null)
   const pendingCandidates = ref<Map<string, RTCIceCandidateInit[]>>(new Map())
 
-  // Cache for user avatars
   const avatarCache = new Map<string, string | undefined>()
 
-  // Helper function to fetch user avatar
   const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
     if (avatarCache.has(userId)) {
       return avatarCache.get(userId)
@@ -45,11 +42,9 @@ export const useWebRTC = () => {
     }
   }
 
-  // Use requestAnimationFrame for speaking detection
   const checkSpeaking = () => {
     store.checkSpeaking()
-    
-    // Schedule next check
+
     speakingCheckFrame.value = requestAnimationFrame(checkSpeaking)
   }
 
@@ -67,11 +62,13 @@ export const useWebRTC = () => {
     }
   }
 
-  const bindStompReconnectHandlers = (client: Client) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bindStompReconnectHandlers = (client: any) => {
     if (stompHandlersBound.value) return
-    
+
     const prevOnConnect = client.onConnect
-    client.onConnect = (frame: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    client.onConnect = (frame: any) => {
       if (prevOnConnect) {
         try {
           prevOnConnect(frame)
@@ -79,20 +76,20 @@ export const useWebRTC = () => {
           logger.warn('Error in previous onConnect handler', error)
         }
       }
-      
+
       if (currentChannelId.value && user.value) {
         try {
           channelWebRTCSub.value?.unsubscribe()
         } catch (error) {
           logger.warn('Error unsubscribing from channel WebRTC', error)
         }
-        
+
         try {
           userSignalSub.value?.unsubscribe()
         } catch (error) {
           logger.warn('Error unsubscribing from user signal', error)
         }
-        
+
         const { getClient } = useWebSocket()
         const wsClient = getClient()
         if (wsClient?.connected) {
@@ -103,7 +100,7 @@ export const useWebRTC = () => {
               handleSignal(signal)
             }
           )
-          
+
           userSignalSub.value = wsClient.subscribe(
             `/user/queue/webrtc/signal`,
             (message: { body: string }) => {
@@ -111,13 +108,13 @@ export const useWebRTC = () => {
               handleSignal(signal)
             }
           )
-          
+
           sendSignal({
             channelId: currentChannelId.value,
             type: 'JOIN' as WebRTCSignalType,
             fromUserId: user.value.userId.toString()
           })
-          
+
           logger.info('Reconnected to voice channel, re-syncing')
         }
       }
@@ -132,12 +129,12 @@ export const useWebRTC = () => {
           logger.warn('Error in previous onWebSocketClose handler', error)
         }
       }
-      
-      channelWebRTCSub.value = undefined
-      userSignalSub.value = undefined
+
+      channelWebRTCSub.value = null
+      userSignalSub.value = null
       logger.info('WebSocket closed, cleared subscriptions')
     }
-    
+
     stompHandlersBound.value = true
   }
 
@@ -176,14 +173,14 @@ export const useWebRTC = () => {
 
   const createPeerConnection = async (userId: string, retryCount = 0): Promise<RTCPeerConnection> => {
     const maxRetries = 3
-    
+
     try {
       const pc = new RTCPeerConnection(getRTCConfiguration())
 
       if (localStream.value) {
         const tracks = localStream.value.getTracks()
         logger.debug(`Adding ${tracks.length} tracks to peer connection for user ${userId}`)
-        
+
         tracks.forEach((track: MediaStreamTrack) => {
           logger.debug(`Adding track: kind=${track.kind}, enabled=${track.enabled}, readyState=${track.readyState}`)
           if (localStream.value) {
@@ -210,18 +207,17 @@ export const useWebRTC = () => {
         logger.debug(`Received track from peer ${userId}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
 
         if (remoteStream) {
-          // Create or reuse audio element
           const existingPeer = store.peers.get(userId)
           let audio = existingPeer?.audioEl
-          
+
           if (!audio) {
             audio = new Audio()
             audio.autoplay = true
           }
-          
+
           audio.srcObject = remoteStream
           logger.debug(`Playing remote audio from user ${userId}`)
-          
+
           audio.play()
             .then(() => {
               logger.info(`Successfully started playing audio from user ${userId}`)
@@ -230,7 +226,6 @@ export const useWebRTC = () => {
               logger.error(`Error playing audio from user ${userId}`, err)
             })
 
-          // Setup audio analyser and update store
           store.setupRemoteAudioAnalyser(userId, remoteStream, audio)
         }
       }
@@ -249,7 +244,7 @@ export const useWebRTC = () => {
 
       pc.oniceconnectionstatechange = async () => {
         logger.debug(`ICE connection state for ${userId}: ${pc.iceConnectionState}`)
-        
+
         if (pc.iceConnectionState === 'failed') {
           logger.warn(`ICE connection failed for ${userId}, attempting restart`)
           await tryIceRestart(userId)
@@ -267,7 +262,7 @@ export const useWebRTC = () => {
 
       pc.onconnectionstatechange = async () => {
         logger.debug(`Connection state for ${userId}: ${pc.connectionState}`)
-        
+
         if (pc.connectionState === 'failed') {
           logger.warn(`Connection failed for ${userId}, attempting restart`)
           await tryIceRestart(userId)
@@ -288,16 +283,15 @@ export const useWebRTC = () => {
       return pc
     } catch (error) {
       logger.error(`Error creating peer connection for user ${userId}`, error)
-      
-      // Retry logic with exponential backoff
+
       if (retryCount < maxRetries) {
         const delay = Math.pow(2, retryCount) * 1000 // 1s, 2s, 4s
         logger.info(`Retrying peer connection creation in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`)
-        
+
         await new Promise(resolve => setTimeout(resolve, delay))
         return createPeerConnection(userId, retryCount + 1)
       }
-      
+
       throw error
     }
   }
@@ -313,8 +307,7 @@ export const useWebRTC = () => {
 
     if (!client.connected) {
       logger.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), queuing for retry...`)
-      
-      // Retry after a short delay
+
       setTimeout(() => {
         const retryClient = getClient()
         if (retryClient?.connected) {
@@ -356,8 +349,7 @@ export const useWebRTC = () => {
     try {
       switch (type) {
         case 'JOIN':
-          if (!participants.value.find((p) => p.userId === fromUserId)) {
-            // Fetch avatar for the joining user
+          if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
             const avatar = await fetchUserAvatar(fromUserId)
             store.addParticipant({
               userId: fromUserId,
@@ -573,7 +565,7 @@ export const useWebRTC = () => {
     if (peer) {
       peer.connection.close()
       if (peer.stream) {
-        peer.stream.getTracks().forEach(track => track.stop())
+        peer.stream.getTracks().forEach((track: MediaStreamTrack) => track.stop())
       }
       if (peer.audioContext) {
         peer.audioContext.close().catch(() => {})
@@ -585,7 +577,6 @@ export const useWebRTC = () => {
   const joinVoiceChannel = async (channelId: number, channelName?: string) => {
     if (!user.value) return
 
-    // If already in a voice channel, leave it first
     if (currentChannelId.value !== null && currentChannelId.value !== channelId) {
       leaveVoiceChannel()
     }
@@ -593,7 +584,6 @@ export const useWebRTC = () => {
     try {
       const { getClient, isConnected } = useWebSocket()
 
-      // Wait for WebSocket connection with timeout
       const waitForConnection = async (timeoutMs = 5000) => {
         const startTime = Date.now()
         while (!isConnected.value && Date.now() - startTime < timeoutMs) {
@@ -625,7 +615,6 @@ export const useWebRTC = () => {
         throw new Error('Your browser does not support microphone access. Please use a modern browser like Chrome, Firefox, or Edge.')
       }
 
-      // Get audio constraints from store profile
       const audioConstraints = store.currentAudioConstraints
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -639,20 +628,16 @@ export const useWebRTC = () => {
         logger.debug(`Local track: kind=${track.kind}, enabled=${track.enabled}, readyState=${track.readyState}, label=${track.label}`)
       })
 
-      // Update store
       store.localStream = stream
       store.currentChannelId = channelId
       store.currentChannelName = channelName || null
-      
+
       bindStompReconnectHandlers(client)
 
-      // Setup local audio analyser
       store.setupLocalAudioAnalyser(stream)
 
-      // Start speaking detection
       startSpeakingDetection()
 
-      // Add self as participant
       store.addParticipant({
         userId: user.value.userId.toString(),
         username: user.value.username,
@@ -661,7 +646,6 @@ export const useWebRTC = () => {
         isSpeaking: false
       })
 
-      // Subscribe to WebRTC channels
       channelWebRTCSub.value = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
         const signal = JSON.parse(message.body) as WebRTCSignalResponse
         handleSignal(signal)
@@ -690,7 +674,7 @@ export const useWebRTC = () => {
         }
         window.addEventListener('beforeunload', beforeUnloadHandler.value)
       }
-      
+
       logger.info(`Successfully joined voice channel ${channelId}`)
     } catch (error) {
       logger.error('Error joining voice channel', error)
@@ -709,34 +693,29 @@ export const useWebRTC = () => {
       fromUserId: user.value.userId.toString()
     })
 
-    // Stop speaking detection
     stopSpeakingDetection()
 
-    // Unsubscribe from channels
     try {
       channelWebRTCSub.value?.unsubscribe()
-      channelWebRTCSub.value = undefined
+      channelWebRTCSub.value = null
     } catch (error) {
       logger.warn('Error unsubscribing from channel WebRTC', error)
     }
 
     try {
       userSignalSub.value?.unsubscribe()
-      userSignalSub.value = undefined
+      userSignalSub.value = null
     } catch (error) {
       logger.warn('Error unsubscribing from user signal', error)
     }
 
-    // Remove beforeunload handler
     if (typeof window !== 'undefined' && beforeUnloadHandler.value) {
       window.removeEventListener('beforeunload', beforeUnloadHandler.value)
       beforeUnloadHandler.value = null
     }
 
-    // Clear pending candidates
     pendingCandidates.value.clear()
 
-    // Reset store (handles all cleanup)
     store.reset()
 
     logger.info('Successfully left voice channel')
@@ -744,8 +723,7 @@ export const useWebRTC = () => {
 
   const toggleMute = () => {
     store.toggleMute()
-    
-    // Update participant state
+
     if (user.value) {
       const userId = user.value.userId.toString()
       const selfParticipant = participants.value.find((p: VoiceParticipant) => p.userId === userId)
@@ -753,7 +731,7 @@ export const useWebRTC = () => {
         selfParticipant.isMuted = store.isMuted
       }
     }
-    
+
     logger.info(`Mute toggled: ${store.isMuted}`)
   }
 

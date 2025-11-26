@@ -6,7 +6,7 @@ import type { Reaction } from '~/../../shared/types/chat'
 
 /**
  * Improved WebSocket Composable
- * 
+ *
  * Provides a clean interface to interact with the WebSocket store
  * All state is managed centrally in Pinia store
  */
@@ -25,8 +25,7 @@ interface MessageDeletionPayload {
 export const useWebSocket = () => {
   const store = useWebSocketStore()
   const { connectionError } = storeToRefs(store)
-  
-  // Computed ref for isConnected getter
+
   const isConnected = computed(() => store.isConnected)
 
   /**
@@ -245,13 +244,13 @@ export const useWebSocket = () => {
     disconnect: store.disconnect,
     reconnect: store.reconnect,
     refreshToken: store.refreshToken,
-    
+
     // Subscription methods
     subscribe: store.subscribe,
     unsubscribe,
     unsubscribeAll: store.unsubscribeAll,
     unsubscribeFromChannel,
-    
+
     // Convenience subscription methods
     subscribeToChannel,
     subscribeToAllMessages,
@@ -267,14 +266,14 @@ export const useWebSocket = () => {
     subscribeToDirectMessageReactionRemovals,
     subscribeToDirectMessageEdits,
     subscribeToDirectMessageDeletions,
-    
+
     // Messaging
     sendMessage: store.sendMessage,
-    
+
     // Reactive state
     isConnected,
     connectionError,
-    
+
     // For backward compatibility with old composable
     getClient: () => store.client
   }

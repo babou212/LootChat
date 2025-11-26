@@ -4,7 +4,7 @@ import type { VoiceParticipant } from '../shared/types/chat'
 
 /**
  * Enhanced WebRTC Store - Centralized voice channel management
- * 
+ *
  * Features:
  * - Centralized state management with Pinia
  * - Connection quality monitoring
@@ -88,10 +88,9 @@ export interface PeerConnectionState {
 
 export const useWebRTCStore = defineStore('webrtc', {
   state: () => {
-    // Load preferences from localStorage on initialization
     let initialProfile: AudioProfile = 'balanced'
     let initialDevice: string | null = null
-    
+
     if (typeof window !== 'undefined') {
       try {
         const stored = localStorage.getItem('lootchat_audio_preferences')
@@ -104,92 +103,82 @@ export const useWebRTCStore = defineStore('webrtc', {
         console.warn('Failed to load audio preferences:', error)
       }
     }
-    
+
     return {
-    // Media streams
-    localStream: null as MediaStream | null,
-    
-    // Peer connections
-    peers: new Map<string, PeerConnection>(),
-    pendingCandidates: new Map<string, RTCIceCandidateInit[]>(),
-    
-    // Participants
-    participants: [] as VoiceParticipant[],
-    
-    // Audio state
-    isMuted: false,
-    isDeafened: false,
-    
-    // Audio settings (loaded from localStorage)
-    audioProfile: initialProfile,
-    selectedAudioDevice: initialDevice,
-    availableAudioDevices: [] as MediaDeviceInfo[],
-    
-    // Channel info
-    currentChannelId: null as number | null,
-    currentChannelName: null as string | null,
-    
-    // Subscriptions
-    channelWebRTCSub: null as StompSubscription | null,
-    userSignalSub: null as StompSubscription | null,
-    
-    // Audio analysis
-    localAnalyser: null as AnalyserNode | null,
-    localAudioContext: null as AudioContext | null,
-    speakingCheckFrameId: null as number | null,
-    
-    // Connection quality
-    connectionQuality: new Map<string, ConnectionQualityMetrics>(),
-    qualityMonitorInterval: null as ReturnType<typeof setInterval> | null,
-    
-    // Configuration
-    speakingThreshold: -35, // dB threshold for voice detection
-    qualityCheckInterval: 5000, // Check quality every 5 seconds
-    
-    // Cleanup handlers
-    beforeUnloadHandler: null as ((e: BeforeUnloadEvent) => void) | null,
-    stompHandlersBound: false,
-    
-    // Error tracking
-    connectionErrors: new Map<string, { error: string, timestamp: Date, retries: number }>()
+      localStream: null as MediaStream | null,
+
+      peers: new Map<string, PeerConnection>(),
+      pendingCandidates: new Map<string, RTCIceCandidateInit[]>(),
+
+      participants: [] as VoiceParticipant[],
+
+      isMuted: false,
+      isDeafened: false,
+
+      audioProfile: initialProfile,
+      selectedAudioDevice: initialDevice,
+      availableAudioDevices: [] as MediaDeviceInfo[],
+
+      currentChannelId: null as number | null,
+      currentChannelName: null as string | null,
+
+      channelWebRTCSub: null as StompSubscription | null,
+      userSignalSub: null as StompSubscription | null,
+
+      localAnalyser: null as AnalyserNode | null,
+      localAudioContext: null as AudioContext | null,
+      speakingCheckFrameId: null as number | null,
+
+      connectionQuality: new Map<string, ConnectionQualityMetrics>(),
+      qualityMonitorInterval: null as ReturnType<typeof setInterval> | null,
+
+      speakingThreshold: -35, // dB threshold for voice detection
+      qualityCheckInterval: 5000, // Check quality every 5 seconds
+
+      beforeUnloadHandler: null as ((e: BeforeUnloadEvent) => void) | null,
+      stompHandlersBound: false,
+
+      connectionErrors: new Map<string, { error: string, timestamp: Date, retries: number }>()
     }
   },
 
   getters: {
-    isInVoiceChannel: (state) => state.currentChannelId !== null,
-    
-    participantCount: (state) => state.participants.length,
-    
-    activePeerConnections: (state) => state.peers.size,
-    
+    isInVoiceChannel: state => state.currentChannelId !== null,
+
+    participantCount: state => state.participants.length,
+
+    activePeerConnections: state => state.peers.size,
+
     connectedPeers: (state) => {
       return Array.from(state.peers.entries())
-        .filter(([_, peer]) => 
-          peer.connection.connectionState === 'connected' ||
-          peer.connection.iceConnectionState === 'connected' ||
-          peer.connection.iceConnectionState === 'completed'
+        .filter(([_, peer]) =>
+          peer.connection.connectionState === 'connected'
+          || peer.connection.iceConnectionState === 'connected'
+          || peer.connection.iceConnectionState === 'completed'
         )
         .map(([userId]) => userId)
     },
-    
+
     averageConnectionQuality: (state) => {
       const qualities = Array.from(state.connectionQuality.values())
       if (qualities.length === 0) return 'disconnected'
-      
-      const scores = qualities.map(q => 
-        q.quality === 'excellent' ? 3 :
-        q.quality === 'good' ? 2 :
-        q.quality === 'poor' ? 1 : 0
+
+      const scores = qualities.map(q =>
+        q.quality === 'excellent'
+          ? 3
+          : q.quality === 'good'
+            ? 2
+            : q.quality === 'poor' ? 1 : 0
       )
-      
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length
-      
+
+      const avg = scores.reduce((a: number, b: number): number => a + b, 0) / scores.length
+
       if (avg >= 2.5) return 'excellent'
       if (avg >= 1.5) return 'good'
       if (avg >= 0.5) return 'poor'
       return 'disconnected'
     },
-    
+
     peerConnectionStates: (state): PeerConnectionState[] => {
       return Array.from(state.peers.entries()).map(([userId, peer]) => ({
         userId,
@@ -199,14 +188,14 @@ export const useWebRTCStore = defineStore('webrtc', {
         iceGatheringState: peer.connection.iceGatheringState
       }))
     },
-    
-    hasErrors: (state) => state.connectionErrors.size > 0,
-    
+
+    hasErrors: state => state.connectionErrors.size > 0,
+
     localStreamActive: (state) => {
       if (!state.localStream) return false
       return state.localStream.getTracks().some(track => track.enabled && track.readyState === 'live')
     },
-    
+
     currentAudioConstraints: (state): MediaTrackConstraints => {
       const profile = AUDIO_PROFILES[state.audioProfile]
       const constraints: MediaTrackConstraints = {
@@ -216,31 +205,27 @@ export const useWebRTCStore = defineStore('webrtc', {
         sampleRate: profile.sampleRate,
         channelCount: profile.channelCount
       }
-      
-      if (profile.latency) {
-        constraints.latency = profile.latency
-      }
-      
+
       if (profile.sampleSize) {
         constraints.sampleSize = profile.sampleSize
       }
-      
+
       if (state.selectedAudioDevice) {
         constraints.deviceId = { exact: state.selectedAudioDevice }
       }
-      
+
       return constraints
     },
-    
-    audioDevicesAvailable: (state) => state.availableAudioDevices.length > 0,
-    
+
+    audioDevicesAvailable: state => state.availableAudioDevices.length > 0,
+
     /**
      * Get detailed audio quality metrics for a specific peer
      */
-    getPeerQualityMetrics: (state) => (userId: string) => {
+    getPeerQualityMetrics: state => (userId: string) => {
       return state.connectionQuality.get(userId)
     },
-    
+
     /**
      * Get audio quality summary across all peers
      */
@@ -255,20 +240,26 @@ export const useWebRTCStore = defineStore('webrtc', {
           quality: 'disconnected' as const
         }
       }
-      
+
       const sum = metrics.reduce((acc, m) => ({
         rtt: acc.rtt + (m.rtt || 0),
         packetsLost: acc.packetsLost + (m.packetsLost || 0),
         jitter: acc.jitter + (m.jitter || 0),
         bitrate: acc.bitrate + (m.bitrate || 0)
       }), { rtt: 0, packetsLost: 0, jitter: 0, bitrate: 0 })
-      
+
+      const scores = metrics.map(m =>
+        m.quality === 'excellent' ? 3 : m.quality === 'good' ? 2 : m.quality === 'poor' ? 1 : 0
+      )
+      const avg = scores.reduce((a: number, b: number): number => a + b, 0) / scores.length
+      const quality = avg >= 2.5 ? 'excellent' : avg >= 1.5 ? 'good' : avg >= 0.5 ? 'poor' : 'disconnected'
+
       return {
         avgRtt: sum.rtt / metrics.length,
         avgPacketLoss: sum.packetsLost / metrics.length,
         avgJitter: sum.jitter / metrics.length,
         avgBitrate: sum.bitrate / metrics.length,
-        quality: state.averageConnectionQuality
+        quality: quality as 'excellent' | 'good' | 'poor' | 'disconnected'
       }
     }
   },
@@ -298,22 +289,19 @@ export const useWebRTCStore = defineStore('webrtc', {
       const peer = this.peers.get(userId)
       if (!peer) return
 
-      // Close peer connection
       try {
         peer.connection.close()
       } catch (error) {
         console.warn(`Error closing peer connection for ${userId}:`, error)
       }
 
-      // Cleanup stream
       if (peer.stream) {
-        peer.stream.getTracks().forEach(track => {
+        peer.stream.getTracks().forEach((track) => {
           track.stop()
           track.enabled = false
         })
       }
 
-      // Cleanup audio element
       if (peer.audioEl) {
         peer.audioEl.pause()
         peer.audioEl.srcObject = null
@@ -422,9 +410,9 @@ export const useWebRTCStore = defineStore('webrtc', {
       }
 
       // Mute/unmute all remote streams
-      this.peers.forEach(peer => {
+      this.peers.forEach((peer) => {
         if (peer.stream) {
-          peer.stream.getAudioTracks().forEach(track => {
+          peer.stream.getAudioTracks().forEach((track) => {
             track.enabled = !this.isDeafened
           })
         }
@@ -467,7 +455,7 @@ export const useWebRTCStore = defineStore('webrtc', {
      */
     setAudioProfile(profile: AudioProfile) {
       this.audioProfile = profile
-      
+
       // Persist to localStorage
       if (typeof window !== 'undefined') {
         try {
@@ -500,7 +488,7 @@ export const useWebRTCStore = defineStore('webrtc', {
      */
     async selectAudioDevice(deviceId: string | null) {
       this.selectedAudioDevice = deviceId
-      
+
       // Persist to localStorage
       if (typeof window !== 'undefined') {
         try {
@@ -512,29 +500,29 @@ export const useWebRTCStore = defineStore('webrtc', {
           console.warn('Failed to save audio device preference:', error)
         }
       }
-      
+
       // If in a voice channel, restart the stream with the new device
       if (this.currentChannelId && this.localStream) {
         try {
           // Stop current stream
           this.localStream.getTracks().forEach(track => track.stop())
-          
+
           // Get new stream with updated constraints
           const constraints = this.currentAudioConstraints
           const newStream = await navigator.mediaDevices.getUserMedia({ audio: constraints })
-          
+
           // Update local stream
           this.localStream = newStream
-          
+
           // Update all peer connections with new stream
-          this.peers.forEach(peer => {
+          this.peers.forEach((peer) => {
             const audioTrack = newStream.getAudioTracks()[0]
             const sender = peer.connection.getSenders().find(s => s.track?.kind === 'audio')
             if (sender && audioTrack) {
               sender.replaceTrack(audioTrack)
             }
           })
-          
+
           // Restart audio analyser
           this.setupLocalAudioAnalyser(newStream)
         } catch (error) {
@@ -619,16 +607,18 @@ export const useWebRTCStore = defineStore('webrtc', {
       try {
         const stats = await pc.getStats()
 
-        stats.forEach(report => {
+        stats.forEach((report) => {
           if (report.type === 'candidate-pair' && report.state === 'succeeded') {
             const rtt = report.currentRoundTripTime
             const packetsLost = report.packetsLost || 0
             const jitter = report.jitter || 0
 
-            const quality: 'excellent' | 'good' | 'poor' = 
-              rtt < 0.1 && packetsLost < 10 ? 'excellent' :
-              rtt < 0.3 && packetsLost < 50 ? 'good' :
-              'poor'
+            const quality: 'excellent' | 'good' | 'poor'
+              = rtt < 0.1 && packetsLost < 10
+                ? 'excellent'
+                : rtt < 0.3 && packetsLost < 50
+                  ? 'good'
+                  : 'poor'
 
             this.updateConnectionQuality(userId, {
               quality,
@@ -639,9 +629,9 @@ export const useWebRTCStore = defineStore('webrtc', {
           }
 
           if (report.type === 'inbound-rtp' && report.kind === 'audio') {
-            const bitrate = report.bytesReceived ? 
-              (report.bytesReceived * 8) / report.timestamp * 1000 : 
-              undefined
+            const bitrate = report.bytesReceived
+              ? (report.bytesReceived * 8) / report.timestamp * 1000
+              : undefined
 
             if (bitrate) {
               const existing = this.connectionQuality.get(userId)
@@ -670,10 +660,12 @@ export const useWebRTCStore = defineStore('webrtc', {
         const params = audioSender.getParameters()
 
         if (params.encodings?.[0]) {
-          params.encodings[0].maxBitrate = 
-            quality === 'excellent' ? 510000 :
-            quality === 'good' ? 256000 :
-            128000
+          params.encodings[0].maxBitrate
+            = quality === 'excellent'
+              ? 510000
+              : quality === 'good'
+                ? 256000
+                : 128000
 
           try {
             await audioSender.setParameters(params)
@@ -743,7 +735,7 @@ export const useWebRTCStore = defineStore('webrtc', {
       if (this.localAnalyser) {
         const level = this.getAudioLevel(this.localAnalyser)
         const isSpeaking = level > this.speakingThreshold && !this.isMuted
-        
+
         // Find self in participants (if in channel)
         const selfUserId = this.participants.find(p => p.userId)?.userId
         if (selfUserId) {

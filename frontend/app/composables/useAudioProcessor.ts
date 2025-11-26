@@ -1,6 +1,6 @@
 /**
  * Audio Preprocessing Utility
- * 
+ *
  * Provides Web Audio API-based audio processing including:
  * - High-pass/low-pass filters for background noise removal
  * - Dynamic range compression for consistent volume
@@ -12,23 +12,23 @@ export interface AudioProcessingConfig {
   enableFilters: boolean
   enableCompression: boolean
   enableNoiseGate: boolean
-  
+
   // High-pass filter (removes low-frequency rumble)
   highPassFrequency: number // Hz, typically 80-100
-  
+
   // Low-pass filter (removes high-frequency hiss)
   lowPassFrequency: number // Hz, typically 8000-12000
-  
+
   // Compressor settings
   compressorThreshold: number // dB, typically -24 to -12
   compressorKnee: number // dB, typically 30
   compressorRatio: number // typically 12
   compressorAttack: number // seconds, typically 0.003
   compressorRelease: number // seconds, typically 0.25
-  
+
   // Noise gate settings
   noiseGateThreshold: number // dB, typically -50 to -40
-  
+
   // Voice EQ boost (presence range 2-5kHz)
   enableVoiceBoost: boolean
   voiceBoostFrequency: number // Hz, typically 3000
@@ -56,23 +56,23 @@ export class AudioProcessor {
   private audioContext: AudioContext
   private source: MediaStreamAudioSourceNode
   private destination: MediaStreamAudioDestinationNode
-  
+
   // Audio nodes
   private highPassFilter?: BiquadFilterNode
   private lowPassFilter?: BiquadFilterNode
   private compressor?: DynamicsCompressorNode
   private noiseGate?: GainNode
   private voiceBoostEQ?: BiquadFilterNode
-  
+
   // Analysis
   private analyser?: AnalyserNode
   private noiseGateCheckInterval?: number
-  
+
   constructor(inputStream: MediaStream, config: AudioProcessingConfig = DEFAULT_AUDIO_PROCESSING) {
     this.audioContext = new AudioContext()
     this.source = this.audioContext.createMediaStreamSource(inputStream)
     this.destination = this.audioContext.createMediaStreamDestination()
-    
+
     this.buildProcessingChain(config)
   }
 
@@ -157,7 +157,7 @@ export class AudioProcessor {
 
       const dataArray = new Uint8Array(this.analyser.frequencyBinCount)
       this.analyser.getByteFrequencyData(dataArray)
-      
+
       const sum = dataArray.reduce((a, b) => a + b, 0)
       const average = sum / dataArray.length
       const level = average > 0 ? 20 * Math.log10(average / 255) : -100
@@ -165,7 +165,7 @@ export class AudioProcessor {
       // Smooth gate transitions
       const targetGain = level > threshold ? 1 : 0
       const currentGain = this.noiseGate.gain.value
-      
+
       // Exponential smoothing
       const smoothingFactor = targetGain > currentGain ? 0.1 : 0.05 // Faster attack, slower release
       this.noiseGate.gain.value = currentGain + (targetGain - currentGain) * smoothingFactor
@@ -265,7 +265,6 @@ export class AudioProcessor {
       clearInterval(this.noiseGateCheckInterval)
     }
 
-    // Disconnect all nodes
     this.source.disconnect()
     this.highPassFilter?.disconnect()
     this.lowPassFilter?.disconnect()

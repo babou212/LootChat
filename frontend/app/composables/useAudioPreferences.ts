@@ -1,9 +1,9 @@
-import type { AudioProfile } from '~/stores/webrtc'
+import type { AudioProfile } from '../../stores/webrtc'
 import { useAppLogger } from './useLogger'
 
 /**
  * Audio Preferences Persistence
- * 
+ *
  * Manages localStorage persistence for audio settings including:
  * - Selected audio profile
  * - Selected audio device
@@ -44,8 +44,7 @@ export const useAudioPreferences = () => {
       }
 
       const parsed = JSON.parse(stored) as Partial<AudioPreferences>
-      
-      // Validate and merge with defaults
+
       const preferences: AudioPreferences = {
         profile: parsed.profile || DEFAULT_PREFERENCES.profile,
         deviceId: parsed.deviceId !== undefined ? parsed.deviceId : DEFAULT_PREFERENCES.deviceId,
@@ -53,7 +52,6 @@ export const useAudioPreferences = () => {
         processingPreset: parsed.processingPreset || DEFAULT_PREFERENCES.processingPreset
       }
 
-      // Validate profile
       const validProfiles: AudioProfile[] = ['balanced', 'high-quality', 'bandwidth-saving', 'noise-canceling']
       if (!validProfiles.includes(preferences.profile)) {
         logger.warn(`Invalid audio profile in localStorage: ${preferences.profile}, using default`)
@@ -79,14 +77,13 @@ export const useAudioPreferences = () => {
     try {
       // Load existing preferences
       const existing = loadPreferences()
-      
+
       // Merge with new preferences
       const updated: AudioPreferences = {
         ...existing,
         ...preferences
       }
 
-      // Save to localStorage
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
       logger.info('Saved audio preferences to localStorage', updated)
       return true
@@ -114,7 +111,7 @@ export const useAudioPreferences = () => {
    * Save processing preferences
    */
   const saveProcessing = (enable: boolean, preset?: 'clean' | 'office' | 'noisy' | 'podcast'): boolean => {
-    return savePreferences({ 
+    return savePreferences({
       enableProcessing: enable,
       ...(preset && { processingPreset: preset })
     })

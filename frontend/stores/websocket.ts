@@ -4,7 +4,7 @@ import SockJS from 'sockjs-client'
 
 /**
  * Enhanced WebSocket Store - Centralized connection management
- * 
+ *
  * Features:
  * - Automatic reconnection with exponential backoff
  * - Connection quality monitoring
@@ -14,12 +14,12 @@ import SockJS from 'sockjs-client'
  * - Connection state history
  */
 
-export type ConnectionState = 
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'error'
+export type ConnectionState
+  = | 'disconnected'
+    | 'connecting'
+    | 'connected'
+    | 'reconnecting'
+    | 'error'
 
 export interface ConnectionMetrics {
   connectedAt?: Date
@@ -55,7 +55,7 @@ export const useWebSocketStore = defineStore('websocket', {
     connectionState: 'disconnected' as ConnectionState,
     connectionError: null as string | null,
     token: null as string | null,
-    
+
     // Connection metrics
     metrics: {
       connectedAt: undefined,
@@ -67,7 +67,7 @@ export const useWebSocketStore = defineStore('websocket', {
       messagesSent: 0,
       messagesReceived: 0
     } as ConnectionMetrics,
-    
+
     // Reconnection strategy
     reconnectConfig: {
       enabled: true,
@@ -76,29 +76,29 @@ export const useWebSocketStore = defineStore('websocket', {
       maxAttempts: 10,
       backoffMultiplier: 1.5
     },
-    
+
     // Subscriptions management
     subscriptions: new Map<string, SubscriptionConfig>(),
-    
+
     // Message queue for offline resilience
     messageQueue: [] as QueuedMessage[],
     maxQueueSize: 100,
-    
+
     // Connection promise for deduplication
     connectionPromise: null as Promise<void> | null
   }),
 
   getters: {
-    isConnected: (state) => 
+    isConnected: state =>
       state.connectionState === 'connected' && !!state.client?.connected,
-    
-    isConnecting: (state) => 
+
+    isConnecting: state =>
       state.connectionState === 'connecting' || state.connectionState === 'reconnecting',
-    
-    canReconnect: (state) =>
-      state.reconnectConfig.enabled && 
-      state.metrics.reconnectAttempts < state.reconnectConfig.maxAttempts,
-    
+
+    canReconnect: state =>
+      state.reconnectConfig.enabled
+      && state.metrics.reconnectAttempts < state.reconnectConfig.maxAttempts,
+
     nextReconnectDelay: (state) => {
       const { baseDelay, maxDelay, backoffMultiplier } = state.reconnectConfig
       const attempts = state.metrics.reconnectAttempts
@@ -108,12 +108,12 @@ export const useWebSocketStore = defineStore('websocket', {
       )
       return delay
     },
-    
+
     connectionQuality: (state) => {
       if (!state.client?.connected) return 'disconnected'
-      
+
       const { reconnectAttempts, averageLatency } = state.metrics
-      
+
       if (reconnectAttempts === 0 && (!averageLatency || averageLatency < 100)) {
         return 'excellent'
       }
@@ -122,11 +122,11 @@ export const useWebSocketStore = defineStore('websocket', {
       }
       return 'poor'
     },
-    
-    activeSubscriptions: (state) => 
+
+    activeSubscriptions: state =>
       Array.from(state.subscriptions.keys()),
-    
-    queuedMessageCount: (state) => 
+
+    queuedMessageCount: state =>
       state.messageQueue.length
   },
 
@@ -162,34 +162,34 @@ export const useWebSocketStore = defineStore('websocket', {
             connectHeaders: {
               Authorization: `Bearer ${token}`
             },
-            
+
             // Heartbeat configuration
             heartbeatIncoming: 10000,
             heartbeatOutgoing: 10000,
-            
+
             // Disable built-in reconnection (we handle it ourselves)
             reconnectDelay: 0,
-            
+
             // Connection lifecycle callbacks
             onConnect: () => {
               this._handleConnect()
               resolve()
             },
-            
+
             onStompError: (frame) => {
               this._handleError('STOMP error', frame.headers['message'])
               reject(new Error(frame.headers['message'] || 'STOMP connection failed'))
             },
-            
+
             onWebSocketError: () => {
               this._handleError('WebSocket error', 'Connection failed')
               reject(new Error('WebSocket connection failed'))
             },
-            
+
             onDisconnect: () => {
               this._handleDisconnect()
             },
-            
+
             // Track heartbeats for latency
             onWebSocketClose: () => {
               this._handleDisconnect()
@@ -212,11 +212,11 @@ export const useWebSocketStore = defineStore('websocket', {
      */
     async disconnect(): Promise<void> {
       this.reconnectConfig.enabled = false
-      
+
       if (this.client?.connected) {
         await this.client.deactivate()
       }
-      
+
       this._cleanupClient()
       this.connectionState = 'disconnected'
       this.connectionPromise = null
@@ -304,7 +304,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.metrics.reconnectAttempts++
 
       const delay = this.nextReconnectDelay
-      
+
       // Wait before reconnecting
       await new Promise(resolve => setTimeout(resolve, delay))
 
@@ -353,12 +353,12 @@ export const useWebSocketStore = defineStore('websocket', {
     reset(): void {
       this.unsubscribeAll()
       this._cleanupClient()
-      
+
       this.connectionState = 'disconnected'
       this.connectionError = null
       this.token = null
       this.messageQueue = []
-      
+
       this.metrics = {
         connectedAt: undefined,
         disconnectedAt: undefined,
@@ -378,15 +378,15 @@ export const useWebSocketStore = defineStore('websocket', {
     _getWebSocketUrl(): string {
       if (import.meta.client) {
         const { hostname, protocol, host } = window.location
-        
+
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
           return 'http://localhost:8080'
         }
-        
+
         const wsProtocol = protocol === 'https:' ? 'https:' : 'http:'
         return `${wsProtocol}//${host}`
       }
-      
+
       const config = useRuntimeConfig()
       return config.public.apiUrl || 'http://localhost:8080'
     },
@@ -395,13 +395,13 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionState = 'connected'
       this.connectionError = null
       this.connectionPromise = null
-      
+
       this.metrics.connectedAt = new Date()
       this.metrics.reconnectAttempts = 0
-      
+
       // Resubscribe to all topics
       this._resubscribeAll()
-      
+
       // Process queued messages
       this._processMessageQueue()
     },
@@ -410,12 +410,12 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionState = 'disconnected'
       this.metrics.disconnectedAt = new Date()
       this.metrics.totalDisconnects++
-      
+
       // Clear subscriptions but keep configurations
       this.subscriptions.forEach((config) => {
         config.subscription = undefined
       })
-      
+
       // Attempt reconnection if enabled
       if (this.reconnectConfig.enabled && this.token) {
         setTimeout(() => this.reconnect(), this.nextReconnectDelay)
@@ -427,7 +427,7 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionError = `${context}: ${message}`
       this.connectionState = 'error'
       this.connectionPromise = null
-      
+
       console.error(`[WebSocket] ${context}:`, error)
     },
 
