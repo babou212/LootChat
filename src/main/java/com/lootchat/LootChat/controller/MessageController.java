@@ -3,6 +3,8 @@ package com.lootchat.LootChat.controller;
 import com.lootchat.LootChat.dto.CreateMessageRequest;
 import com.lootchat.LootChat.dto.MessageResponse;
 import com.lootchat.LootChat.dto.UpdateMessageRequest;
+import com.lootchat.LootChat.entity.MessageDocument;
+import com.lootchat.LootChat.service.MessageSearchService;
 import com.lootchat.LootChat.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,7 @@ import java.util.List;
 public class MessageController {
 
     private final MessageService messageService;
+    private final MessageSearchService messageSearchService;
 
     @PostMapping
     public ResponseEntity<MessageResponse> createMessage(@RequestBody CreateMessageRequest request) {
@@ -67,6 +70,27 @@ public class MessageController {
     public ResponseEntity<List<MessageResponse>> getMessagesByUserId(@PathVariable Long userId) {
         List<MessageResponse> messages = messageService.getMessagesForCurrentUser();
         return ResponseEntity.ok(messages);
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<MessageDocument>> searchMessages(
+            @RequestParam String query,
+            @RequestParam(required = false) Long channelId,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        List<MessageDocument> results;
+
+        if (channelId != null) {
+            results = messageSearchService.searchMessagesInChannel(channelId, query, page, size);
+        } else if (userId != null) {
+            results = messageSearchService.searchMessagesByUser(userId, query, page, size);
+        } else {
+            results = messageSearchService.searchAllMessages(query, page, size);
+        }
+
+        return ResponseEntity.ok(results);
     }
 
     @PutMapping("/{id}")
