@@ -60,19 +60,19 @@ public class MessageSearchService {
 
     public List<MessageDocument> searchAllMessages(String query, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "CreatedAt");
-        Page<MessageDocument> results = messageSearchRepository.findMessageContaining(query, pageable);
+        Page<MessageDocument> results = messageSearchRepository.findByContentContaining(query, pageable);
         return results.getContent();
     }
 
     public List<MessageDocument> searchMessagesInChannel(Long channelId, String query, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "CreatedAt");
-        Page<MessageDocument> results = messageSearchRepository.findChannelIdContainingMessage(channelId, query, pageable);
+        Page<MessageDocument> results = messageSearchRepository.findByChannelIdAndContentContaining(channelId, query, pageable);
         return results.getContent();
     }
 
     public List<MessageDocument> searchMessagesByUser(Long userId, String query, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "CreatedAt");
-        Page<MessageDocument> results = messageSearchRepository.findUserIdContainingMessage(userId, query, pageable);
+        Page<MessageDocument> results = messageSearchRepository.findByUserIdAndContentContaining(userId, query, pageable);
         return results.getContent();
     }
 
