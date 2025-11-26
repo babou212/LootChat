@@ -27,6 +27,9 @@ const isConnecting = ref(false)
 const error = ref<string | null>(null)
 const avatarUrls = ref<Map<string, string>>(new Map())
 
+// Audio settings modal
+const showAudioSettings = ref(false)
+
 const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
   if (avatarPath && !avatarUrls.value.has(userId)) {
     const url = await getAvatarUrl(avatarPath)
@@ -120,6 +123,11 @@ const handleLeaveChannel = () => {
         <p v-if="channel.description" class="text-gray-600 dark:text-gray-400">
           {{ channel.description }}
         </p>
+        
+        <!-- Quality Indicator (shown when connected) -->
+        <div v-if="isConnected" class="flex justify-center mt-4">
+          <VoiceQualityIndicator :show-details="true" :show-metrics="true" />
+        </div>
       </div>
 
       <UAlert
@@ -246,9 +254,20 @@ const handleLeaveChannel = () => {
         </div>
 
         <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Voice Controls
-          </h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              Voice Controls
+            </h3>
+            <UButton
+              color="gray"
+              variant="ghost"
+              icon="i-lucide-settings"
+              size="sm"
+              @click="showAudioSettings = true"
+            >
+              Audio Settings
+            </UButton>
+          </div>
 
           <div class="flex gap-4 justify-center">
             <UButton
@@ -294,5 +313,10 @@ const handleLeaveChannel = () => {
         </div>
       </div>
     </div>
+    
+    <!-- Audio Settings Modal -->
+    <UModal v-model="showAudioSettings">
+      <AudioSettingsPanel @close="showAudioSettings = false" />
+    </UModal>
   </div>
 </template>
