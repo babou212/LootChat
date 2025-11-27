@@ -609,7 +609,7 @@ watch(() => props.messages, async (newMessages) => {
           :alt="message.username"
           size="md"
         />
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <div class="flex items-baseline gap-2 mb-1">
             <UPopover
               v-if="message.userId !== authStore.user?.userId?.toString()"
@@ -664,7 +664,7 @@ watch(() => props.messages, async (newMessages) => {
               </p>
             </div>
 
-            <p class="text-gray-700 dark:text-gray-300">
+            <p class="text-gray-700 dark:text-gray-300 wrap-break-word whitespace-pre-wrap max-w-full">
               {{ contentWithoutMedia(message.content) || message.content }}
             </p>
           </template>

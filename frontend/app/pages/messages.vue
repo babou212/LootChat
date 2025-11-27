@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type GifPicker from '~/components/GifPicker.vue'
 import type { DirectMessageMessage } from '../../shared/types/directMessage.d'
 import { useDirectMessagesStore } from '../../stores/directMessages'
@@ -6,6 +7,13 @@ import { useUserPresenceStore } from '../../stores/userPresence'
 import { useAvatarStore } from '../../stores/avatars'
 import { useComposerStore } from '../../stores/composer'
 import type { DirectMessageMessageResponse } from '../../app/api/directMessageApi'
+
+const messageSchema = z.object({
+  content: z.string()
+    .max(25000, 'Message must be less than 25000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 definePageMeta({
   middleware: 'auth'
@@ -299,6 +307,20 @@ const sendMessage = async () => {
   const replyUsername = (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
   const replyContent = composerStore.replyingTo?.content
 
+  // Validate message content if present
+  if (messageContent) {
+    const validation = messageSchema.safeParse({ content: messageContent })
+    if (!validation.success) {
+      const errorMessage = validation.error.issues[0]?.message || 'Invalid message'
+      composerStore.setError(errorMessage)
+      return
+    }
+  } else if (!imageToSend) {
+    // No content and no image
+    composerStore.setError('Message cannot be empty')
+    return
+  }
+
   try {
     composerStore.setError(null)
     composerStore.setLoading(true)
@@ -553,8 +575,9 @@ const isUserOnline = (userId: number): boolean => {
       />
 
       <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-        <div v-if="composerStore.error" class="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400 text-sm">
-          {{ composerStore.error }}
+        <div v-if="composerStore.error" class="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm flex items-start gap-2">
+          <UIcon name="i-lucide-alert-circle" class="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{{ composerStore.error }}</span>
         </div>
 
         <div
@@ -644,6 +667,7 @@ const isUserOnline = (userId: number): boolean => {
             v-model="composerStore.newMessage"
             placeholder="Type a message..."
             :rows="1"
+            :maxrows="6"
             autoresize
             class="flex-1"
             :disabled="composerStore.loading"
@@ -654,7 +678,7 @@ const isUserOnline = (userId: number): boolean => {
             type="submit"
             icon="i-lucide-send"
             color="primary"
-            :disabled="!composerStore.hasContent || composerStore.loading"
+            :disabled="!composerStore.hasContent || composerStore.loading || !!composerStore.error"
           >
             Send
           </UButton>

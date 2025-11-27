@@ -11,11 +11,9 @@ const { login, loading, error } = useAuth()
 
 const schema = z.object({
   username: z.string()
-    .min(3, 'Username must be at least 3 characters')
     .max(50, 'Username must be less than 50 characters')
     .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores and hyphens'),
   password: z.string()
-    .min(8, 'Password must be at least 8 characters')
     .max(255, 'Password is too long')
 })
 

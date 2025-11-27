@@ -1,77 +1,99 @@
 <script setup lang="ts">
-import type { ChangePasswordRequest } from '~/api/userApi'
+import { z } from 'zod'
 
-const toast = useToast()
+const passwordSchema = z.object({
+  currentPassword: z.string().min(12, 'Current password must be at least 12 characters'),
+  newPassword: z.string()
+    .min(12, 'Password must be at least 12 characters long')
+    .max(100, 'Password must be less than 100 characters')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/\d/, 'Password must contain at least one number')
+    .regex(/[!@#$%^&*()_+=[\]{};':"\\|,.<>?-]/, 'Password must contain at least one special character'),
+  confirmPassword: z.string().min(1, 'Please confirm your password')
+}).refine(data => data.newPassword === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword']
+})
 
-const passwordForm = ref<ChangePasswordRequest>({
+const state = reactive({
   currentPassword: '',
   newPassword: '',
   confirmPassword: ''
 })
+
 const passwordLoading = ref(false)
-const passwordErrors = ref<Record<string, string>>({})
+const serverError = ref<string | null>(null)
 
-const validatePasswordForm = () => {
-  passwordErrors.value = {}
+const currentPasswordError = computed(() => {
+  if (!state.currentPassword) return 'Current password is required'
+  if (state.currentPassword.length < 12) return 'Current password must be at least 12 characters'
+  return null
+})
 
-  if (!passwordForm.value.currentPassword) {
-    passwordErrors.value.currentPassword = 'Current password is required'
-  }
+const newPasswordError = computed(() => {
+  if (!state.newPassword) return 'New password is required'
+  if (state.newPassword.length < 12) return 'Password must be at least 12 characters long'
+  if (state.newPassword.length > 100) return 'Password must be less than 100 characters'
+  if (!/[a-z]/.test(state.newPassword)) return 'Password must contain at least one lowercase letter'
+  if (!/[A-Z]/.test(state.newPassword)) return 'Password must contain at least one uppercase letter'
+  if (!/\d/.test(state.newPassword)) return 'Password must contain at least one number'
+  if (!/[!@#$%^&*()_+=[\]{};':"\\|,.<>?-]/.test(state.newPassword)) return 'Password must contain at least one special character'
+  if (state.currentPassword && state.newPassword === state.currentPassword) return 'New password must be different from current password'
+  return null
+})
 
-  if (!passwordForm.value.newPassword) {
-    passwordErrors.value.newPassword = 'New password is required'
-  } else if (passwordForm.value.newPassword.length < 8) {
-    passwordErrors.value.newPassword = 'Password must be at least 8 characters'
-  }
+const confirmPasswordError = computed(() => {
+  if (!state.confirmPassword) return 'Please confirm your password'
+  if (state.newPassword !== state.confirmPassword) return 'Passwords do not match'
+  return null
+})
 
-  if (!passwordForm.value.confirmPassword) {
-    passwordErrors.value.confirmPassword = 'Please confirm your password'
-  } else if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    passwordErrors.value.confirmPassword = 'Passwords do not match'
-  }
+const hasErrors = computed(() => {
+  return !!currentPasswordError.value || !!newPasswordError.value || !!confirmPasswordError.value
+})
 
-  return Object.keys(passwordErrors.value).length === 0
-}
+const onSubmit = async () => {
+  const validation = passwordSchema.safeParse(state)
 
-const handlePasswordChange = async () => {
-  if (!validatePasswordForm()) {
+  if (!validation.success) {
     return
   }
 
   passwordLoading.value = true
+  serverError.value = null
+
   try {
     const response = await fetch('/api/users/password', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(passwordForm.value)
+      body: JSON.stringify({
+        oldPassword: state.currentPassword,
+        newPassword: state.newPassword
+      })
     })
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Failed to change password')
+
+      // Extract validation errors if present
+      if (errorData.data && Array.isArray(errorData.data)) {
+        const validationErrors = errorData.data.map((issue: { message: string }) => issue.message).join(', ')
+        serverError.value = validationErrors
+      } else {
+        serverError.value = errorData.message || 'Failed to change password'
+      }
+      throw new Error(serverError.value || 'Password change failed')
     }
 
-    toast.add({
-      title: 'Success',
-      description: 'Password changed successfully',
-      color: 'success'
-    })
-
-    passwordForm.value = {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    }
-    passwordErrors.value = {}
-  } catch (err) {
-    const error = err as Error
-    toast.add({
-      title: 'Error',
-      description: error.message || 'Failed to change password',
-      color: 'error'
-    })
+    state.currentPassword = ''
+    state.newPassword = ''
+    state.confirmPassword = ''
+    serverError.value = null
+  } catch {
+    // Error already set in serverError.value
   } finally {
     passwordLoading.value = false
   }
@@ -89,67 +111,79 @@ const handlePasswordChange = async () => {
       </div>
     </template>
 
-    <form class="space-y-6" @submit.prevent="handlePasswordChange">
-      <UFormGroup
-        label="Current Password"
-        :error="passwordErrors.currentPassword"
-        required
-      >
-        <UInput
-          v-model="passwordForm.currentPassword"
-          type="password"
-          placeholder="Enter current password"
-          :disabled="passwordLoading"
-          size="lg"
-          icon="i-lucide-key"
-        />
-      </UFormGroup>
+    <form class="space-y-5" @submit.prevent="onSubmit">
+      <div class="grid gap-5">
+        <UFormField
+          label="Current Password"
+          required
+          :error="currentPasswordError || undefined"
+        >
+          <UInput
+            v-model="state.currentPassword"
+            type="password"
+            placeholder="Enter your current password"
+            :disabled="passwordLoading"
+            size="xl"
+            icon="i-lucide-key"
+            :ui="{ base: 'transition-all duration-200 py-3.5' }"
+          />
+        </UFormField>
+        <UFormField
+          label="New Password"
+          required
+          :error="newPasswordError || undefined"
+        >
+          <UInput
+            v-model="state.newPassword"
+            type="password"
+            placeholder="Enter your new password"
+            :disabled="passwordLoading"
+            size="xl"
+            icon="i-lucide-lock"
+            :ui="{ base: 'transition-all duration-200 py-3.5' }"
+          />
+        </UFormField>
 
-      <UFormGroup
-        label="New Password"
-        :error="passwordErrors.newPassword"
-        hint="Must be at least 8 characters"
-        required
-      >
-        <UInput
-          v-model="passwordForm.newPassword"
-          type="password"
-          placeholder="Enter new password"
-          :disabled="passwordLoading"
-          size="lg"
-          icon="i-lucide-lock"
-          class="pl-2"
-        />
-      </UFormGroup>
+        <UFormField
+          label="Confirm New Password"
+          required
+          :error="confirmPasswordError || undefined"
+        >
+          <UInput
+            v-model="state.confirmPassword"
+            type="password"
+            placeholder="Re-enter your new password"
+            :disabled="passwordLoading"
+            size="xl"
+            icon="i-lucide-shield-check"
+            :ui="{ base: 'transition-all duration-200 py-3.5' }"
+          />
+        </UFormField>
+      </div>
 
-      <UFormGroup
-        label="Confirm New Password"
-        :error="passwordErrors.confirmPassword"
-        required
-      >
-        <UInput
-          v-model="passwordForm.confirmPassword"
-          type="password"
-          placeholder="Confirm new password"
-          :disabled="passwordLoading"
-          size="lg"
-          icon="i-lucide-shield-check"
-          class="pl-2"
-        />
-      </UFormGroup>
+      <UAlert
+        v-if="serverError"
+        color="error"
+        icon="i-lucide-alert-circle"
+        :title="serverError"
+        :close-button="{ icon: 'i-lucide-x', color: 'error', variant: 'ghost' }"
+        @close="serverError = null"
+      />
 
-      <div class="pt-2">
+      <div class="flex items-center justify-start gap-4 pt-2 border-t border-gray-200 dark:border-gray-700">
         <UButton
           type="submit"
           color="primary"
           size="lg"
           :loading="passwordLoading"
-          :disabled="passwordLoading"
+          :disabled="passwordLoading || hasErrors"
           icon="i-lucide-save"
-          block
         >
           Update Password
         </UButton>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Keep your account secure with a strong password
+        </p>
       </div>
     </form>
   </UCard>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type GifPicker from '~/components/GifPicker.vue'
 import type { Message } from '../../shared/types/chat'
 import type { DirectMessageMessage } from '../../shared/types/directMessage'
@@ -9,6 +10,14 @@ import { useChannelsStore } from '../../stores/channels'
 import { useUsersStore } from '../../stores/users'
 import { useComposerStore } from '../../stores/composer'
 import { useWebSocketStore } from '../../stores/websocket'
+
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(50000, 'Message must be less than 50000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 definePageMeta({
   middleware: 'auth',
@@ -64,6 +73,7 @@ const currentPage = computed(() => {
 const loadingMoreMessages = ref(false)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const validationError = ref<string | null>(null)
 
 const stompClient = computed(() => getClient())
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
@@ -213,8 +223,20 @@ const sendMessage = async () => {
   const replyUsername = (composerStore.replyingTo as Message)?.username || (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
   const replyContent = composerStore.replyingTo?.content
 
+  // Validate message content if present
+  if (messageContent) {
+    const validation = messageSchema.safeParse({ content: messageContent })
+    if (!validation.success) {
+      validationError.value = validation.error.issues[0]?.message || 'Invalid message'
+      return
+    }
+  } else if (!imageToSend) {
+    validationError.value = 'Message cannot be empty'
+    return
+  }
+
   try {
-    error.value = null
+    validationError.value = null
     await sendMessageToServer(channelId, messageContent, imageToSend, replyId, replyUsername, replyContent)
     resetComposer()
   } catch (err: unknown) {
@@ -227,6 +249,19 @@ const sendMessage = async () => {
 }
 
 const isClient = ref(false)
+
+watch(() => composerStore.newMessage, (newValue) => {
+  if (newValue && newValue.trim()) {
+    const validation = messageSchema.safeParse({ content: newValue })
+    if (!validation.success) {
+      validationError.value = validation.error.issues[0]?.message || 'Invalid message'
+    } else {
+      validationError.value = null
+    }
+  } else {
+    validationError.value = null
+  }
+})
 
 const toast = useToast()
 
@@ -448,6 +483,11 @@ watch(usersWithFullData, () => {
           <div
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
+            <div v-if="validationError" class="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm flex items-start gap-2">
+              <UIcon name="i-lucide-alert-circle" class="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{{ validationError }}</span>
+            </div>
+
             <div
               v-if="composerStore.replyingTo"
               class="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 rounded-r flex items-center justify-between"
@@ -533,6 +573,7 @@ watch(usersWithFullData, () => {
                 v-model="composerStore.newMessage"
                 placeholder="Type a message..."
                 :rows="1"
+                :maxrows="6"
                 autoresize
                 class="flex-1"
                 @keydown.enter.exact.prevent="sendMessage"
@@ -542,7 +583,7 @@ watch(usersWithFullData, () => {
                 type="submit"
                 icon="i-lucide-send"
                 color="primary"
-                :disabled="!composerStore.hasContent"
+                :disabled="!composerStore.hasContent || !!validationError"
               >
                 Send
               </UButton>

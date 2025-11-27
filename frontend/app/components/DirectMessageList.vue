@@ -432,7 +432,7 @@ onMounted(() => {
           :alt="message.senderUsername"
           size="md"
         />
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <div class="flex items-baseline gap-2 mb-1">
             <span class="font-semibold text-gray-900 dark:text-white">
               {{ message.senderUsername }}
@@ -468,7 +468,7 @@ onMounted(() => {
               </p>
             </div>
 
-            <p class="text-gray-700 dark:text-gray-300">
+            <p class="text-gray-700 dark:text-gray-300 wrap-break-word whitespace-pre-wrap max-w-full">
               {{ contentWithoutMedia(message.content) || message.content }}
             </p>
           </template>
