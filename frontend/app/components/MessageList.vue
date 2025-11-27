@@ -412,7 +412,7 @@ const scrollToMessage = (messageId: number) => {
 const getUserPresence = (message: Message): UserPresence => {
   const userId = Number.parseInt(message.userId)
   const status = userPresenceStore.getUserStatus(userId)
-  
+
   return {
     userId,
     username: message.username,
