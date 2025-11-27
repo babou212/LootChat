@@ -1,8 +1,17 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type { User } from '../../shared/types/user'
 import { directMessageApi } from '../api/directMessageApi'
 import EmojiPicker from '~/components/EmojiPicker.vue'
 import { useAvatarStore } from '../../stores/avatars'
+
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(2000, 'Message must be less than 2000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 export interface UserPresence extends User {
   status: 'online' | 'offline'
@@ -15,10 +24,15 @@ interface Props {
 
 const props = defineProps<Props>()
 const avatarStore = useAvatarStore()
+const { user: currentUser } = useAuth()
 
 const messageInput = ref('')
 const showEmojiPicker = ref(false)
 const emojiPickerRef = ref<HTMLElement | null>(null)
+
+const isCurrentUser = computed(() => {
+  return currentUser.value?.userId === props.user.userId
+})
 
 const getInitials = (user: UserPresence) => {
   if (user.firstName && user.lastName) {
@@ -42,7 +56,13 @@ const emit = defineEmits<{
 }>()
 
 const sendDirectMessage = async () => {
-  if (!messageInput.value.trim()) return
+  const trimmedMessage = messageInput.value.trim()
+  if (!trimmedMessage) return
+
+  const validation = messageSchema.safeParse({ content: trimmedMessage })
+  if (!validation.success) {
+    return
+  }
 
   try {
     // First, create or get the DM conversation
@@ -50,7 +70,7 @@ const sendDirectMessage = async () => {
 
     // Then send the message
     await directMessageApi.sendMessage({
-      content: messageInput.value.trim(),
+      content: trimmedMessage,
       directMessageId: dm.id
     })
 
@@ -148,7 +168,7 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
       </div>
 
       <!-- Message Input -->
-      <div class="relative">
+      <div v-if="!isCurrentUser" class="relative">
         <input
           v-model="messageInput"
           type="text"
