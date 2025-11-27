@@ -7,55 +7,69 @@ import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
 public class UserPresenceService {
     
     private static final Logger log = LoggerFactory.getLogger(UserPresenceService.class);
+    private static final String PRESENCE_KEY_PREFIX = "user:presence:";
+    private static final long PRESENCE_TTL_MINUTES = 5; // Auto-expire after 5 minutes
     
     private final UserRepository userRepository;
     private final KafkaProducerService kafkaProducerService;
     private final ObjectMapper objectMapper;
-    
-    // Maps username to their online status
-    private final Map<String, Boolean> userPresence = new ConcurrentHashMap<>();
+    private final RedisTemplate<String, String> redisTemplate;
     
     public void userConnected(String username, Long userId) {
-        userPresence.put(username, true);
+        String key = PRESENCE_KEY_PREFIX + username;
+        redisTemplate.opsForValue().set(key, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
         broadcastPresenceUpdate(userId, username, "online");
     }
     
     public void userDisconnected(String username, Long userId) {
-        userPresence.put(username, false);
+        String key = PRESENCE_KEY_PREFIX + username;
+        redisTemplate.delete(key);
         broadcastPresenceUpdate(userId, username, "offline");
     }
     
     public boolean isUserOnline(String username) {
-        return userPresence.getOrDefault(username, false);
+        String key = PRESENCE_KEY_PREFIX + username;
+        String status = redisTemplate.opsForValue().get(key);
+        return "online".equals(status);
     }
     
     public Set<String> getOnlineUsers() {
-        return userPresence.entrySet().stream()
-                .filter(Map.Entry::getValue)
-                .map(Map.Entry::getKey)
+        Set<String> keys = redisTemplate.keys(PRESENCE_KEY_PREFIX + "*");
+        if (keys == null) return Set.of();
+        
+        return keys.stream()
+                .map(key -> key.replace(PRESENCE_KEY_PREFIX, ""))
                 .collect(java.util.stream.Collectors.toSet());
     }
     
     public Map<Long, Boolean> getAllUserPresence() {
         Map<Long, Boolean> presenceMap = new HashMap<>();
-        userPresence.forEach((username, isOnline) -> {
-            User user = userRepository.findByUsername(username);
-            if (user != null) {
-                presenceMap.put(user.getId(), isOnline);
-            }
-        });
+        Set<String> keys = redisTemplate.keys(PRESENCE_KEY_PREFIX + "*");
+        
+        if (keys != null) {
+            keys.forEach(key -> {
+                String username = key.replace(PRESENCE_KEY_PREFIX, "");
+                User user = userRepository.findByUsername(username);
+                if (user != null) {
+                    String status = redisTemplate.opsForValue().get(key);
+                    presenceMap.put(user.getId(), "online".equals(status));
+                }
+            });
+        }
+        
         return presenceMap;
     }
     

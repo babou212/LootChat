@@ -15,6 +15,13 @@ spec:
         app: lootchat-redis
     spec:
       priorityClassName: lootchat-critical
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: Exists
       containers:
       - name: redis
         image: redis:7-alpine
