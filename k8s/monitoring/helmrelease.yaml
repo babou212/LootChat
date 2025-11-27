@@ -31,10 +31,11 @@ spec:
         storageSpec:
           volumeClaimTemplate:
             spec:
+              storageClassName: local-storage
               accessModes: ["ReadWriteOnce"]
               resources:
                 requests:
-                  storage: 10Gi
+                  storage: 20Gi
     grafana:
       enabled: true
       adminPassword: "admin"
@@ -44,7 +45,8 @@ spec:
           serve_from_sub_path: false
       persistence:
         enabled: true
-        size: 5Gi
+        storageClassName: local-storage
+        size: 10Gi
       sidecar:
         dashboards:
           enabled: true

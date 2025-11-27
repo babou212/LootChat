@@ -15,9 +15,18 @@ spec:
       labels:
         app: wireguard
     spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: ClusterFirst
       initContainers:
+      - name: sysctls
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          sysctl -w net.ipv4.ip_forward=1
+          sysctl -w net.ipv4.conf.all.forwarding=1
+        securityContext:
+          privileged: true
       - name: init-wg0-config
         image: busybox:latest
         command: ["/bin/sh", "/scripts/init-wg0-config.sh"]
@@ -54,6 +63,7 @@ spec:
           value: "10.96.0.10" 
         - name: INTERNAL_SUBNET
           value: "10.8.0.0/24"
+        # CRITICAL FIX: Allow all cluster networks
         - name: ALLOWEDIPS
           value: "10.8.0.0/24,10.96.0.0/12,10.244.0.0/16"
         volumeMounts:
@@ -70,11 +80,27 @@ spec:
           privileged: true
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "100m"
-          limits:
             memory: "128Mi"
             cpu: "200m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "wg show wg0"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "wg show wg0 | grep -q interface"
+          initialDelaySeconds: 10
+          periodSeconds: 10
       volumes:
       - name: wireguard-config
         persistentVolumeClaim:
@@ -92,13 +118,13 @@ metadata:
   labels:
     app: wireguard
 spec:
-  type: NodePort
+  type: LoadBalancer
+  externalTrafficPolicy: Local
   ports:
   - port: 51820
     targetPort: 51820
     protocol: UDP
     name: wireguard
-    nodePort: 32222
   selector:
     app: wireguard
 ---

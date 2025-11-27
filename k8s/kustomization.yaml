@@ -15,6 +15,13 @@ resources:
   - backend.yaml
   - frontend.yaml
   - ingress.yaml
+  - networkpolicy-default-deny.yaml
+  - networkpolicy-postgres.yaml
+  - networkpolicy-redis.yaml
+  - networkpolicy-kafka.yaml
+  - networkpolicy-minio.yaml
+  - networkpolicy-backend.yaml
+  - networkpolicy-frontend.yaml
 
 # NOTE: Secrets are managed manually in the cluster
 
