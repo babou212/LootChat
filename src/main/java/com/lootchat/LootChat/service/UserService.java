@@ -66,11 +66,17 @@ public class UserService {
     }
 
     public boolean usernameExists(String username) {
-        return userRepository.existsByUsername(username);
+        System.out.println("UserService.usernameExists called with: " + username);
+        boolean exists = userRepository.existsByUsername(username);
+        System.out.println("Repository returned: " + exists);
+        return exists;
     }
 
     public boolean emailExists(String email) {
-        return userRepository.existsByEmail(email);
+        System.out.println("UserService.emailExists called with: " + email);
+        boolean exists = userRepository.existsByEmail(email);
+        System.out.println("Repository returned: " + exists);
+        return exists;
     }
 
     @Transactional

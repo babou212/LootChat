@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from 'zod'
 import { inviteApi } from '~/api/inviteApi'
+import { userApi } from '~/api/userApi'
 import type { RegisterWithInviteRequest } from '~/api/inviteApi'
 import { useAuth } from '~/composables/useAuth'
 
@@ -17,7 +18,7 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
   .regex(/\d/, 'Password must contain at least one number')
-  .regex(/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/, 'Password must contain at least one special character')
+  .regex(/[!@#$%^&*()_+=[\]{};':"\\|,.<>?-]/, 'Password must contain at least one special character')
   .refine(
     (password) => {
       return !/(.)\1{2,}/.test(password)
@@ -45,6 +46,13 @@ const form = reactive<RegisterWithInviteRequest>({
 
 const showPassword = ref(false)
 const passwordErrors = ref<string[]>([])
+const usernameError = ref<string | null>(null)
+const emailError = ref<string | null>(null)
+const checkingUsername = ref(false)
+const checkingEmail = ref(false)
+
+let usernameCheckTimeout: ReturnType<typeof setTimeout> | null = null
+let emailCheckTimeout: ReturnType<typeof setTimeout> | null = null
 
 const validatePassword = (password: string): string[] => {
   if (!password) return []
@@ -57,8 +65,81 @@ const validatePassword = (password: string): string[] => {
   return result.error.issues.map((err: { message: string }) => err.message)
 }
 
-const handlePasswordChange = () => {
+const handlePasswordChange = async () => {
+  // Wait for v-model to update (important for paste events)
+  await nextTick()
   passwordErrors.value = validatePassword(form.password)
+}
+
+const handleUsernameChange = async () => {
+  await nextTick()
+
+  usernameError.value = null
+
+  if (!form.username || form.username.length < 3) {
+    if (form.username && form.username.length < 3) {
+      usernameError.value = 'Username must be at least 3 characters'
+    }
+    return
+  }
+
+  if (usernameCheckTimeout) {
+    clearTimeout(usernameCheckTimeout)
+  }
+
+  checkingUsername.value = true
+  usernameCheckTimeout = setTimeout(async () => {
+    try {
+      const result = await userApi.checkUsername(form.username)
+      console.log('Username check result:', result)
+      if (result.exists) {
+        usernameError.value = 'This username is already taken'
+      } else {
+        usernameError.value = null
+      }
+    } catch (err) {
+      console.error('Failed to check username:', err)
+      // Don't show error to user, just allow them to continue
+    } finally {
+      checkingUsername.value = false
+    }
+  }, 500)
+}
+
+const handleEmailChange = async () => {
+  await nextTick()
+
+  emailError.value = null
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!form.email || !emailRegex.test(form.email)) {
+    if (form.email && !emailRegex.test(form.email)) {
+      emailError.value = 'Please enter a valid email address'
+    }
+    return
+  }
+
+  if (emailCheckTimeout) {
+    clearTimeout(emailCheckTimeout)
+  }
+
+  checkingEmail.value = true
+  emailCheckTimeout = setTimeout(async () => {
+    try {
+      const result = await userApi.checkEmail(form.email)
+      console.log('Email check result:', result)
+      if (result.exists) {
+        emailError.value = 'This email is already registered'
+      } else {
+        emailError.value = null
+      }
+    } catch (err) {
+      console.error('Failed to check email:', err)
+      // Don't show error to user, just allow them to continue
+    } finally {
+      checkingEmail.value = false
+    }
+  }, 500)
 }
 
 const isFormValid = computed(() => {
@@ -67,6 +148,10 @@ const isFormValid = computed(() => {
     && form.email
     && form.password
     && passwordErrors.value.length === 0
+    && !usernameError.value
+    && !emailError.value
+    && !checkingUsername.value
+    && !checkingEmail.value
 })
 
 onMounted(async () => {
@@ -76,6 +161,15 @@ onMounted(async () => {
     error.value = 'Failed to validate invite'
   } finally {
     loading.value = false
+  }
+})
+
+onUnmounted(() => {
+  if (usernameCheckTimeout) {
+    clearTimeout(usernameCheckTimeout)
+  }
+  if (emailCheckTimeout) {
+    clearTimeout(emailCheckTimeout)
   }
 })
 
@@ -171,8 +265,19 @@ const register = async () => {
               icon="i-lucide-user"
               size="lg"
               required
+              :loading="checkingUsername"
+              @input="handleUsernameChange"
+              @paste="handleUsernameChange"
             />
-            <p class="text-xs text-gray-500 dark:text-gray-400">
+            <p v-if="usernameError" class="text-xs text-red-500 dark:text-red-400 flex items-start gap-1">
+              <UIcon name="i-lucide-alert-circle" class="shrink-0 mt-0.5" />
+              <span>{{ usernameError }}</span>
+            </p>
+            <p v-else-if="form.username && !checkingUsername && !usernameError && form.username.length >= 3" class="text-xs text-green-500 dark:text-green-400 flex items-start gap-1">
+              <UIcon name="i-lucide-check-circle" class="shrink-0 mt-0.5" />
+              <span>Username is available</span>
+            </p>
+            <p v-else class="text-xs text-gray-500 dark:text-gray-400">
               Choose a unique username for your account
             </p>
           </div>
@@ -188,7 +293,18 @@ const register = async () => {
               icon="i-lucide-mail"
               size="lg"
               required
+              :loading="checkingEmail"
+              @input="handleEmailChange"
+              @paste="handleEmailChange"
             />
+            <p v-if="emailError" class="text-xs text-red-500 dark:text-red-400 flex items-start gap-1">
+              <UIcon name="i-lucide-alert-circle" class="shrink-0 mt-0.5" />
+              <span>{{ emailError }}</span>
+            </p>
+            <p v-else-if="form.email && !checkingEmail && !emailError && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)" class="text-xs text-green-500 dark:text-green-400 flex items-start gap-1">
+              <UIcon name="i-lucide-check-circle" class="shrink-0 mt-0.5" />
+              <span>Email is available</span>
+            </p>
           </div>
 
           <div class="space-y-2">
@@ -203,6 +319,7 @@ const register = async () => {
               size="lg"
               required
               @input="handlePasswordChange"
+              @paste="handlePasswordChange"
             />
             <UCheckbox v-model="showPassword" label="Show password" class="mt-2" />
             <div v-if="passwordErrors.length > 0" class="space-y-1 mt-2">
