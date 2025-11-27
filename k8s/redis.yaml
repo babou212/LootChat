@@ -88,6 +88,26 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 5
+      - name: redis-exporter
+        image: oliver006/redis_exporter:latest
+        ports:
+        - containerPort: 9121
+          name: metrics
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: REDIS_PASSWORD
+        - name: REDIS_ADDR
+          value: "localhost:6379"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
       volumes:
       - name: redis-data
         persistentVolumeClaim:
@@ -98,6 +118,8 @@ kind: Service
 metadata:
   name: lootchat-redis
   namespace: lootchat
+  labels:
+    app: lootchat-redis
 spec:
   clusterIP: None
   selector:
@@ -105,3 +127,22 @@ spec:
   ports:
   - port: 6379
     targetPort: 6379
+    name: redis
+  - port: 9121
+    targetPort: 9121
+    name: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-metrics
+  namespace: lootchat
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: lootchat-redis
+  endpoints:
+  - port: metrics
+    interval: 30s
