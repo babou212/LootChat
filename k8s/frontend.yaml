@@ -4,7 +4,7 @@ metadata:
   name: lootchat-frontend
   namespace: lootchat
 spec:
-  replicas: 3
+  replicas: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
