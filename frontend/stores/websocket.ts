@@ -211,6 +211,8 @@ export const useWebSocketStore = defineStore('websocket', {
      * Gracefully disconnect from WebSocket
      */
     async disconnect(): Promise<void> {
+      // Temporarily disable reconnection during intentional disconnect
+      const wasEnabled = this.reconnectConfig.enabled
       this.reconnectConfig.enabled = false
 
       if (this.client?.connected) {
@@ -220,6 +222,10 @@ export const useWebSocketStore = defineStore('websocket', {
       this._cleanupClient()
       this.connectionState = 'disconnected'
       this.connectionPromise = null
+
+      // Re-enable reconnection if it was enabled before
+      // This allows automatic reconnection on next connect() call
+      this.reconnectConfig.enabled = wasEnabled
     },
 
     /**
@@ -392,12 +398,14 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     _handleConnect(): void {
+      console.log('[WebSocket] Successfully connected')
       this.connectionState = 'connected'
       this.connectionError = null
       this.connectionPromise = null
 
       this.metrics.connectedAt = new Date()
       this.metrics.reconnectAttempts = 0
+      this.reconnectConfig.enabled = true // Ensure reconnection is enabled after successful connection
 
       // Resubscribe to all topics
       this._resubscribeAll()
@@ -407,18 +415,28 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     _handleDisconnect(): void {
+      const wasConnected = this.connectionState === 'connected'
       this.connectionState = 'disconnected'
       this.metrics.disconnectedAt = new Date()
       this.metrics.totalDisconnects++
+      this.connectionPromise = null
 
       // Clear subscriptions but keep configurations
       this.subscriptions.forEach((config) => {
         config.subscription = undefined
       })
 
-      // Attempt reconnection if enabled
-      if (this.reconnectConfig.enabled && this.token) {
-        setTimeout(() => this.reconnect(), this.nextReconnectDelay)
+      // Attempt reconnection if enabled and we were previously connected
+      // (avoids reconnection loops on initial connection failures)
+      if (this.reconnectConfig.enabled && this.token && wasConnected) {
+        console.log(`[WebSocket] Connection lost, attempting reconnect in ${this.nextReconnectDelay}ms...`)
+        setTimeout(() => {
+          if (this.connectionState === 'disconnected' && this.token) {
+            this.reconnect().catch((err) => {
+              console.error('[WebSocket] Reconnection failed:', err)
+            })
+          }
+        }, this.nextReconnectDelay)
       }
     },
 

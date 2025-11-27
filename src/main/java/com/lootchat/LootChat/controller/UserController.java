@@ -42,13 +42,17 @@ public class UserController {
 
     @GetMapping("/check-username/{username}")
     public ResponseEntity<Map<String, Boolean>> checkUsername(@PathVariable String username) {
+        System.out.println("Checking username: " + username);
         boolean exists = userService.usernameExists(username);
+        System.out.println("Username exists: " + exists);
         return ResponseEntity.ok(Map.of("exists", exists));
     }
 
     @GetMapping("/check-email/{email}")
     public ResponseEntity<Map<String, Boolean>> checkEmail(@PathVariable String email) {
+        System.out.println("Checking email: " + email);
         boolean exists = userService.emailExists(email);
+        System.out.println("Email exists: " + exists);
         return ResponseEntity.ok(Map.of("exists", exists));
     }
 

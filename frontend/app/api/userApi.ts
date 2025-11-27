@@ -34,5 +34,13 @@ export const userApi = {
       method: 'PUT',
       body: request
     })
+  },
+
+  async checkUsername(username: string): Promise<{ exists: boolean }> {
+    return await $fetch<{ exists: boolean }>(`/api/users/check-username/${encodeURIComponent(username)}`)
+  },
+
+  async checkEmail(email: string): Promise<{ exists: boolean }> {
+    return await $fetch<{ exists: boolean }>(`/api/users/check-email/${encodeURIComponent(email)}`)
   }
 }
