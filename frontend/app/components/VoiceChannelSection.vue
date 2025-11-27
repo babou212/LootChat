@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
+import { useAvatarStore } from '../../stores/avatars'
 
 interface Props {
   channels: Channel[]
@@ -13,7 +14,7 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const { user } = useAuth()
 
@@ -27,7 +28,6 @@ const {
 } = useWebRTC()
 
 const isConnecting = ref(false)
-const avatarUrls = ref<Map<string, string>>(new Map())
 const showAudioSettings = ref(false)
 
 const voiceChannels = computed(() =>
@@ -49,23 +49,14 @@ const isCurrentUser = (userId: string) => {
   return user.value?.userId.toString() === userId
 }
 
-const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
-
-const getLoadedAvatarUrl = (userId: string): string => {
-  return avatarUrls.value.get(userId) || ''
+const getLoadedAvatarUrl = (userId: string | number): string => {
+  return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
 
 watch(() => participants.value, (newParticipants) => {
   newParticipants.forEach((participant) => {
     if (participant.avatar) {
-      loadAvatarUrl(participant.userId, participant.avatar)
+      avatarStore.loadAvatar(Number(participant.userId), participant.avatar)
     }
   })
 }, { immediate: true, deep: true })

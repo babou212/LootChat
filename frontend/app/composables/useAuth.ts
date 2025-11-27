@@ -75,6 +75,7 @@ export const useAuth = () => {
       }
     } catch {
       await clear()
+      authStore.clear()
     }
   }
 
