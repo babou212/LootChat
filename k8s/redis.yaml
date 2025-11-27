@@ -25,8 +25,16 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: REDIS_PASSWORD
         args:
         - redis-server
+        - --requirepass
+        - $(REDIS_PASSWORD)
         - --appendonly
         - "yes"
         - --appendfsync
@@ -63,8 +71,9 @@ spec:
         livenessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - sh
+            - -c
+            - redis-cli -a $REDIS_PASSWORD ping
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -72,8 +81,9 @@ spec:
         readinessProbe:
           exec:
             command:
-            - redis-cli
-            - ping
+            - sh
+            - -c
+            - redis-cli -a $REDIS_PASSWORD ping
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 5

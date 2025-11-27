@@ -4,7 +4,7 @@ metadata:
   name: lootchat-backend
   namespace: lootchat
 spec:
-  replicas: 3
+  replicas: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -166,6 +166,11 @@ spec:
             configMapKeyRef:
               name: lootchat-config
               key: SPRING_DATA_REDIS_PORT
+        - name: SPRING_DATA_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: lootchat-secrets
+              key: REDIS_PASSWORD
         - name: MAIL_HOST
           valueFrom:
             configMapKeyRef:
