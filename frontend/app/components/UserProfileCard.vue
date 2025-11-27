@@ -2,6 +2,7 @@
 import type { User } from '../../shared/types/user'
 import { directMessageApi } from '../api/directMessageApi'
 import EmojiPicker from '~/components/EmojiPicker.vue'
+import { useAvatarStore } from '../../stores/avatars'
 
 export interface UserPresence extends User {
   status: 'online' | 'offline'
@@ -13,9 +14,8 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
-const avatarUrl = ref<string>('')
 const messageInput = ref('')
 const showEmojiPicker = ref(false)
 const emojiPickerRef = ref<HTMLElement | null>(null)
@@ -27,22 +27,15 @@ const getInitials = (user: UserPresence) => {
   return user.username.substring(0, 2).toUpperCase()
 }
 
-const loadAvatarUrl = async () => {
-  if (props.user.avatar) {
-    const url = await getAvatarUrl(props.user.avatar)
-    if (url) {
-      avatarUrl.value = url
-    }
-  }
+const getAvatarUrl = (): string => {
+  return avatarStore.getAvatarUrl(props.user.userId) || ''
 }
 
-onMounted(() => {
-  loadAvatarUrl()
-})
-
-watch(() => props.user.avatar, () => {
-  loadAvatarUrl()
-})
+watch(() => props.user.avatar, (newAvatar) => {
+  if (newAvatar) {
+    avatarStore.loadAvatar(props.user.userId, newAvatar)
+  }
+}, { immediate: true })
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -110,10 +103,10 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
       <div class="relative -mt-10 mb-3">
         <div class="relative inline-block">
           <div
-            v-if="user.avatar && avatarUrl"
+            v-if="user.avatar && getAvatarUrl()"
             class="w-20 h-20 rounded-full bg-gray-700 border-[6px] border-gray-900 overflow-hidden"
           >
-            <img :src="avatarUrl" :alt="user.username" class="w-full h-full object-cover">
+            <img :src="getAvatarUrl()" :alt="user.username" class="w-full h-full object-cover">
           </div>
           <div
             v-else

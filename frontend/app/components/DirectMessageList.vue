@@ -4,6 +4,7 @@ import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
 import MessageEditor from '~/components/MessageEditor.vue'
 import { useAuthStore } from '../../stores/auth'
+import { useAvatarStore } from '../../stores/avatars'
 import { directMessageApi } from '../../app/api/directMessageApi'
 
 interface Props {
@@ -15,9 +16,8 @@ interface Props {
 const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
-const avatarUrls = ref<Map<string | number, string>>(new Map())
 const imageUrls = ref<Map<string, string>>(new Map())
 const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
@@ -34,17 +34,8 @@ const emit = defineEmits<{
   (e: 'reply-to-message', message: DirectMessageMessage): void
 }>()
 
-const loadAvatarUrl = async (userId: string | number, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
-
 const getLoadedAvatarUrl = (userId: string | number): string => {
-  return avatarUrls.value.get(userId) || ''
+  return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
 
 const getAuthenticatedImageUrl = async (imageUrl: string): Promise<string> => {
@@ -82,7 +73,7 @@ const getLoadedImageUrl = (imageUrl: string): string => {
 watch(() => props.messages, (newMessages) => {
   newMessages.forEach((message) => {
     if (message.senderAvatar) {
-      loadAvatarUrl(message.senderId, message.senderAvatar)
+      avatarStore.loadAvatar(Number(message.senderId), message.senderAvatar)
     }
     if (message.imageUrl) {
       loadImageUrl(message.imageUrl)

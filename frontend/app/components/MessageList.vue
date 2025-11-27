@@ -7,6 +7,8 @@ import UserProfileCard from '~/components/UserProfileCard.vue'
 import type { ReactionResponse } from '~/api/messageApi'
 import type { UserPresence } from '~/components/UserPanel.vue'
 import { useAuthStore } from '../../stores/auth'
+import { useAvatarStore } from '../../stores/avatars'
+import { useUserPresenceStore } from '../../stores/userPresence'
 
 interface Props {
   messages: Message[]
@@ -19,22 +21,13 @@ interface Props {
 const props = defineProps<Props>()
 const authStore = useAuthStore()
 const toast = useToast()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
+const userPresenceStore = useUserPresenceStore()
 
 const presignedUrlCache = ref<Map<string, { url: string, expiry: number }>>(new Map())
-const avatarUrls = ref<Map<string | number, string>>(new Map())
-
-const loadAvatarUrl = async (userId: string | number, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
 
 const getLoadedAvatarUrl = (userId: string | number): string => {
-  return avatarUrls.value.get(userId) || ''
+  return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
 
 const isOptimistic = (message: Message): boolean => {
@@ -44,7 +37,7 @@ const isOptimistic = (message: Message): boolean => {
 watch(() => props.messages, (newMessages) => {
   newMessages.forEach((message) => {
     if (message.avatar) {
-      loadAvatarUrl(message.userId, message.avatar)
+      avatarStore.loadAvatar(Number(message.userId), message.avatar)
     }
   })
 }, { immediate: true, deep: true })
@@ -417,14 +410,17 @@ const scrollToMessage = (messageId: number) => {
 }
 
 const getUserPresence = (message: Message): UserPresence => {
+  const userId = Number.parseInt(message.userId)
+  const status = userPresenceStore.getUserStatus(userId)
+  
   return {
-    userId: Number.parseInt(message.userId),
+    userId,
     username: message.username,
     email: '',
     firstName: '',
     lastName: '',
     avatar: message.avatar,
-    status: 'online' as const,
+    status: status || 'offline',
     role: 'USER'
   }
 }

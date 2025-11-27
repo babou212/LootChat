@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
+import { useAvatarStore } from '../../stores/avatars'
 
 interface Props {
   channel: Channel
@@ -9,7 +10,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const {
   participants,
@@ -25,28 +26,18 @@ const {
 const isConnected = computed(() => currentChannelId.value === props.channel.id)
 const isConnecting = ref(false)
 const error = ref<string | null>(null)
-const avatarUrls = ref<Map<string, string>>(new Map())
 
 const showAudioSettings = ref(false)
 
-const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
-
-const getLoadedAvatarUrl = (userId: string): string => {
-  return avatarUrls.value.get(userId) || ''
+const getLoadedAvatarUrl = (userId: string | number): string => {
+  return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
 
 watch(() => participants.value, (newParticipants) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   newParticipants.forEach((participant: any) => {
     if (participant.avatar) {
-      loadAvatarUrl(String(participant.userId), participant.avatar)
+      avatarStore.loadAvatar(Number(participant.userId), participant.avatar)
     }
   })
 }, { immediate: true, deep: true })
