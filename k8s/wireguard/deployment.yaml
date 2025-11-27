@@ -54,21 +54,18 @@ spec:
         - name: TZ
           value: "America/New_York"
         - name: SERVERURL
-          value: "116.203.192.48"
+          value: "auto"
         - name: SERVERPORT
           value: "51820"
         - name: PEERS
           value: "1"
         - name: PEERDNS
-          value: "10.96.0.10"  # CoreDNS service IP
+          value: "10.96.0.10" 
         - name: INTERNAL_SUBNET
           value: "10.8.0.0/24"
         # CRITICAL FIX: Allow all cluster networks
         - name: ALLOWEDIPS
-          value: "10.8.0.0/24,10.96.0.0/12,10.244.0.0/16,10.103.120.63/32"
-        # Enable logging for troubleshooting
-        - name: LOG_CONFS
-          value: "true"
+          value: "10.8.0.0/24,10.96.0.0/12,10.244.0.0/16"
         volumeMounts:
         - name: wireguard-config
           mountPath: /config
@@ -108,14 +105,6 @@ spec:
       - name: wireguard-config
         persistentVolumeClaim:
           claimName: wireguard-config
-      - name: wireguard-keys
-        secret:
-          secretName: wireguard-keys
-          defaultMode: 0400
-      - name: init-script
-        configMap:
-          name: wireguard-init-script
-          defaultMode: 0755
       - name: lib-modules
         hostPath:
           path: /lib/modules

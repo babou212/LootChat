@@ -50,9 +50,4 @@ certbot/www/
 secrets-backup-*.yaml
 secrets-generated.yaml
 !k8s/secrets.yaml.example
-
-### SOPS GPG Keys ###
-*.asc
-*.gpg
-*-sops-key.*
-lootchat-sops-key*
+lootchat-sops-key.asc
