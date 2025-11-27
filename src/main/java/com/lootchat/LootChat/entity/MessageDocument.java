@@ -2,6 +2,7 @@ package com.lootchat.LootChat.entity;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
@@ -40,10 +41,11 @@ public class MessageDocument {
     @Field(type = FieldType.Text)
     private String imageUrl;
 
-    @Field(type = FieldType.Date)
+    // spring doesnt like the date format given by elastic search so this is the correct format
+    @Field(type = FieldType.Date, format = DateFormat.date_hour_minute_second_millis)
     private LocalDateTime createdAt;
 
-    @Field(type = FieldType.Date)
+    @Field(type = FieldType.Date, format = DateFormat.date_hour_minute_second_millis)
     private LocalDateTime updatedAt;
 
 }
