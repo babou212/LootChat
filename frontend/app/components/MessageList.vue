@@ -89,6 +89,7 @@ const getLoadedImageUrl = (imageUrl: string): string => {
 }
 
 const messagesContainer = ref<HTMLElement | null>(null)
+const bottomAnchor = ref<HTMLElement | null>(null)
 const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
 const openEmojiUpwards = ref(false)
@@ -154,6 +155,7 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
 const isLoadingMore = ref(false)
 const lastScrollTop = ref(0)
 const previousScrollHeight = ref(0)
+const scrollAnchorDistance = ref(0) // Distance from bottom before load
 
 const handleMessagesScroll = () => {
   if (activeEmojiPicker.value !== null) {
@@ -163,11 +165,19 @@ const handleMessagesScroll = () => {
   const container = messagesContainer.value
   if (!container) return
 
-  const currentScrollTop = container.scrollTop
+  const scrollTop = container.scrollTop
+  const scrollHeight = container.scrollHeight
+  const clientHeight = container.clientHeight
 
-  // Trigger load-more if we're near the top (regardless of scroll direction)
-  if (currentScrollTop < 100 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
-    previousScrollHeight.value = container.scrollHeight
+  // Calculate distance from top
+  const distanceFromTop = scrollTop
+
+  // Trigger load when user scrolls near the top (within 800px) - load before user sees the top
+  if (distanceFromTop < 800 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
+    // Store the current scroll position relative to the bottom
+    scrollAnchorDistance.value = scrollHeight - scrollTop - clientHeight
+    previousScrollHeight.value = scrollHeight
+
     isLoadingMore.value = true
     emit('load-more')
 
@@ -176,7 +186,7 @@ const handleMessagesScroll = () => {
     }, 500)
   }
 
-  lastScrollTop.value = currentScrollTop
+  lastScrollTop.value = scrollTop
 }
 
 onMounted(() => {
@@ -456,14 +466,6 @@ const hasUserReacted = (userIds: number[]) => {
   return authStore.user?.userId ? userIds.includes(Number(authStore.user.userId)) : false
 }
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
 const formatTime = (date: Date) => {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
@@ -496,10 +498,19 @@ const contentWithoutMedia = (text: string): string => {
 
 const hasInitiallyScrolled = ref(false)
 
+// Watch for channel switches by detecting when messages array reference changes
+watch(() => props.messages, (newMessages, oldMessages) => {
+  // If it's a different array reference (channel switch), reset scroll state
+  if (newMessages !== oldMessages && newMessages.length > 0) {
+    hasInitiallyScrolled.value = false
+  }
+}, { flush: 'sync' })
+
 watch(() => props.messages.length, (newLength, oldLength) => {
   if (newLength === 0 && oldLength > 0) {
     hasInitiallyScrolled.value = false
     previousScrollHeight.value = 0
+    scrollAnchorDistance.value = 0
     return
   }
 
@@ -507,38 +518,61 @@ watch(() => props.messages.length, (newLength, oldLength) => {
     if (!messagesContainer.value) return
     const container = messagesContainer.value
 
+    // Initial load - scroll to bottom
     if (oldLength === 0 && newLength > 0) {
-      // Force scroll to absolute bottom on initial load
-      container.scrollTop = container.scrollHeight
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight
+        })
+      })
       hasInitiallyScrolled.value = true
       return
     }
 
+    // Loading older messages (scrolling up) - maintain scroll position
     if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
       const newScrollHeight = container.scrollHeight
       const heightDifference = newScrollHeight - previousScrollHeight.value
-      container.scrollTop = container.scrollTop + heightDifference
+
+      // Restore scroll position by adding the height difference
+      // This keeps the user at the same visual location
+      container.scrollTop = heightDifference
+
       previousScrollHeight.value = 0
+      scrollAnchorDistance.value = 0
       return
     }
 
+    // New messages coming in (when not loading more) - only scroll if user is near bottom
     if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200
-      if (isNearBottom) {
-        scrollToBottom()
+      const scrollHeight = container.scrollHeight
+      const scrollTop = container.scrollTop
+      const clientHeight = container.clientHeight
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // If user is within 200px of bottom, auto-scroll to new messages
+      if (distanceFromBottom < 200) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight
+        })
       }
     }
   })
 })
 
-watch(() => props.loading, (isLoading) => {
-  if (!isLoading && props.messages.length > 0 && !hasInitiallyScrolled.value) {
+watch(() => props.loading, (isLoading, wasLoading) => {
+  if (!isLoading && wasLoading && props.messages.length > 0) {
+    // Always scroll to bottom when loading finishes, regardless of hasInitiallyScrolled
+    // This ensures channel switches work correctly
     nextTick(() => {
-      if (messagesContainer.value) {
-        // Force scroll to absolute bottom
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-      hasInitiallyScrolled.value = true
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+          }
+          hasInitiallyScrolled.value = true
+        })
+      })
     })
   }
 })
@@ -557,13 +591,6 @@ watch(() => props.messages, async (newMessages) => {
     ref="messagesContainer"
     class="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide"
   >
-    <div
-      v-if="loadingMore"
-      class="flex justify-center py-2"
-    >
-      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
-    </div>
-
     <div
       v-if="loading"
       class="h-full"
@@ -764,6 +791,8 @@ watch(() => props.messages, async (newMessages) => {
         </div>
       </div>
     </template>
+
+    <div ref="bottomAnchor" class="h-0" />
 
     <Teleport to="body">
       <div

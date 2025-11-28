@@ -51,6 +51,13 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       }
     },
 
+    getCurrentPage: (state) => {
+      return (directMessageId: number): number => {
+        const cache = state.messageCache.get(directMessageId)
+        return cache?.currentPage ?? 0
+      }
+    },
+
     getTotalUnreadCount: (state) => {
       return state.directMessages.reduce((sum, dm) => sum + dm.unreadCount, 0)
     }

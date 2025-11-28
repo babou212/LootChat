@@ -11,6 +11,8 @@ interface Props {
   messages: DirectMessageMessage[]
   loading: boolean
   error: string | null
+  hasMore?: boolean
+  loadingMore?: boolean
 }
 
 const props = defineProps<Props>()
@@ -22,6 +24,7 @@ const imageUrls = ref<Map<string, string>>(new Map())
 const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
+const bottomAnchor = ref<HTMLElement | null>(null)
 const editingMessageId = ref<number | null>(null)
 const expandedImage = ref<string | null>(null)
 const expandedImageAlt = ref<string | null>(null)
@@ -29,9 +32,15 @@ const inFlightReactions = new Set<string>()
 const openEmojiUpwards = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
 
+const isLoadingMore = ref(false)
+const lastScrollTop = ref(0)
+const previousScrollHeight = ref(0)
+const scrollAnchorDistance = ref(0)
+
 const emit = defineEmits<{
   (e: 'message-deleted', id: number): void
   (e: 'reply-to-message', message: DirectMessageMessage): void
+  (e: 'load-more'): void
 }>()
 
 const getLoadedAvatarUrl = (userId: string | number): string => {
@@ -329,12 +338,35 @@ const hasUserReacted = (userIds: number[]) => {
   return authStore.user?.userId ? userIds.includes(Number(authStore.user.userId)) : false
 }
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
+const handleMessagesScroll = () => {
+  if (activeEmojiPicker.value !== null) {
+    closeEmojiPicker()
+  }
+
+  const container = messagesContainer.value
+  if (!container) return
+
+  const scrollTop = container.scrollTop
+  const scrollHeight = container.scrollHeight
+  const clientHeight = container.clientHeight
+
+  const distanceFromTop = scrollTop
+
+  // Trigger load when user scrolls near the top (within 800px) - load before user sees the top
+  if (distanceFromTop < 800 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
+    // Store the current scroll position relative to the bottom
+    scrollAnchorDistance.value = scrollHeight - scrollTop - clientHeight
+    previousScrollHeight.value = scrollHeight
+
+    isLoadingMore.value = true
+    emit('load-more')
+
+    setTimeout(() => {
+      isLoadingMore.value = false
+    }, 500)
+  }
+
+  lastScrollTop.value = scrollTop
 }
 
 const formatTime = (date: Date) => {
@@ -372,17 +404,102 @@ const isOptimistic = (message: DirectMessageMessage): boolean => {
   return message.id < 0
 }
 
-watch(() => props.messages.length, () => {
-  nextTick(() => scrollToBottom())
+const hasInitiallyScrolled = ref(false)
+
+// Watch for DM conversation switches by detecting when messages array reference changes
+watch(() => props.messages, (newMessages, oldMessages) => {
+  // If it's a different array reference (DM conversation switch), reset scroll state
+  if (newMessages !== oldMessages && newMessages.length > 0) {
+    hasInitiallyScrolled.value = false
+  }
+}, { flush: 'sync' })
+
+watch(() => props.messages.length, (newLength, oldLength) => {
+  if (newLength === 0 && oldLength > 0) {
+    hasInitiallyScrolled.value = false
+    previousScrollHeight.value = 0
+    scrollAnchorDistance.value = 0
+    return
+  }
+
+  nextTick(() => {
+    if (!messagesContainer.value) return
+    const container = messagesContainer.value
+
+    // Initial load - scroll to bottom
+    if (oldLength === 0 && newLength > 0) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight
+        })
+      })
+      hasInitiallyScrolled.value = true
+      return
+    }
+
+    // Loading older messages (scrolling up) - maintain scroll position
+    if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
+      const newScrollHeight = container.scrollHeight
+      const heightDifference = newScrollHeight - previousScrollHeight.value
+
+      // Restore scroll position by adding the height difference
+      // This keeps the user at the same visual location
+      container.scrollTop = heightDifference
+
+      previousScrollHeight.value = 0
+      scrollAnchorDistance.value = 0
+      return
+    }
+
+    // New messages coming in (when not loading more) - only scroll if user is near bottom
+    if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
+      const scrollHeight = container.scrollHeight
+      const scrollTop = container.scrollTop
+      const clientHeight = container.clientHeight
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+
+      // If user is within 200px of bottom, auto-scroll to new messages
+      if (distanceFromBottom < 200) {
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight
+        })
+      }
+    }
+  })
+})
+
+watch(() => props.loading, (isLoading, wasLoading) => {
+  if (!isLoading && wasLoading && props.messages.length > 0) {
+    // Always scroll to bottom when loading finishes
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+          }
+          hasInitiallyScrolled.value = true
+        })
+      })
+    })
+  }
 })
 
 onMounted(() => {
-  scrollToBottom()
+  if (messagesContainer.value) {
+    messagesContainer.value.addEventListener('scroll', handleMessagesScroll, { passive: true } as AddEventListenerOptions)
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && expandedImage.value) {
       closeImageModal()
     }
   })
+})
+
+onUnmounted(() => {
+  if (messagesContainer.value) {
+    messagesContainer.value.removeEventListener('scroll', handleMessagesScroll)
+  }
 })
 </script>
 
@@ -566,6 +683,8 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <div ref="bottomAnchor" class="h-0" />
 
     <Teleport to="body">
       <div

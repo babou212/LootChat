@@ -2,25 +2,25 @@ import { z } from 'zod'
 import type { H3Event } from 'h3'
 
 export const createChannelSchema = z.object({
-  name: z.string().min(1, 'Channel name is required').max(100, 'Channel name too long'),
-  description: z.string().max(500, 'Description too long').optional(),
+  name: z.string().min(1, 'Channel name is required').max(30, 'Channel name too long'),
+  description: z.string().max(100, 'Description too long').optional(),
   channelType: z.enum(['TEXT', 'VOICE']).optional()
 })
 
 export const updateChannelSchema = z.object({
-  name: z.string().min(1, 'Channel name is required').max(100, 'Channel name too long').optional(),
+  name: z.string().min(1, 'Channel name is required').max(30, 'Channel name too long').optional(),
   description: z.string().max(500, 'Description too long').optional()
 })
 
 export const createMessageSchema = z.object({
-  content: z.string().min(1, 'Message content is required').max(2000, 'Message too long'),
+  content: z.string().min(1, 'Message content is required').max(10000000, 'Message too long'),
   channelId: z.number().int().positive(),
   messageType: z.enum(['TEXT', 'FILE', 'IMAGE']).optional(),
   replyToMessageId: z.number().int().positive().optional()
 })
 
 export const updateMessageSchema = z.object({
-  content: z.string().min(1, 'Message content is required').max(2000, 'Message too long')
+  content: z.string().min(1, 'Message content is required').max(100000, 'Message too long')
 })
 
 export const changePasswordSchema = z.object({

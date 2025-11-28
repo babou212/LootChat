@@ -33,7 +33,7 @@ const usersStore = useUsersStore()
 const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
-const { disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
+const { getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
@@ -150,7 +150,7 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
 
     const token = websocketStore.token
     if (token) {
-      // Wait for WebSocket connection (plugin handles auto-connect)
+      // Only wait for WebSocket connection if not already connected
       if (!isConnected.value) {
         console.log('Waiting for WebSocket connection...')
         let attempts = 0
@@ -329,11 +329,14 @@ onMounted(async () => {
   await channelsStore.fetchChannels()
   await fetchUsers()
 
-  // Wait for WebSocket connection (plugin handles auto-connect and token refresh)
-  let attempts = 0
-  while (!isConnected.value && attempts < 20) {
-    await new Promise(resolve => setTimeout(resolve, 250))
-    attempts++
+  // Wait for WebSocket connection if not already connected
+  // Plugin handles auto-connect, but we may need to wait briefly on initial load
+  if (!isConnected.value) {
+    let attempts = 0
+    while (!isConnected.value && attempts < 20) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+      attempts++
+    }
   }
 
   if (isConnected.value) {
@@ -389,7 +392,8 @@ onUnmounted(() => {
   if (dmSubscription) {
     dmSubscription.unsubscribe()
   }
-  disconnect()
+  // Don't disconnect WebSocket - keep it alive for the session
+  // The WebSocket plugin handles connection lifecycle
 })
 
 watch(channels, (newChannels) => {
