@@ -51,13 +51,6 @@ public class MessageService {
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
 
-    private void evictChannelPaginatedCache(Long channelId) {
-        var paginatedCache = cacheManager.getCache("channelMessagesPaginated");
-        if (paginatedCache != null) {
-            paginatedCache.clear();
-        }
-    }
-
     @Transactional
     public MessageResponse createMessage(String content) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
@@ -78,19 +71,11 @@ public class MessageService {
     }
 
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
-        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
-    })
     public MessageResponse createMessage(String content, Long channelId) {
         return createMessage(content, channelId, null);
     }
 
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
-        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
-    })
     public MessageResponse createMessage(String content, Long channelId, Long replyToMessageId) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
@@ -116,25 +101,19 @@ public class MessageService {
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
+        evictChannelFirstPageCache(channelId);
+        
         publishMessageToKafka(savedMessage.getId(), content, channelId, userId);
         
         return response;
     }
 
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
-        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
-    })
     public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image) {
         return createMessageWithImage(content, channelId, image, null);
     }
 
     @Transactional
-    @Caching(evict = {
-        @CacheEvict(cacheNames = "channelMessages", key = "'channel:' + #channelId", beforeInvocation = false),
-        @CacheEvict(cacheNames = "channelMessagesPaginated", allEntries = true, condition = "#channelId != null")
-    })
     public MessageResponse createMessageWithImage(String content, Long channelId, MultipartFile image, Long replyToMessageId) {
         Long userId = currentUserService.getCurrentUserIdOrThrow();
         User user = userRepository.findById(userId)
@@ -168,6 +147,8 @@ public class MessageService {
         Message message = messageBuilder.build();
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
+        
+        evictChannelFirstPageCache(channelId);
         
         publishMessageToKafka(savedMessage.getId(), messageContent, channelId, userId);
         
@@ -273,13 +254,12 @@ public class MessageService {
     @Transactional(readOnly = true)
     @Cacheable(cacheNames = "channelMessagesPaginated", key = "'channel:' + #channelId + ':page:' + #page + ':size:' + #size")
     public List<MessageResponse> getMessagesByChannelIdPaginated(Long channelId, int page, int size) {
-        // Sort descending to get newest first, but return them in ascending order for display
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Message> messagePage = messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId, pageable);
         List<MessageResponse> messages = messagePage.getContent().stream()
                 .map(this::mapToMessageResponse)
                 .collect(Collectors.toList());
-        // Reverse the list so oldest message in the page is first
+
         java.util.Collections.reverse(messages);
         return messages;
     }
@@ -314,14 +294,6 @@ public class MessageService {
         message.setContent(content);
         Message updatedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(updatedMessage);
-        // Evict channel caches for this message's channel if applicable
-        if (updatedMessage.getChannel() != null && updatedMessage.getChannel().getId() != null) {
-            var channelMessagesCache = cacheManager.getCache("channelMessages");
-            if (channelMessagesCache != null) {
-                channelMessagesCache.evict("channel:" + updatedMessage.getChannel().getId());
-            }
-            evictChannelPaginatedCache(updatedMessage.getChannel().getId());
-        }
         
         publishMessageUpdateToKafka(updatedMessage.getId(), content, 
             updatedMessage.getChannel() != null ? updatedMessage.getChannel().getId() : null);
@@ -352,13 +324,6 @@ public class MessageService {
         messageRepository.deleteById(id);
 
         publishMessageDeleteToKafka(id, channelId);
-        if (channelId != null) {
-            var channelMessagesCache = cacheManager.getCache("channelMessages");
-            if (channelMessagesCache != null) {
-                channelMessagesCache.evict("channel:" + channelId);
-            }
-            evictChannelPaginatedCache(channelId);
-        }
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
@@ -411,13 +376,7 @@ public class MessageService {
         ReactionResponse response = mapToReactionResponse(savedReaction);
 
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
-        if (channelId != null) {
-            var channelMessagesCache = cacheManager.getCache("channelMessages");
-            if (channelMessagesCache != null) {
-                channelMessagesCache.evict("channel:" + channelId);
-            }
-            evictChannelPaginatedCache(channelId);
-        }
+        
         publishReactionToKafka(savedReaction.getId(), messageId, channelId, "add", 
             emoji, userId, user.getUsername());
 
@@ -436,13 +395,7 @@ public class MessageService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
 
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
-        if (channelId != null) {
-            var channelMessagesCache = cacheManager.getCache("channelMessages");
-            if (channelMessagesCache != null) {
-                channelMessagesCache.evict("channel:" + channelId);
-            }
-            evictChannelPaginatedCache(channelId);
-        }
+        
         Long reactionId = reaction.getId();
         String reactionEmoji = reaction.getEmoji();
         Long reactionUserId = reaction.getUser().getId();
@@ -463,5 +416,12 @@ public class MessageService {
                 .messageId(reaction.getMessage().getId())
                 .createdAt(reaction.getCreatedAt())
                 .build();
+    }
+    
+    private void evictChannelFirstPageCache(Long channelId) {
+        var cache = cacheManager.getCache("channelMessagesPaginated");
+        if (cache != null) {
+            cache.evict("channel:" + channelId + ":page:0:size:30");
+        }
     }
 }

@@ -35,33 +35,34 @@ spec:
         - redis-server
         - --requirepass
         - $(REDIS_PASSWORD)
+        # Count-based caching: no persistence, LRU eviction
         - --appendonly
-        - "yes"
-        - --appendfsync
-        - everysec
+        - "no"
+        - --save
+        - ""
         - --maxmemory
-        - 512mb
+        - 1gb
         - --maxmemory-policy
         - allkeys-lru
+        # Connection tuning
         - --tcp-backlog
         - "511"
         - --timeout
         - "300"
         - --tcp-keepalive
         - "300"
-        - --save
-        - "900 1"
-        - --save
-        - "300 10"
-        - --save
-        - "60 10000"
+        # Performance optimizations
+        - --hz
+        - "10"
+        - --dynamic-hz
+        - "yes"
         resources:
           requests:
             cpu: 100m
-            memory: 256Mi
+            memory: 512Mi
           limits:
             cpu: 500m
-            memory: 512Mi
+            memory: 1Gi
         ports:
         - containerPort: 6379
           name: redis
