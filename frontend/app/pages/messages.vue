@@ -46,7 +46,18 @@ let presenceSubscription: ReturnType<typeof subscribeToUserPresence> | null = nu
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
+const loadingMoreMessages = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
+
+const hasMoreMessages = computed(() => {
+  if (!directMessagesStore.selectedDirectMessageId) return true
+  return directMessagesStore.hasMoreMessages(directMessagesStore.selectedDirectMessageId)
+})
+
+const currentPage = computed(() => {
+  if (!directMessagesStore.selectedDirectMessageId) return 0
+  return directMessagesStore.getCurrentPage(directMessagesStore.selectedDirectMessageId)
+})
 
 const toggleEmojiPicker = () => {
   composerStore.toggleEmojiPicker()
@@ -438,6 +449,20 @@ const removeMessageById = (id: number) => {
   }
 }
 
+const loadMoreMessages = async () => {
+  if (!hasMoreMessages.value || loadingMoreMessages.value || !directMessagesStore.selectedDirectMessageId) return
+
+  loadingMoreMessages.value = true
+  try {
+    const page = currentPage.value + 1
+    await directMessagesStore.fetchMessages(directMessagesStore.selectedDirectMessageId, page)
+  } catch (err) {
+    console.error('Failed to load more messages:', err)
+  } finally {
+    loadingMoreMessages.value = false
+  }
+}
+
 const isUserOnline = (userId: number): boolean => {
   // First check presence store
   const status = userPresenceStore.getUserStatus(userId)
@@ -570,8 +595,11 @@ const isUserOnline = (userId: number): boolean => {
         :messages="directMessagesStore.getMessages(directMessagesStore.selectedDirectMessageId)"
         :loading="false"
         :error="null"
+        :has-more="hasMoreMessages"
+        :loading-more="loadingMoreMessages"
         @message-deleted="removeMessageById"
         @reply-to-message="setReplyingTo"
+        @load-more="loadMoreMessages"
       />
 
       <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
@@ -670,7 +698,6 @@ const isUserOnline = (userId: number): boolean => {
             :maxrows="6"
             autoresize
             class="flex-1"
-            :disabled="composerStore.loading"
             @keydown.enter.exact.prevent="sendMessage"
           />
 
