@@ -90,6 +90,44 @@ const getLoadedImageUrl = (imageUrl: string): string => {
 
 const messagesContainer = ref<HTMLElement | null>(null)
 const bottomAnchor = ref<HTMLElement | null>(null)
+
+// Simple native implementation - check if user is near bottom
+const isNearBottom = () => {
+  const container = messagesContainer.value
+  if (!container) return false
+  const threshold = 200
+  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+}
+
+const scrollToBottom = () => {
+  const container = messagesContainer.value
+  if (!container) return
+  container.scrollTop = container.scrollHeight
+}
+
+const scrollToBottomWhenReady = async () => {
+  const container = messagesContainer.value
+  if (!container) return
+
+  // Wait for images to load
+  const images = container.querySelectorAll('img')
+  const imagePromises = Array.from(images).map((img) => {
+    if (img.complete) return Promise.resolve()
+    return new Promise((resolve) => {
+      img.onload = resolve
+      img.onerror = resolve
+      setTimeout(resolve, 500) // Max wait 500ms per image
+    })
+  })
+
+  await Promise.all(imagePromises)
+
+  // Small delay for final layout
+  await new Promise(resolve => setTimeout(resolve, 50))
+
+  scrollToBottom()
+}
+
 const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
 const openEmojiUpwards = ref(false)
@@ -520,11 +558,7 @@ watch(() => props.messages.length, (newLength, oldLength) => {
 
     // Initial load - scroll to bottom
     if (oldLength === 0 && newLength > 0) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight
-        })
-      })
+      scrollToBottomWhenReady()
       hasInitiallyScrolled.value = true
       return
     }
@@ -535,7 +569,6 @@ watch(() => props.messages.length, (newLength, oldLength) => {
       const heightDifference = newScrollHeight - previousScrollHeight.value
 
       // Restore scroll position by adding the height difference
-      // This keeps the user at the same visual location
       container.scrollTop = heightDifference
 
       previousScrollHeight.value = 0
@@ -543,18 +576,10 @@ watch(() => props.messages.length, (newLength, oldLength) => {
       return
     }
 
-    // New messages coming in (when not loading more) - only scroll if user is near bottom
+    // New messages coming in - scroll if user was at bottom
     if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
-      const scrollHeight = container.scrollHeight
-      const scrollTop = container.scrollTop
-      const clientHeight = container.clientHeight
-      const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-
-      // If user is within 200px of bottom, auto-scroll to new messages
-      if (distanceFromBottom < 200) {
-        requestAnimationFrame(() => {
-          container.scrollTop = container.scrollHeight
-        })
+      if (isNearBottom()) {
+        scrollToBottomWhenReady()
       }
     }
   })
@@ -562,18 +587,9 @@ watch(() => props.messages.length, (newLength, oldLength) => {
 
 watch(() => props.loading, (isLoading, wasLoading) => {
   if (!isLoading && wasLoading && props.messages.length > 0) {
-    // Always scroll to bottom when loading finishes, regardless of hasInitiallyScrolled
-    // This ensures channel switches work correctly
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (messagesContainer.value) {
-            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-          }
-          hasInitiallyScrolled.value = true
-        })
-      })
-    })
+    // Always scroll to bottom when loading finishes
+    scrollToBottomWhenReady()
+    hasInitiallyScrolled.value = true
   }
 })
 
