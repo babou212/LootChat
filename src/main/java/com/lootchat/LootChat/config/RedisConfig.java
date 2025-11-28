@@ -1,6 +1,8 @@
 package com.lootchat.LootChat.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
+import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,33 +23,41 @@ public class RedisConfig {
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         ObjectMapper redisObjectMapper = objectMapper.copy().findAndRegisterModules();
+        
+        // Enable type information to prevent LinkedHashMap deserialization issues
+        PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
+                .allowIfBaseType(Object.class)
+                .build();
+        
+        redisObjectMapper.activateDefaultTyping(
+                typeValidator,
+                ObjectMapper.DefaultTyping.NON_FINAL
+        );
 
         GenericJackson2JsonRedisSerializer valueSerializer = new GenericJackson2JsonRedisSerializer(redisObjectMapper);
 
         RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(10)) 
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(valueSerializer))
                 .disableCachingNullValues();
 
-        // Optimized TTL values based on data change frequency
-        Map<String, RedisCacheConfiguration> initialCaches = Map.of(
-            // User caches - moderate TTL with event-driven invalidation
-            "users", cacheConfig.entryTtl(Duration.ofMinutes(15)),
-            "user", cacheConfig.entryTtl(Duration.ofMinutes(15)),
+        Map<String, RedisCacheConfiguration> initialCaches = Map.ofEntries(
+            Map.entry("users", cacheConfig),
+            Map.entry("user", cacheConfig),
             
-            // Channel caches - long TTL (rarely change)
-            "channels", cacheConfig.entryTtl(Duration.ofHours(1)),
-            "channel", cacheConfig.entryTtl(Duration.ofHours(1)),
+            Map.entry("channels", cacheConfig),
+            Map.entry("channel", cacheConfig),
             
-            // Message caches - shorter TTL with real-time invalidation
-            "channelMessages", cacheConfig.entryTtl(Duration.ofMinutes(5)),
-            "channelMessagesPaginated", cacheConfig.entryTtl(Duration.ofMinutes(5)),
-            "message", cacheConfig.entryTtl(Duration.ofMinutes(10)),
+            Map.entry("channelMessages", cacheConfig),
+            Map.entry("channelMessagesPaginated", cacheConfig),
+            Map.entry("message", cacheConfig),
             
-            // Presence cache - very short TTL for real-time updates
-            "userPresence", cacheConfig.entryTtl(Duration.ofMinutes(2)),
-            "allPresence", cacheConfig.entryTtl(Duration.ofMinutes(1))
+            Map.entry("directMessages", cacheConfig),
+            Map.entry("dmMessages", cacheConfig),
+            Map.entry("dmMessagesPaginated", cacheConfig),
+            
+            Map.entry("userPresence", cacheConfig),
+            Map.entry("allPresence", cacheConfig)
         );
 
         return RedisCacheManager.builder(connectionFactory)

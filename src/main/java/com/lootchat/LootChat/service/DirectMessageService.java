@@ -13,6 +13,11 @@ import com.lootchat.LootChat.repository.DirectMessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -38,10 +43,17 @@ public class DirectMessageService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final S3FileStorageService s3FileStorageService;
+    private final CacheManager cacheManager;
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
         Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
+        return getAllDirectMessagesForUser(currentUserId);
+    }
+    
+    @Cacheable(cacheNames = "directMessages", key = "'user:' + #userId")
+    public List<DirectMessageResponse> getAllDirectMessagesForUser(Long userId) {
+        Long currentUserId = userId;
         List<DirectMessage> directMessages = directMessageRepository.findAllByUser(currentUserId);
         
         return directMessages.stream()
@@ -78,6 +90,7 @@ public class DirectMessageService {
     }
     
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "dmMessagesPaginated", key = "'dm:' + #directMessageId + ':page:' + #page + ':size:' + #size")
     public List<DirectMessageMessageResponse> getDirectMessages(Long directMessageId, int page, int size) {
         Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
         
@@ -136,6 +149,10 @@ public class DirectMessageService {
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
         
+        evictFirstPageCache(dm.getId());
+
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
+        
         publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
                 dm.getOtherUser(currentUserId).getId(), request.getContent());
         
@@ -188,6 +205,9 @@ public class DirectMessageService {
         
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
+        
+        evictFirstPageCache(dm.getId());
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
         publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
                 dm.getOtherUser(currentUserId).getId(), messageContent);
@@ -267,6 +287,7 @@ public class DirectMessageService {
         DirectMessageReaction savedReaction = directMessageReactionRepository.save(reaction);
         
         DirectMessage dm = message.getDirectMessage();
+        
         publishReactionToKafka(savedReaction.getId(), messageId, dm.getId(),
                 "add", emoji, currentUserId, user.getUsername(),
                 dm.getUser1().getId(), dm.getUser2().getId());
@@ -341,8 +362,11 @@ public class DirectMessageService {
         directMessageReactionRepository.deleteByMessageId(messageId);
         
         Long directMessageId = message.getDirectMessage().getId();
+        DirectMessage dm = message.getDirectMessage();
         
         directMessageMessageRepository.delete(message);
+
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
         publishDeleteToKafka(messageId, directMessageId);
     }
@@ -425,6 +449,23 @@ public class DirectMessageService {
             kafkaTemplate.send("lootchat.direct.message.deletions", json);
         } catch (Exception e) {
             System.err.println("Failed to publish DM deletion to Kafka: " + e.getMessage());
+        }
+    }
+    
+    private void evictFirstPageCache(Long directMessageId) {
+        Cache cache = cacheManager.getCache("dmMessagesPaginated");
+        if (cache != null) {
+            cache.evict("dm:" + directMessageId + ":page:0:size:50");
+            cache.evict("dm:" + directMessageId + ":page:0:size:30");
+            cache.evict("dm:" + directMessageId + ":page:0:size:20");
+        }
+    }
+    
+    private void evictDirectMessagesListCache(Long user1Id, Long user2Id) {
+        Cache cache = cacheManager.getCache("directMessages");
+        if (cache != null) {
+            cache.evict("user:" + user1Id);
+            cache.evict("user:" + user2Id);
         }
     }
 }
