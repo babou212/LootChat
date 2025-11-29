@@ -26,6 +26,7 @@ public class DirectMessageMessageResponse {
     private String replyToContent;
     private boolean isRead;
     private boolean edited;
+    private boolean deleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<DirectMessageReactionResponse> reactions;

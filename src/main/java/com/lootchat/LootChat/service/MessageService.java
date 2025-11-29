@@ -30,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -272,6 +273,11 @@ public class MessageService {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
 
+        // Cannot edit deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot edit a deleted message");
+        }
+
         Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
         if (!message.getUser().getId().equals(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot edit this message");
@@ -293,6 +299,11 @@ public class MessageService {
         Message message = messageRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + id));
 
+        // Already deleted - idempotent operation
+        if (message.isDeleted()) {
+            return;
+        }
+
         User currentUser = currentUserService.getCurrentUserOrThrow();
 
         boolean isOwner = message.getUser().getId().equals(currentUser.getId());
@@ -301,22 +312,60 @@ public class MessageService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You cannot delete this message");
         }
 
+        // Delete reactions for this message
         reactionRepository.deleteByMessageId(id);
 
+        // Delete image from S3 if present
         if (message.getImageFilename() != null) {
             s3FileStorageService.deleteFile(message.getImageFilename());
         }
-        Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
-        messageRepository.deleteById(id);
 
+        // Soft delete: mark as deleted and clear content
+        // This preserves reply chain integrity while hiding message content
+        message.setDeleted(true);
+        message.setDeletedAt(java.time.LocalDateTime.now());
+        message.setContent(""); // Clear original content for privacy
+        message.setImageUrl(null);
+        message.setImageFilename(null);
+        messageRepository.save(message);
+
+        Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
         publishMessageDeleteToKafka(id, channelId);
     }
 
     private MessageResponse mapToMessageResponse(Message message) {
+        // For deleted messages, return minimal info with placeholder content
+        if (message.isDeleted()) {
+            return MessageResponse.builder()
+                    .id(message.getId())
+                    .content("[Message deleted]")
+                    .userId(message.getUser().getId())
+                    .username(message.getUser().getUsername())
+                    .avatar(null) // Hide avatar for deleted messages
+                    .imageUrl(null)
+                    .imageFilename(null)
+                    .channelId(message.getChannel() != null ? message.getChannel().getId() : null)
+                    .channelName(message.getChannel() != null ? message.getChannel().getName() : null)
+                    .createdAt(message.getCreatedAt())
+                    .updatedAt(message.getUpdatedAt())
+                    .reactions(new ArrayList<>()) // No reactions for deleted messages
+                    .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                    .replyToUsername(message.getReplyToUsername())
+                    .replyToContent(message.getReplyToContent())
+                    .deleted(true)
+                    .build();
+        }
+
         List<ReactionResponse> reactions = reactionRepository.findByMessageId(message.getId())
                 .stream()
                 .map(this::mapToReactionResponse)
                 .collect(Collectors.toList());
+
+        // Check if this message replies to a deleted message
+        String replyToContent = message.getReplyToContent();
+        if (message.getReplyToMessage() != null && message.getReplyToMessage().isDeleted()) {
+            replyToContent = "[Message deleted]";
+        }
 
         return MessageResponse.builder()
                 .id(message.getId())
@@ -333,7 +382,8 @@ public class MessageService {
                 .reactions(reactions)
                 .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
                 .replyToUsername(message.getReplyToUsername())
-                .replyToContent(message.getReplyToContent())
+                .replyToContent(replyToContent)
+                .deleted(false)
                 .build();
     }
 
@@ -344,6 +394,11 @@ public class MessageService {
         
         Message message = messageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found with id: " + messageId));
+
+        // Cannot react to deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot add reaction to a deleted message");
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found with id: " + userId));

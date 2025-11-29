@@ -278,6 +278,24 @@ export const useMessagesStore = defineStore('messages', {
       }
     },
 
+    /**
+     * Mark a message as deleted (soft delete).
+     * Preserves the message in the list but marks it as deleted.
+     */
+    markAsDeleted(channelId: number, messageId: number) {
+      const cache = this.channelCaches.get(channelId)
+      if (!cache) return
+
+      const message = cache.messages.find(m => m.id === messageId)
+      if (message) {
+        message.deleted = true
+        message.content = '[Message deleted]'
+        message.imageUrl = undefined
+        message.imageFilename = undefined
+        message.reactions = []
+      }
+    },
+
     removeMessage(channelId: number, messageId: number) {
       const cache = this.channelCaches.get(channelId)
       if (!cache) return

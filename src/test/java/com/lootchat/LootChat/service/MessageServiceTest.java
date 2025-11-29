@@ -252,27 +252,31 @@ class MessageServiceTest {
     }
 
     @Test
-    @DisplayName("deleteMessage should allow owner to delete their message")
+    @DisplayName("deleteMessage should allow owner to delete their message (soft delete)")
     void deleteMessage_ShouldAllow_OwnerToDelete() throws Exception {
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(testUser);
+        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
 
         messageService.deleteMessage(1L);
 
         verify(reactionRepository, times(1)).deleteByMessageId(1L);
-        verify(messageRepository, times(1)).deleteById(1L);
+        verify(messageRepository, times(1)).save(any(Message.class)); // Soft delete saves
+        verify(messageRepository, never()).deleteById(any()); // No hard delete
         verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("deleteMessage should allow moderator to delete any message")
+    @DisplayName("deleteMessage should allow moderator to delete any message (soft delete)")
     void deleteMessage_ShouldAllow_ModeratorToDelete() throws Exception {
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(moderatorUser);
+        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
 
         messageService.deleteMessage(1L);
 
-        verify(messageRepository, times(1)).deleteById(1L);
+        verify(messageRepository, times(1)).save(any(Message.class)); // Soft delete saves
+        verify(messageRepository, never()).deleteById(any()); // No hard delete
         verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
@@ -282,11 +286,13 @@ class MessageServiceTest {
         testMessage.setImageFilename("test-image.jpg");
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(testUser);
+        when(messageRepository.save(any(Message.class))).thenReturn(testMessage);
 
         messageService.deleteMessage(1L);
 
         verify(s3FileStorageService, times(1)).deleteFile("test-image.jpg");
-        verify(messageRepository, times(1)).deleteById(1L);
+        verify(messageRepository, times(1)).save(any(Message.class)); // Soft delete saves
+        verify(messageRepository, never()).deleteById(any()); // No hard delete
         verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
@@ -309,6 +315,67 @@ class MessageServiceTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
 
         verify(messageRepository, never()).deleteById(any());
+        verify(messageRepository, never()).save(any()); // Soft delete also not called
+    }
+
+    @Test
+    @DisplayName("deleteMessage should be idempotent for already deleted messages")
+    void deleteMessage_ShouldBeIdempotent_WhenAlreadyDeleted() throws Exception {
+        testMessage.setDeleted(true);
+        when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
+
+        messageService.deleteMessage(1L);
+
+        // Should not attempt to delete again
+        verify(reactionRepository, never()).deleteByMessageId(any());
+        verify(messageRepository, never()).save(any());
+        verify(outboxService, never()).saveEvent(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("updateMessage should throw GONE when message is deleted")
+    void updateMessage_ShouldThrowGone_WhenMessageDeleted() {
+        testMessage.setDeleted(true);
+        when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
+
+        assertThatThrownBy(() -> messageService.updateMessage(1L, "Updated content"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Cannot edit a deleted message")
+                .extracting("status")
+                .isEqualTo(HttpStatus.GONE);
+
+        verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("addReaction should throw GONE when message is deleted")
+    void addReaction_ShouldThrowGone_WhenMessageDeleted() {
+        testMessage.setDeleted(true);
+        when(currentUserService.getCurrentUserIdOrThrow()).thenReturn(1L);
+        when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
+
+        assertThatThrownBy(() -> messageService.addReaction(1L, "👍"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Cannot add reaction to a deleted message")
+                .extracting("status")
+                .isEqualTo(HttpStatus.GONE);
+
+        verify(reactionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("mapToMessageResponse should show deleted placeholder for deleted messages")
+    void getMessageById_ShouldShowDeletedPlaceholder_WhenMessageDeleted() {
+        testMessage.setDeleted(true);
+        testMessage.setContent(""); // Content cleared on soft delete
+        when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
+
+        MessageResponse result = messageService.getMessageById(1L);
+
+        assertThat(result).isNotNull();
+        assertThat(result.isDeleted()).isTrue();
+        assertThat(result.getContent()).isEqualTo("[Message deleted]");
+        assertThat(result.getReactions()).isEmpty();
     }
 
     @Test

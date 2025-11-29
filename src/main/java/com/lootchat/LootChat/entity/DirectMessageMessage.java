@@ -53,6 +53,13 @@ public class DirectMessageMessage {
     @Builder.Default
     private boolean edited = false;
 
+    @Column(name = "deleted", nullable = false, columnDefinition = "boolean default false")
+    @Builder.Default
+    private boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

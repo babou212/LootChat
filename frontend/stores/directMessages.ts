@@ -266,6 +266,24 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       this.messageCache.delete(directMessageId)
     },
 
+    /**
+     * Mark a message as deleted (soft delete).
+     * Preserves the message in the list but marks it as deleted.
+     */
+    markAsDeleted(directMessageId: number, messageId: number) {
+      const cache = this.messageCache.get(directMessageId)
+      if (!cache) return
+
+      const message = cache.messages.find(m => m.id === messageId)
+      if (message) {
+        message.deleted = true
+        message.content = '[Message deleted]'
+        message.imageUrl = undefined
+        message.imageFilename = undefined
+        message.reactions = []
+      }
+    },
+
     removeMessage(directMessageId: number, messageId: number) {
       const cache = this.messageCache.get(directMessageId)
       if (!cache) return

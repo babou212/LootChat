@@ -261,6 +261,11 @@ public class DirectMessageService {
         
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
+
+        // Cannot react to deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot add reaction to a deleted message");
+        }
         
         if (!message.getDirectMessage().includesUser(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
@@ -328,6 +333,11 @@ public class DirectMessageService {
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
         
+        // Cannot edit deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot edit a deleted message");
+        }
+        
         if (!message.getSender().getId().equals(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Can only edit your own messages");
         }
@@ -348,6 +358,11 @@ public class DirectMessageService {
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
         
+        // Already deleted - idempotent operation
+        if (message.isDeleted()) {
+            return;
+        }
+        
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
@@ -358,12 +373,25 @@ public class DirectMessageService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
         }
         
+        // Delete reactions for this message
         directMessageReactionRepository.deleteByMessageId(messageId);
+        
+        // Delete image from S3 if present
+        if (message.getImageFilename() != null) {
+            s3FileStorageService.deleteFile(message.getImageFilename());
+        }
         
         Long directMessageId = message.getDirectMessage().getId();
         DirectMessage dm = message.getDirectMessage();
-        
-        directMessageMessageRepository.delete(message);
+
+        // Soft delete: mark as deleted and clear content
+        // This preserves reply chain integrity while hiding message content
+        message.setDeleted(true);
+        message.setDeletedAt(LocalDateTime.now());
+        message.setContent(""); // Clear original content for privacy
+        message.setImageUrl(null);
+        message.setImageFilename(null);
+        directMessageMessageRepository.save(message);
 
         evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
@@ -371,10 +399,39 @@ public class DirectMessageService {
     }
     
     private DirectMessageMessageResponse mapToDirectMessageMessageResponse(DirectMessageMessage message) {
+        // For deleted messages, return minimal info with placeholder content
+        if (message.isDeleted()) {
+            return DirectMessageMessageResponse.builder()
+                    .id(message.getId())
+                    .content("[Message deleted]")
+                    .senderId(message.getSender().getId())
+                    .senderUsername(message.getSender().getUsername())
+                    .senderAvatar(null) // Hide avatar for deleted messages
+                    .directMessageId(message.getDirectMessage().getId())
+                    .imageUrl(null)
+                    .imageFilename(null)
+                    .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                    .replyToUsername(message.getReplyToUsername())
+                    .replyToContent(message.getReplyToContent())
+                    .isRead(message.isRead())
+                    .edited(message.isEdited())
+                    .deleted(true)
+                    .createdAt(message.getCreatedAt())
+                    .updatedAt(message.getUpdatedAt())
+                    .reactions(new ArrayList<>()) // No reactions for deleted messages
+                    .build();
+        }
+
         List<DirectMessageReaction> reactions = directMessageReactionRepository.findByMessageId(message.getId());
         List<DirectMessageReactionResponse> reactionResponses = reactions.stream()
                 .map(this::mapToDirectMessageReactionResponse)
                 .collect(Collectors.toList());
+
+        // Check if this message replies to a deleted message
+        String replyToContent = message.getReplyToContent();
+        if (message.getReplyToMessage() != null && message.getReplyToMessage().isDeleted()) {
+            replyToContent = "[Message deleted]";
+        }
         
         return DirectMessageMessageResponse.builder()
                 .id(message.getId())
@@ -387,9 +444,10 @@ public class DirectMessageService {
                 .imageFilename(message.getImageFilename())
                 .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
                 .replyToUsername(message.getReplyToUsername())
-                .replyToContent(message.getReplyToContent())
+                .replyToContent(replyToContent)
                 .isRead(message.isRead())
                 .edited(message.isEdited())
+                .deleted(false)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .reactions(reactionResponses)

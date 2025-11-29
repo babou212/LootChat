@@ -30,4 +30,5 @@ public class MessageResponse {
     private Long replyToMessageId;
     private String replyToUsername;
     private String replyToContent;
+    private boolean deleted;
 }

@@ -445,7 +445,9 @@ const cancelReply = () => {
 
 const removeMessageById = (id: number) => {
   if (directMessagesStore.selectedDirectMessageId) {
-    directMessagesStore.removeMessage(directMessagesStore.selectedDirectMessageId, id)
+    // Soft delete: mark as deleted instead of removing
+    // This preserves reply chain context in the UI
+    directMessagesStore.markAsDeleted(directMessagesStore.selectedDirectMessageId, id)
   }
 }
 
