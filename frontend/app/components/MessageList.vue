@@ -134,10 +134,14 @@ const virtualizer = useVirtualizer({
     return props.messages.length
   },
   getScrollElement: () => messagesContainer.value,
-  estimateSize: () => 120,
+  estimateSize: () => 150, // Increased estimate for messages with media
   overscan: 5,
   getItemKey: index => props.messages[index]?.id || index,
-  scrollToFn
+  scrollToFn,
+  measureElement: (element) => {
+    // Measure actual element height for dynamic sizing
+    return element.getBoundingClientRect().height
+  }
 })
 
 const isNearBottom = () => {
@@ -702,6 +706,7 @@ watch(() => props.messages, async (newMessages) => {
         <div
           v-for="virtualRow in virtualRows"
           :key="virtualRow.index"
+          :ref="(el) => { if (el) virtualizer.measureElement(el as Element) }"
           :data-index="virtualRow.index"
           :style="{
             position: 'absolute',
