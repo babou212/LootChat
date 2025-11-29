@@ -233,16 +233,6 @@ const canEdit = (message: DirectMessageMessage) => {
   return String(message.senderId) === String(current.userId)
 }
 
-const canReact = (message: DirectMessageMessage) => {
-  // Cannot react to deleted messages
-  return !message.deleted
-}
-
-const canReply = (message: DirectMessageMessage) => {
-  // Cannot reply to deleted messages
-  return !message.deleted
-}
-
 const startEdit = (message: DirectMessageMessage) => {
   editingMessageId.value = message.id
   closeEmojiPicker()

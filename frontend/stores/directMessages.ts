@@ -269,6 +269,7 @@ export const useDirectMessagesStore = defineStore('directMessages', {
     /**
      * Mark a message as deleted (soft delete).
      * Preserves the message in the list but marks it as deleted.
+     * Also updates any messages that reply to this one.
      */
     markAsDeleted(directMessageId: number, messageId: number) {
       const cache = this.messageCache.get(directMessageId)
@@ -282,6 +283,13 @@ export const useDirectMessagesStore = defineStore('directMessages', {
         message.imageFilename = undefined
         message.reactions = []
       }
+
+      // Update any messages that reply to this deleted message
+      cache.messages.forEach((m) => {
+        if (m.replyToMessageId === messageId) {
+          m.replyToContent = '[Message deleted]'
+        }
+      })
     },
 
     removeMessage(directMessageId: number, messageId: number) {

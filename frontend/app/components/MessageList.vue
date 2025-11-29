@@ -316,16 +316,6 @@ const canEdit = (message: Message) => {
   return String(message.userId) === String(current.userId)
 }
 
-const canReact = (message: Message) => {
-  // Cannot react to deleted messages
-  return !message.deleted
-}
-
-const canReply = (message: Message) => {
-  // Cannot reply to deleted messages
-  return !message.deleted
-}
-
 const startEdit = (message: Message) => {
   editingMessageId.value = message.id
   closeEmojiPicker()
