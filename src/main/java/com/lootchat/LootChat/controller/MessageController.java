@@ -75,17 +75,17 @@ public class MessageController {
     @GetMapping("/search")
     public ResponseEntity<List<MessageDocument>> searchMessages(
             @RequestParam String query,
-            @RequestParam(required = false) Long channelId,
-            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) String  channelName,
+            @RequestParam(required = false) String  username,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
         List<MessageDocument> results;
 
-        if (channelId != null) {
-            results = messageSearchService.searchMessagesInChannel(channelId, query, page, size);
-        } else if (userId != null) {
-            results = messageSearchService.searchMessagesByUser(userId, query, page, size);
+        if (channelName != null) {
+            results = messageSearchService.searchMessagesInChannel(channelName, query, page, size);
+        } else if (username != null) {
+            results = messageSearchService.searchMessagesByUser(username, query, page, size);
         } else {
             results = messageSearchService.searchAllMessages(query, page, size);
         }

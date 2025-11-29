@@ -13,14 +13,15 @@ public interface MessageSearchRepository extends ElasticsearchRepository<Message
     Page<MessageDocument> findByContentContaining(String content, Pageable pageable);
 
     //search by channel
-    Page<MessageDocument> findByChannelIdAndContentContaining(Long channelId, String content, Pageable pageable);
+    Page<MessageDocument> findByChannelNameAndContentContaining(String channelName, String content, Pageable pageable);
 
     //search by user
-    Page<MessageDocument> findByUserIdAndContentContaining(Long userId, String content, Pageable pageable);
+    Page<MessageDocument> findByUsernameAndContentContaining(String username, String content, Pageable pageable);
 
     // find the OG messageID in database
     MessageDocument findByMessageId(Long messageId);
 
     // delete by message Id
     void deleteByMessageId(Long messageId);
+
 }
