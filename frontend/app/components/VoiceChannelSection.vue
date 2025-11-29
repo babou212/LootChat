@@ -302,9 +302,9 @@ const isUserSharing = (userId: string) => {
 
       <!-- Screen share indicator -->
       <div
-        v-if="hasActiveScreenShare"
+        v-if="hasActiveScreenShare && activeScreenShares[0]?.sharerId"
         class="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded flex items-center gap-2 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
-        @click="handleViewScreenShare(activeScreenShares[0]?.sharerId)"
+        @click="handleViewScreenShare(activeScreenShares[0].sharerId)"
       >
         <UIcon name="i-lucide-monitor" class="text-purple-600 dark:text-purple-400" />
         <span class="text-xs text-purple-700 dark:text-purple-300 truncate flex-1">
