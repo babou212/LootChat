@@ -51,7 +51,7 @@ public class CacheWarmer {
                     .limit(5)
                     .forEach(channel -> {
                         try {
-                            messageService.getMessagesByChannelIdPaginated(channel.getId(), 0, 50);
+                            messageService.getMessagesByChannelIdCursor(channel.getId(), null, 50);
                         } catch (Exception e) {
                             log.warn("Failed to warm message cache for channel {}: {}", 
                                     channel.getId(), e.getMessage());

@@ -251,17 +251,35 @@ public class MessageService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Cursor-based pagination for infinite scroll.
+     * Fetches messages older than the given message ID.
+     * 
+     * @param channelId the channel to fetch messages from
+     * @param beforeId fetch messages with ID less than this (null for initial load = newest messages)
+     * @param size number of messages to fetch
+     * @return messages ordered oldest to newest (for chat display)
+     */
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "channelMessagesPaginated", key = "'channel:' + #channelId + ':page:' + #page + ':size:' + #size")
-    public List<MessageResponse> getMessagesByChannelIdPaginated(Long channelId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Message> messagePage = messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId, pageable);
-        List<MessageResponse> messages = messagePage.getContent().stream()
+    @Cacheable(cacheNames = "channelMessagesCursor", key = "'channel:' + #channelId + ':before:' + #beforeId + ':size:' + #size", condition = "#beforeId != null")
+    public List<MessageResponse> getMessagesByChannelIdCursor(Long channelId, Long beforeId, int size) {
+        List<Message> messages;
+        
+        if (beforeId == null) {
+            Pageable pageable = PageRequest.of(0, size, Sort.by(Sort.Direction.DESC, "id"));
+            Page<Message> messagePage = messageRepository.findByChannelIdOrderByCreatedAtDesc(channelId, pageable);
+            messages = messagePage.getContent();
+        } else {
+            Pageable pageable = PageRequest.of(0, size);
+            messages = messageRepository.findByChannelIdAndIdLessThanOrderByIdDesc(channelId, beforeId, pageable);
+        }
+        
+        List<MessageResponse> result = messages.stream()
                 .map(this::mapToMessageResponse)
                 .collect(Collectors.toList());
 
-        java.util.Collections.reverse(messages);
-        return messages;
+        java.util.Collections.reverse(result);
+        return result;
     }
 
     @Transactional(readOnly = true)

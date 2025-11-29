@@ -9,6 +9,7 @@ import type { UserPresence } from '~/components/UserPanel.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useAvatarStore } from '../../stores/avatars'
 import { useUserPresenceStore } from '../../stores/userPresence'
+import { useVirtualizer, elementScroll, type VirtualizerOptions } from '@tanstack/vue-virtual'
 
 interface Props {
   messages: Message[]
@@ -91,7 +92,54 @@ const getLoadedImageUrl = (imageUrl: string): string => {
 const messagesContainer = ref<HTMLElement | null>(null)
 const bottomAnchor = ref<HTMLElement | null>(null)
 
-// Simple native implementation - check if user is near bottom
+const easeInOutQuint = (t: number) => {
+  return t < 0.5 ? 16 * t * t * t * t * t : 1 + 16 * --t * t * t * t * t
+}
+
+const scrollingRef = ref<number>()
+
+const scrollToFn: VirtualizerOptions<HTMLElement, Element>['scrollToFn'] = (
+  offset,
+  options,
+  instance
+) => {
+  if (options.behavior !== 'smooth') {
+    elementScroll(offset, options, instance)
+    return
+  }
+
+  const duration = 500
+  const start = messagesContainer.value?.scrollTop || 0
+  const startTime = (scrollingRef.value = Date.now())
+
+  const run = () => {
+    if (scrollingRef.value !== startTime) return
+    const now = Date.now()
+    const elapsed = now - startTime
+    const progress = easeInOutQuint(Math.min(elapsed / duration, 1))
+    const interpolated = start + (offset - start) * progress
+
+    if (elapsed < duration) {
+      elementScroll(interpolated, options, instance)
+      requestAnimationFrame(run)
+    } else {
+      elementScroll(offset, options, instance)
+    }
+  }
+  requestAnimationFrame(run)
+}
+
+const virtualizer = useVirtualizer({
+  get count() {
+    return props.messages.length
+  },
+  getScrollElement: () => messagesContainer.value,
+  estimateSize: () => 120,
+  overscan: 5,
+  getItemKey: index => props.messages[index]?.id || index,
+  scrollToFn
+})
+
 const isNearBottom = () => {
   const container = messagesContainer.value
   if (!container) return false
@@ -99,30 +147,30 @@ const isNearBottom = () => {
   return container.scrollHeight - container.scrollTop - container.clientHeight < threshold
 }
 
-const scrollToBottom = () => {
-  const container = messagesContainer.value
-  if (!container) return
-  container.scrollTop = container.scrollHeight
+const scrollToBottom = (smooth = false) => {
+  if (props.messages.length === 0) return
+  virtualizer.value.scrollToIndex(props.messages.length - 1, {
+    align: 'end',
+    behavior: smooth ? 'smooth' : 'auto'
+  })
 }
 
 const scrollToBottomWhenReady = async () => {
   const container = messagesContainer.value
   if (!container) return
 
-  // Wait for images to load
   const images = container.querySelectorAll('img')
   const imagePromises = Array.from(images).map((img) => {
     if (img.complete) return Promise.resolve()
     return new Promise((resolve) => {
       img.onload = resolve
       img.onerror = resolve
-      setTimeout(resolve, 500) // Max wait 500ms per image
+      setTimeout(resolve, 500)
     })
   })
 
   await Promise.all(imagePromises)
 
-  // Small delay for final layout
   await new Promise(resolve => setTimeout(resolve, 50))
 
   scrollToBottom()
@@ -191,11 +239,18 @@ const closeEmojiPicker = () => {
 useClickAway(emojiPickerRef, closeEmojiPicker)
 
 const isLoadingMore = ref(false)
-const lastScrollTop = ref(0)
 const previousScrollHeight = ref(0)
-const scrollAnchorDistance = ref(0) // Distance from bottom before load
+const scrollAnchorDistance = ref(0)
 
-const handleMessagesScroll = () => {
+const virtualRows = computed(() => virtualizer.value.getVirtualItems())
+
+const getMessage = (virtualIndex: number) => {
+  return props.messages[virtualIndex]
+}
+
+const hasInitiallyScrolled = ref(false)
+
+const handleScroll = () => {
   if (activeEmojiPicker.value !== null) {
     closeEmojiPicker()
   }
@@ -203,18 +258,18 @@ const handleMessagesScroll = () => {
   const container = messagesContainer.value
   if (!container) return
 
+  if (!hasInitiallyScrolled.value) return
+
   const scrollTop = container.scrollTop
-  const scrollHeight = container.scrollHeight
-  const clientHeight = container.clientHeight
+  const threshold = 200
 
-  // Calculate distance from top
-  const distanceFromTop = scrollTop
-
-  // Trigger load when user scrolls near the top (within 800px) - load before user sees the top
-  if (distanceFromTop < 800 && props.hasMore && !props.loadingMore && !isLoadingMore.value) {
-    // Store the current scroll position relative to the bottom
-    scrollAnchorDistance.value = scrollHeight - scrollTop - clientHeight
-    previousScrollHeight.value = scrollHeight
+  if (
+    scrollTop < threshold
+    && props.hasMore
+    && !props.loadingMore
+    && !isLoadingMore.value
+  ) {
+    previousScrollHeight.value = container.scrollHeight
 
     isLoadingMore.value = true
     emit('load-more')
@@ -223,24 +278,20 @@ const handleMessagesScroll = () => {
       isLoadingMore.value = false
     }, 500)
   }
-
-  lastScrollTop.value = scrollTop
 }
 
 onMounted(() => {
-  if (messagesContainer.value) {
-    messagesContainer.value.addEventListener('scroll', handleMessagesScroll, { passive: true } as AddEventListenerOptions)
-  }
-
   window.addEventListener('keydown', handleKeyDown)
+  if (messagesContainer.value) {
+    messagesContainer.value.addEventListener('scroll', handleScroll, { passive: true })
+  }
 })
 
 onUnmounted(() => {
-  if (messagesContainer.value) {
-    messagesContainer.value.removeEventListener('scroll', handleMessagesScroll)
-  }
-
   window.removeEventListener('keydown', handleKeyDown)
+  if (messagesContainer.value) {
+    messagesContainer.value.removeEventListener('scroll', handleScroll)
+  }
 })
 
 const canDelete = (message: Message) => {
@@ -534,13 +585,17 @@ const contentWithoutMedia = (text: string): string => {
     .trim()
 }
 
-const hasInitiallyScrolled = ref(false)
+// Track the channel we're showing messages for to detect channel switches
+const currentChannelId = ref<number | null>(null)
 
-// Watch for channel switches by detecting when messages array reference changes
-watch(() => props.messages, (newMessages, oldMessages) => {
-  // If it's a different array reference (channel switch), reset scroll state
-  if (newMessages !== oldMessages && newMessages.length > 0) {
+// Watch for channel switches by detecting first message's channel ID changing
+watch(() => props.messages[0]?.channelId, (newChannelId, oldChannelId) => {
+  if (newChannelId && oldChannelId && newChannelId !== oldChannelId) {
     hasInitiallyScrolled.value = false
+    previousScrollHeight.value = 0
+    currentChannelId.value = newChannelId
+  } else if (newChannelId && !currentChannelId.value) {
+    currentChannelId.value = newChannelId
   }
 }, { flush: 'sync' })
 
@@ -563,20 +618,17 @@ watch(() => props.messages.length, (newLength, oldLength) => {
       return
     }
 
-    // Loading older messages (scrolling up) - maintain scroll position
-    if (props.loadingMore === false && newLength > oldLength && previousScrollHeight.value > 0) {
+    if (newLength > oldLength && previousScrollHeight.value > 0) {
       const newScrollHeight = container.scrollHeight
       const heightDifference = newScrollHeight - previousScrollHeight.value
 
-      // Restore scroll position by adding the height difference
-      container.scrollTop = heightDifference
+      container.scrollTop = container.scrollTop + heightDifference
 
       previousScrollHeight.value = 0
       scrollAnchorDistance.value = 0
       return
     }
 
-    // New messages coming in - scroll if user was at bottom
     if (newLength > oldLength && oldLength > 0 && !props.loadingMore) {
       if (isNearBottom()) {
         scrollToBottomWhenReady()
@@ -587,7 +639,6 @@ watch(() => props.messages.length, (newLength, oldLength) => {
 
 watch(() => props.loading, (isLoading, wasLoading) => {
   if (!isLoading && wasLoading && props.messages.length > 0) {
-    // Always scroll to bottom when loading finishes
     scrollToBottomWhenReady()
     hasInitiallyScrolled.value = true
   }
@@ -605,7 +656,7 @@ watch(() => props.messages, async (newMessages) => {
 <template>
   <div
     ref="messagesContainer"
-    class="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide"
+    class="flex-1 overflow-y-auto p-6 scrollbar-hide"
   >
     <div
       v-if="loading"
@@ -640,170 +691,192 @@ watch(() => props.messages, async (newMessages) => {
     </div>
 
     <template v-else>
+      <!-- Virtual scrolling container -->
       <div
-        v-for="message in messages"
-        :key="message.id"
-        :data-message-id="message.id"
-        class="flex gap-4 group relative p-2 -m-2 rounded-lg"
-        :class="{ 'opacity-60': isOptimistic(message) }"
+        :style="{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative'
+        }"
       >
-        <UAvatar
-          :src="getLoadedAvatarUrl(message.userId)"
-          :alt="message.username"
-          size="md"
-        />
-        <div class="flex-1 min-w-0">
-          <div class="flex items-baseline gap-2 mb-1">
-            <UPopover
-              v-if="message.userId !== authStore.user?.userId?.toString()"
-              :popper="{ placement: 'right', offsetDistance: 8 }"
-            >
-              <button
-                class="font-semibold text-gray-900 dark:text-white hover:underline cursor-pointer"
-              >
-                {{ message.username }}
-              </button>
-              <template #content>
-                <UserProfileCard :user="getUserPresence(message)" />
-              </template>
-            </UPopover>
-            <span
-              v-else
-              class="font-semibold text-gray-900 dark:text-white"
-            >
-              {{ message.username }}
-            </span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-              {{ formatTime(message.timestamp) }}
-            </span>
-            <span v-if="isOptimistic(message)" class="text-xs text-gray-400 dark:text-gray-500 italic">
-              (sending...)
-            </span>
-            <span v-else-if="message.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
-              (edited)
-            </span>
-          </div>
-
-          <MessageEditor
-            v-if="editingMessageId === message.id"
-            :message-id="message.id"
-            :initial-content="contentWithoutMedia(message.content) || message.content"
-            @save="saveEdit"
-            @cancel="cancelEdit"
-          />
-
-          <template v-else>
+        <div
+          v-for="virtualRow in virtualRows"
+          :key="virtualRow.index"
+          :data-index="virtualRow.index"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${virtualRow.start}px)`
+          }"
+        >
+          <template v-if="getMessage(virtualRow.index)">
             <div
-              v-if="message.replyToMessageId"
-              class="mb-2 pl-3 border-l-2 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-r p-2 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-              @click="scrollToMessage(message.replyToMessageId)"
+              :data-message-id="getMessage(virtualRow.index)!.id"
+              class="flex gap-4 group relative p-2 -m-2 rounded-lg mb-4"
+              :class="{ 'opacity-60': isOptimistic(getMessage(virtualRow.index)!) }"
             >
-              <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
-                <UIcon name="i-lucide-corner-down-right" class="w-3 h-3" />
-                <span class="font-semibold">{{ message.replyToUsername }}</span>
-              </div>
-              <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-                {{ message.replyToContent }}
-              </p>
-            </div>
+              <UAvatar
+                :src="getLoadedAvatarUrl(getMessage(virtualRow.index)!.userId)"
+                :alt="getMessage(virtualRow.index)!.username"
+                size="md"
+              />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-2 mb-1">
+                  <UPopover
+                    v-if="getMessage(virtualRow.index)!.userId !== authStore.user?.userId?.toString()"
+                    :popper="{ placement: 'right', offsetDistance: 8 }"
+                  >
+                    <button
+                      class="font-semibold text-gray-900 dark:text-white hover:underline cursor-pointer"
+                    >
+                      {{ getMessage(virtualRow.index)!.username }}
+                    </button>
+                    <template #content>
+                      <UserProfileCard :user="getUserPresence(getMessage(virtualRow.index)!)" />
+                    </template>
+                  </UPopover>
+                  <span
+                    v-else
+                    class="font-semibold text-gray-900 dark:text-white"
+                  >
+                    {{ getMessage(virtualRow.index)!.username }}
+                  </span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatTime(getMessage(virtualRow.index)!.timestamp) }}
+                  </span>
+                  <span v-if="isOptimistic(getMessage(virtualRow.index)!)" class="text-xs text-gray-400 dark:text-gray-500 italic">
+                    (sending...)
+                  </span>
+                  <span v-else-if="getMessage(virtualRow.index)!.edited" class="text-xs text-gray-400 dark:text-gray-500 italic">
+                    (edited)
+                  </span>
+                </div>
 
-            <p class="text-gray-700 dark:text-gray-300 wrap-break-word whitespace-pre-wrap max-w-full">
-              {{ contentWithoutMedia(message.content) || message.content }}
-            </p>
+                <MessageEditor
+                  v-if="editingMessageId === getMessage(virtualRow.index)!.id"
+                  :message-id="getMessage(virtualRow.index)!.id"
+                  :initial-content="contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content"
+                  @save="saveEdit"
+                  @cancel="cancelEdit"
+                />
+
+                <template v-else>
+                  <div
+                    v-if="getMessage(virtualRow.index)!.replyToMessageId"
+                    class="mb-2 pl-3 border-l-2 border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-r p-2 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                    @click="scrollToMessage(getMessage(virtualRow.index)!.replyToMessageId!)"
+                  >
+                    <div class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 mb-1">
+                      <UIcon name="i-lucide-corner-down-right" class="w-3 h-3" />
+                      <span class="font-semibold">{{ getMessage(virtualRow.index)!.replyToUsername }}</span>
+                    </div>
+                    <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                      {{ getMessage(virtualRow.index)!.replyToContent }}
+                    </p>
+                  </div>
+
+                  <p class="text-gray-700 dark:text-gray-300 wrap-break-word whitespace-pre-wrap max-w-full">
+                    {{ contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content }}
+                  </p>
+                </template>
+
+                <NuxtImg
+                  v-if="getMessage(virtualRow.index)!.imageUrl && getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                  :src="getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                  :alt="getMessage(virtualRow.index)!.imageFilename || 'Uploaded image'"
+                  class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
+                  loading="lazy"
+                  width="448"
+                  height="auto"
+                  @click="openImageModal(getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!), getMessage(virtualRow.index)!.imageFilename || 'Uploaded image')"
+                />
+
+                <YouTubePlayer
+                  v-if="firstYouTubeFrom(getMessage(virtualRow.index)!.content)"
+                  :url="firstYouTubeFrom(getMessage(virtualRow.index)!.content) as string"
+                />
+                <NuxtImg
+                  v-if="firstGifFrom(getMessage(virtualRow.index)!.content)"
+                  :src="firstGifFrom(getMessage(virtualRow.index)!.content) as string"
+                  alt="gif"
+                  class="mt-2 rounded max-w-xs"
+                  loading="lazy"
+                  width="320"
+                  height="auto"
+                />
+
+                <div class="flex items-center gap-2 mt-2 flex-wrap">
+                  <button
+                    v-for="reactionGroup in groupReactions(getMessage(virtualRow.index)!.reactions)"
+                    :key="reactionGroup.emoji"
+                    type="button"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm transition-colors"
+                    :class="hasUserReacted(reactionGroup.userIds)
+                      ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
+                      : 'bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'"
+                    :title="reactionGroup.usernames.join(', ')"
+                    :disabled="isOptimistic(getMessage(virtualRow.index)!)"
+                    @click="handleReactionClick(getMessage(virtualRow.index)!.id, reactionGroup.emoji)"
+                  >
+                    <span>{{ reactionGroup.emoji }}</span>
+                    <span class="text-xs font-medium">{{ reactionGroup.count }}</span>
+                  </button>
+
+                  <div v-if="!isOptimistic(getMessage(virtualRow.index)!)" class="relative">
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+                      :class="{ 'opacity-100': activeEmojiPicker === getMessage(virtualRow.index)!.id }"
+                      @click="(e) => toggleEmojiPicker(getMessage(virtualRow.index)!.id, e)"
+                    >
+                      <span class="text-lg">+</span>
+                    </button>
+
+                    <div
+                      v-if="activeEmojiPicker === getMessage(virtualRow.index)!.id"
+                      ref="emojiPickerRef"
+                      class="absolute left-0 z-10"
+                      :class="openEmojiUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+                    >
+                      <EmojiPicker @select="(emoji: string) => handleEmojiSelect(getMessage(virtualRow.index)!.id, emoji)" />
+                    </div>
+                  </div>
+
+                  <button
+                    v-if="canEdit(getMessage(virtualRow.index)!) && editingMessageId !== getMessage(virtualRow.index)!.id && !isOptimistic(getMessage(virtualRow.index)!)"
+                    type="button"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Edit message"
+                    @click="startEdit(getMessage(virtualRow.index)!)"
+                  >
+                    <UIcon name="i-lucide-pencil" class="text-gray-600 dark:text-gray-300" />
+                  </button>
+
+                  <button
+                    v-if="!isOptimistic(getMessage(virtualRow.index)!)"
+                    type="button"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Reply to message"
+                    @click="handleReplyClick(getMessage(virtualRow.index)!)"
+                  >
+                    <UIcon name="i-lucide-reply" class="text-gray-600 dark:text-gray-300" />
+                  </button>
+
+                  <button
+                    v-if="canDelete(getMessage(virtualRow.index)!) && !isOptimistic(getMessage(virtualRow.index)!)"
+                    type="button"
+                    class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Delete message"
+                    @click="handleDeleteMessage(getMessage(virtualRow.index)!)"
+                  >
+                    <UIcon name="i-lucide-trash-2" class="text-red-600 dark:text-red-300" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </template>
-
-          <NuxtImg
-            v-if="message.imageUrl && getLoadedImageUrl(message.imageUrl)"
-            :src="getLoadedImageUrl(message.imageUrl)"
-            :alt="message.imageFilename || 'Uploaded image'"
-            class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
-            loading="lazy"
-            width="448"
-            height="auto"
-            @click="openImageModal(getLoadedImageUrl(message.imageUrl), message.imageFilename || 'Uploaded image')"
-          />
-
-          <YouTubePlayer
-            v-if="firstYouTubeFrom(message.content)"
-            :url="firstYouTubeFrom(message.content) as string"
-          />
-          <NuxtImg
-            v-if="firstGifFrom(message.content)"
-            :src="firstGifFrom(message.content) as string"
-            alt="gif"
-            class="mt-2 rounded max-w-xs"
-            loading="lazy"
-            width="320"
-            height="auto"
-          />
-
-          <div class="flex items-center gap-2 mt-2 flex-wrap">
-            <button
-              v-for="reactionGroup in groupReactions(message.reactions)"
-              :key="reactionGroup.emoji"
-              type="button"
-              class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm transition-colors"
-              :class="hasUserReacted(reactionGroup.userIds)
-                ? 'bg-blue-100 dark:bg-blue-900 border border-blue-300 dark:border-blue-700'
-                : 'bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'"
-              :title="reactionGroup.usernames.join(', ')"
-              :disabled="isOptimistic(message)"
-              @click="handleReactionClick(message.id, reactionGroup.emoji)"
-            >
-              <span>{{ reactionGroup.emoji }}</span>
-              <span class="text-xs font-medium">{{ reactionGroup.count }}</span>
-            </button>
-
-            <div v-if="!isOptimistic(message)" class="relative">
-              <button
-                type="button"
-                class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
-                :class="{ 'opacity-100': activeEmojiPicker === message.id }"
-                @click="(e) => toggleEmojiPicker(message.id, e)"
-              >
-                <span class="text-lg">+</span>
-              </button>
-
-              <div
-                v-if="activeEmojiPicker === message.id"
-                ref="emojiPickerRef"
-                class="absolute left-0 z-10"
-                :class="openEmojiUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
-              >
-                <EmojiPicker @select="(emoji: string) => handleEmojiSelect(message.id, emoji)" />
-              </div>
-            </div>
-
-            <button
-              v-if="canEdit(message) && editingMessageId !== message.id && !isOptimistic(message)"
-              type="button"
-              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
-              title="Edit message"
-              @click="startEdit(message)"
-            >
-              <UIcon name="i-lucide-pencil" class="text-gray-600 dark:text-gray-300" />
-            </button>
-
-            <button
-              v-if="!isOptimistic(message)"
-              type="button"
-              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
-              title="Reply to message"
-              @click="handleReplyClick(message)"
-            >
-              <UIcon name="i-lucide-reply" class="text-gray-600 dark:text-gray-300" />
-            </button>
-
-            <button
-              v-if="canDelete(message) && !isOptimistic(message)"
-              type="button"
-              class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
-              title="Delete message"
-              @click="handleDeleteMessage(message)"
-            >
-              <UIcon name="i-lucide-trash-2" class="text-red-600 dark:text-red-300" />
-            </button>
-          </div>
         </div>
       </div>
     </template>

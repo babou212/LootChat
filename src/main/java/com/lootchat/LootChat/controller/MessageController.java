@@ -44,11 +44,12 @@ public class MessageController {
     @GetMapping
     public ResponseEntity<List<MessageResponse>> getAllMessages(
             @RequestParam(required = false) Long channelId,
-            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Long before,
             @RequestParam(required = false) Integer size) {
         List<MessageResponse> messages;
-        if (channelId != null && page != null && size != null) {
-            messages = messageService.getMessagesByChannelIdPaginated(channelId, page, size);
+        
+        if (channelId != null && size != null) {
+            messages = messageService.getMessagesByChannelIdCursor(channelId, before, size);
         } else if (channelId != null) {
             messages = messageService.getMessagesByChannelId(channelId);
         } else {
