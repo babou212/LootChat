@@ -1,5 +1,13 @@
 import type { LoginRequest, User } from '../../shared/types/user'
 import { useAuthStore } from '../../stores/auth'
+import { useChannelsStore } from '../../stores/channels'
+import { useMessagesStore } from '../../stores/messages'
+import { useDirectMessagesStore } from '../../stores/directMessages'
+import { useUsersStore } from '../../stores/users'
+import { useUserPresenceStore } from '../../stores/userPresence'
+import { useAvatarStore } from '../../stores/avatars'
+import { useComposerStore } from '../../stores/composer'
+import { useWebSocketStore } from '../../stores/websocket'
 
 /**
  * Authentication composable using nuxt-auth-utils
@@ -56,16 +64,63 @@ export const useAuth = () => {
 
       await clear()
 
-      authStore.clear()
+      // Clear all application stores and caches
+      clearAllStores()
 
       error.value = null
     } catch (err) {
       console.error('Logout error:', err)
       await clear()
-      authStore.clear()
+      // Still clear stores even on error
+      clearAllStores()
     } finally {
       loading.value = false
     }
+  }
+
+  /**
+   * Clear all application stores and caches on logout.
+   * This ensures no user data persists after logout.
+   */
+  const clearAllStores = () => {
+    // Get all store instances
+    const channelsStore = useChannelsStore()
+    const messagesStore = useMessagesStore()
+    const directMessagesStore = useDirectMessagesStore()
+    const usersStore = useUsersStore()
+    const userPresenceStore = useUserPresenceStore()
+    const avatarStore = useAvatarStore()
+    const composerStore = useComposerStore()
+    const websocketStore = useWebSocketStore()
+
+    // Clear auth store
+    authStore.clear()
+
+    // Clear channels and unread state
+    channelsStore.clearChannels()
+    channelsStore.resetUnreadState()
+
+    // Clear message caches
+    messagesStore.clearAllCaches()
+
+    // Clear direct messages
+    directMessagesStore.clearAll()
+
+    // Clear users
+    usersStore.clearUsers()
+
+    // Clear user presence
+    userPresenceStore.clearPresence()
+
+    // Clear avatar cache
+    avatarStore.clearAvatars()
+
+    // Reset composer
+    composerStore.reset()
+
+    // Disconnect and reset WebSocket
+    websocketStore.disconnect()
+    websocketStore.reset()
   }
 
   const restore = async () => {

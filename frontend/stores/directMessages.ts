@@ -339,6 +339,18 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       if (updates.edited !== undefined) {
         message.edited = updates.edited
       }
+    },
+
+    /**
+     * Clear all direct messages state.
+     * Called on logout to ensure clean state.
+     */
+    clearAll() {
+      this.directMessages = []
+      this.messageCache.clear()
+      this.selectedDirectMessageId = null
+      this.loading = false
+      this.error = null
     }
   }
 })
