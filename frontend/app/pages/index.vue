@@ -65,11 +65,6 @@ const hasMoreMessages = computed(() => {
   return messagesStore.hasMoreMessages(selectedChannel.value.id)
 })
 
-const currentPage = computed(() => {
-  if (!selectedChannel.value) return 0
-  return messagesStore.getCurrentPage(selectedChannel.value.id)
-})
-
 const loadingMoreMessages = ref(false)
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -172,7 +167,7 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
   }
 }
 
-const fetchMessages = async (append = false) => {
+const fetchMessages = async (loadOlder = false) => {
   try {
     if (!user.value) {
       return navigateTo('/login')
@@ -183,13 +178,14 @@ const fetchMessages = async (append = false) => {
       return
     }
 
-    if (!append) {
+    if (!loadOlder) {
       loading.value = true
     } else {
       loadingMoreMessages.value = true
     }
 
-    const page = append ? currentPage.value + 1 : 0
+    // page=0 for initial load, page=1 signals "load older" (cursor-based)
+    const page = loadOlder ? 1 : 0
     await messagesStore.fetchMessages(channelId, page)
 
     loading.value = false

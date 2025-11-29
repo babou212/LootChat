@@ -24,6 +24,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     
     Page<Message> findByChannelIdOrderByCreatedAtDesc(Long channelId, Pageable pageable);
     
+    List<Message> findByChannelIdAndIdLessThanOrderByIdDesc(Long channelId, Long beforeId, Pageable pageable);
+    
     List<Message> findByChannelIdAndUserIdOrderByCreatedAtDesc(Long channelId, Long userId);
     
     @Query("SELECT m FROM Message m LEFT JOIN FETCH m.user LEFT JOIN FETCH m.channel WHERE m.id = :id")

@@ -14,9 +14,9 @@ export const useMessages = (channelId: Ref<number | null> | number | null = null
     return id ? store.hasMoreMessages(id) : true
   })
 
-  const currentPage = computed(() => {
+  const oldestMessageId = computed(() => {
     const id = unref(channelId)
-    return id ? store.getCurrentPage(id) : 0
+    return id ? store.getOldestMessageId(id) : null
   })
 
   const isCacheValid = computed(() => {
@@ -29,10 +29,17 @@ export const useMessages = (channelId: Ref<number | null> | number | null = null
     return id ? store.hasCachedMessages(id) : false
   })
 
-  const fetchMessages = async (page = 0, forceRefresh = false) => {
+  const fetchMessages = async (loadOlder = false, forceRefresh = false) => {
     const id = unref(channelId)
     if (!id) throw new Error('Channel ID is required')
-    return await store.fetchMessages(id, page, forceRefresh)
+    // page=0 for initial, page=1 signals cursor-based "load older"
+    return await store.fetchMessages(id, loadOlder ? 1 : 0, forceRefresh)
+  }
+
+  const fetchOlderMessages = async () => {
+    const id = unref(channelId)
+    if (!id) throw new Error('Channel ID is required')
+    return await store.fetchMessages(id, 1, false)
   }
 
   const addMessage = (message: Message) => {
@@ -99,10 +106,11 @@ export const useMessages = (channelId: Ref<number | null> | number | null = null
     // State
     messages,
     hasMore,
-    currentPage,
+    oldestMessageId,
     isCacheValid,
     hasCached,
     fetchMessages,
+    fetchOlderMessages,
     addMessage,
     updateMessage,
     removeMessage,

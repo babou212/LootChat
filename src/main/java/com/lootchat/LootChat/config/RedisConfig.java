@@ -24,7 +24,6 @@ public class RedisConfig {
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory, ObjectMapper objectMapper) {
         ObjectMapper redisObjectMapper = objectMapper.copy().findAndRegisterModules();
         
-        // Enable type information to prevent LinkedHashMap deserialization issues
         PolymorphicTypeValidator typeValidator = BasicPolymorphicTypeValidator.builder()
                 .allowIfBaseType(Object.class)
                 .build();
@@ -49,7 +48,7 @@ public class RedisConfig {
             Map.entry("channel", cacheConfig),
             
             Map.entry("channelMessages", cacheConfig),
-            Map.entry("channelMessagesPaginated", cacheConfig),
+            Map.entry("channelMessagesCursor", cacheConfig),  // Cursor-based pagination cache
             Map.entry("message", cacheConfig),
             
             Map.entry("directMessages", cacheConfig),
