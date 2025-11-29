@@ -220,12 +220,16 @@ watch(() => props.messages, (newMessages) => {
 const canDelete = (message: DirectMessageMessage) => {
   const current = authStore.user
   if (!current) return false
+  // Cannot delete already deleted messages
+  if (message.deleted) return false
   return String(message.senderId) === String(current.userId)
 }
 
 const canEdit = (message: DirectMessageMessage) => {
   const current = authStore.user
   if (!current) return false
+  // Cannot edit deleted messages
+  if (message.deleted) return false
   return String(message.senderId) === String(current.userId)
 }
 
@@ -642,13 +646,20 @@ onUnmounted(() => {
             <div
               :data-message-id="getMessage(virtualRow.index)!.id"
               class="flex gap-4 group relative p-2 -m-2 rounded-lg mb-4"
-              :class="{ 'opacity-60': isOptimistic(getMessage(virtualRow.index)!) }"
+              :class="{
+                'opacity-60': isOptimistic(getMessage(virtualRow.index)!),
+                'opacity-50 bg-gray-50 dark:bg-gray-800/50': getMessage(virtualRow.index)!.deleted
+              }"
             >
               <UAvatar
+                v-if="!getMessage(virtualRow.index)!.deleted"
                 :src="getLoadedAvatarUrl(getMessage(virtualRow.index)!.senderId)"
                 :alt="getMessage(virtualRow.index)!.senderUsername"
                 size="md"
               />
+              <div v-else class="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
+                <UIcon name="i-lucide-trash-2" class="text-gray-500 dark:text-gray-400" />
+              </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-2 mb-1">
                   <span class="font-semibold text-gray-900 dark:text-white">
@@ -663,12 +674,17 @@ onUnmounted(() => {
                 </div>
 
                 <MessageEditor
-                  v-if="editingMessageId === getMessage(virtualRow.index)!.id"
+                  v-if="editingMessageId === getMessage(virtualRow.index)!.id && !getMessage(virtualRow.index)!.deleted"
                   :message-id="getMessage(virtualRow.index)!.id"
                   :initial-content="contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content"
                   @save="saveEdit"
                   @cancel="cancelEdit"
                 />
+
+                <!-- Deleted message placeholder -->
+                <p v-else-if="getMessage(virtualRow.index)!.deleted" class="text-gray-500 dark:text-gray-400 italic">
+                  [Message deleted]
+                </p>
 
                 <template v-else>
                   <div
@@ -690,32 +706,36 @@ onUnmounted(() => {
                   </p>
                 </template>
 
-                <NuxtImg
-                  v-if="getMessage(virtualRow.index)!.imageUrl && getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
-                  :src="getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
-                  :alt="getMessage(virtualRow.index)!.imageFilename || 'Uploaded image'"
-                  class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
-                  loading="lazy"
-                  width="448"
-                  height="auto"
-                  @click="openImageModal(getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!), getMessage(virtualRow.index)!.imageFilename || 'Uploaded image')"
-                />
+                <!-- Only show media for non-deleted messages -->
+                <template v-if="!getMessage(virtualRow.index)!.deleted">
+                  <NuxtImg
+                    v-if="getMessage(virtualRow.index)!.imageUrl && getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                    :src="getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                    :alt="getMessage(virtualRow.index)!.imageFilename || 'Uploaded image'"
+                    class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+                    loading="lazy"
+                    width="448"
+                    height="auto"
+                    @click="openImageModal(getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!), getMessage(virtualRow.index)!.imageFilename || 'Uploaded image')"
+                  />
 
-                <YouTubePlayer
-                  v-if="firstYouTubeFrom(getMessage(virtualRow.index)!.content)"
-                  :url="firstYouTubeFrom(getMessage(virtualRow.index)!.content) as string"
-                />
-                <NuxtImg
-                  v-if="firstGifFrom(getMessage(virtualRow.index)!.content)"
-                  :src="firstGifFrom(getMessage(virtualRow.index)!.content) as string"
-                  alt="gif"
-                  class="mt-2 rounded max-w-xs"
-                  loading="lazy"
-                  width="320"
-                  height="auto"
-                />
+                  <YouTubePlayer
+                    v-if="firstYouTubeFrom(getMessage(virtualRow.index)!.content)"
+                    :url="firstYouTubeFrom(getMessage(virtualRow.index)!.content) as string"
+                  />
+                  <NuxtImg
+                    v-if="firstGifFrom(getMessage(virtualRow.index)!.content)"
+                    :src="firstGifFrom(getMessage(virtualRow.index)!.content) as string"
+                    alt="gif"
+                    class="mt-2 rounded max-w-xs"
+                    loading="lazy"
+                    width="320"
+                    height="auto"
+                  />
+                </template>
 
-                <div class="flex items-center gap-2 mt-2 flex-wrap">
+                <!-- Only show reactions and actions for non-deleted messages -->
+                <div v-if="!getMessage(virtualRow.index)!.deleted" class="flex items-center gap-2 mt-2 flex-wrap">
                   <button
                     v-for="reactionGroup in groupReactions(getMessage(virtualRow.index)!.reactions)"
                     :key="reactionGroup.emoji"

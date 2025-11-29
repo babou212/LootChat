@@ -36,6 +36,7 @@ export interface Message {
   replyToMessageId?: number
   replyToUsername?: string
   replyToContent?: string
+  deleted?: boolean
 }
 
 export enum WebRTCSignalType {

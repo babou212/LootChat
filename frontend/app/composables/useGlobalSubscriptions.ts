@@ -24,7 +24,9 @@ export const useGlobalSubscriptions = () => {
     globalMessageDeletionSubscription = subscribeToGlobalMessageDeletions((payload) => {
       if (!payload) return
       if (selectedChannelId.value && payload.channelId === selectedChannelId.value) {
-        messagesStore.removeMessage(selectedChannelId.value, payload.id)
+        // Soft delete: mark as deleted instead of removing
+        // This preserves reply chain context
+        messagesStore.markAsDeleted(selectedChannelId.value, payload.id)
       }
     })
 

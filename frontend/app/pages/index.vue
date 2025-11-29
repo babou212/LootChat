@@ -205,7 +205,9 @@ const loadMoreMessages = async () => {
 
 const removeMessageById = (id: number) => {
   if (selectedChannel.value) {
-    messagesStore.removeMessage(selectedChannel.value.id, id)
+    // Soft delete: mark as deleted instead of removing
+    // This preserves reply chain context in the UI
+    messagesStore.markAsDeleted(selectedChannel.value.id, id)
   }
 }
 

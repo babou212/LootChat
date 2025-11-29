@@ -43,7 +43,9 @@ export const useChannelSubscriptions = () => {
 
     messageDeletionSubscription = subscribeToChannelMessageDeletions(channel.id, (payload) => {
       if (payload && typeof payload.id === 'number') {
-        messagesStore.removeMessage(channel.id, payload.id)
+        // Soft delete: mark as deleted instead of removing
+        // This preserves reply chain context
+        messagesStore.markAsDeleted(channel.id, payload.id)
       }
     })
   }
