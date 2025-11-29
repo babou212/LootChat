@@ -478,10 +478,7 @@ watch(usersWithFullData, () => {
         @view-screen-share="handleViewScreenShare"
       />
 
-      <div
-        class="flex-1 flex flex-col min-w-0 transition-all duration-300"
-        :class="{ 'mr-[60%]': selectedScreenShare && !isScreenShareMinimized }"
-      >
+      <div class="flex-1 flex flex-col min-w-0">
         <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
           <div class="flex items-center gap-2">
             <UIcon

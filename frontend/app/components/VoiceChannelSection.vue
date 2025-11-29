@@ -35,6 +35,7 @@ const {
 
 const isConnecting = ref(false)
 const showAudioSettings = ref(false)
+const settingsTab = ref<'audio' | 'screenshare'>('audio')
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -322,21 +323,52 @@ const isUserSharing = (userId: string) => {
 
       <div
         v-if="showAudioSettings"
-        class="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg"
+        class="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/50"
+        @click.self="showAudioSettings = false"
       >
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            🎙️ Audio Settings
-          </h4>
-          <button
-            class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            @click="showAudioSettings = false"
-          >
-            <UIcon name="i-lucide-x" class="text-lg" />
-          </button>
-        </div>
+        <div
+          class="w-full max-w-sm p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl max-h-[80vh] overflow-y-auto"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+              ⚙️ Settings
+            </h4>
+            <button
+              class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              @click="showAudioSettings = false"
+            >
+              <UIcon name="i-lucide-x" class="text-lg" />
+            </button>
+          </div>
 
-        <AudioSettingsPanel @close="showAudioSettings = false" />
+          <!-- Settings Tabs -->
+          <div class="flex gap-1 mb-3 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
+            <button
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
+              :class="settingsTab === 'audio'
+                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="settingsTab = 'audio'"
+            >
+              🎙️ Audio
+            </button>
+            <button
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
+              :class="settingsTab === 'screenshare'
+                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="settingsTab = 'screenshare'"
+            >
+              🖥️ Screen Share
+            </button>
+          </div>
+
+          <!-- Audio Settings Panel -->
+          <AudioSettingsPanel v-if="settingsTab === 'audio'" @close="showAudioSettings = false" />
+
+          <!-- Screen Share Settings Panel -->
+          <ScreenShareSettingsPanel v-else-if="settingsTab === 'screenshare'" />
+        </div>
       </div>
     </div>
 
