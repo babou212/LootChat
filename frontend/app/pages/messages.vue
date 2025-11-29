@@ -34,14 +34,20 @@ const {
   subscribeToDirectMessageEdits,
   subscribeToDirectMessageDeletions,
   subscribeToUserPresence,
+  subscribeToPresenceSync,
   isConnected
 } = useWebSocket()
+
+// Initialize presence heartbeat
+usePresenceHeartbeat()
+
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 let reactionSubscription: ReturnType<typeof subscribeToDirectMessageReactions> | null = null
 let reactionRemovalSubscription: ReturnType<typeof subscribeToDirectMessageReactionRemovals> | null = null
 let editSubscription: ReturnType<typeof subscribeToDirectMessageEdits> | null = null
 let deleteSubscription: ReturnType<typeof subscribeToDirectMessageDeletions> | null = null
 let presenceSubscription: ReturnType<typeof subscribeToUserPresence> | null = null
+let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> | null = null
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
@@ -175,6 +181,9 @@ onUnmounted(() => {
   if (presenceSubscription) {
     presenceSubscription.unsubscribe()
   }
+  if (presenceSyncSubscription) {
+    presenceSyncSubscription.unsubscribe()
+  }
 })
 
 onMounted(async () => {
@@ -210,6 +219,23 @@ onMounted(async () => {
       updateUserPresence(update.userId, update.status)
       // Also update presence store
       userPresenceStore.updateUserPresence(update)
+    })
+
+    // Subscribe to presence sync for bulk presence updates
+    presenceSyncSubscription = subscribeToPresenceSync((updates) => {
+      // Mark all users offline first (except ourselves)
+      users.value.forEach((u) => {
+        if (u.userId !== user.value?.userId) {
+          updateUserPresence(u.userId, 'offline')
+          userPresenceStore.setUserPresence(u.userId, 'offline')
+        }
+      })
+
+      // Then mark online users from the sync
+      updates.forEach((update) => {
+        updateUserPresence(update.userId, 'online')
+        userPresenceStore.setUserPresence(update.userId, 'online')
+      })
     })
 
     dmSubscription = subscribeToUserDirectMessages(user.value.userId, (message: DirectMessageMessageResponse) => {
