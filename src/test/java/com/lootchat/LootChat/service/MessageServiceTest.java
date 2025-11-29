@@ -59,7 +59,7 @@ class MessageServiceTest {
     private S3FileStorageService s3FileStorageService;
 
     @Mock
-    private KafkaProducerService kafkaProducerService;
+    private OutboxService outboxService;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -126,7 +126,7 @@ class MessageServiceTest {
             return msg;
         });
         when(reactionRepository.findByMessageId(1L)).thenReturn(Collections.emptyList());
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
 
         MessageResponse result = messageService.createMessage("Test message", 1L);
 
@@ -134,7 +134,7 @@ class MessageServiceTest {
         assertThat(result.getContent()).isEqualTo("Test message");
         assertThat(result.getChannelId()).isEqualTo(1L);
         verify(messageRepository, times(1)).save(any(Message.class));
-        verify(kafkaProducerService, times(1)).send(any(), any(), any());
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -188,7 +188,7 @@ class MessageServiceTest {
             return msg;
         });
         when(reactionRepository.findByMessageId(1L)).thenReturn(Collections.emptyList());
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
 
         MessageResponse result = messageService.createMessageWithImage("Message with image", 1L, image);
 
@@ -197,24 +197,25 @@ class MessageServiceTest {
         assertThat(result.getImageUrl()).isEqualTo("/api/files/images/test-image.jpg");
         verify(s3FileStorageService, times(1)).storeFile(image);
         verify(messageRepository, times(1)).save(any(Message.class));
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("getMessagesByChannelIdPaginated should return messages in correct order")
-    void getMessagesByChannelIdPaginated_ShouldReturnMessages_InCorrectOrder() {
+    @DisplayName("getMessagesByChannelIdCursor should return messages in correct order")
+    void getMessagesByChannelIdCursor_ShouldReturnMessages_InCorrectOrder() {
         Message msg1 = Message.builder().id(1L).content("Message 1").user(testUser).channel(testChannel).build();
         Message msg2 = Message.builder().id(2L).content("Message 2").user(testUser).channel(testChannel).build();
         Message msg3 = Message.builder().id(3L).content("Message 3").user(testUser).channel(testChannel).build();
 
-        Page<Message> messagePage = new PageImpl<>(Arrays.asList(msg3, msg2, msg1)); // Descending order
-        when(messageRepository.findByChannelIdOrderByCreatedAtDesc(eq(1L), any(Pageable.class)))
-                .thenReturn(messagePage);
+        // Cursor-based returns messages before a given ID, ordered by id desc
+        when(messageRepository.findByChannelIdAndIdLessThanOrderByIdDesc(eq(1L), eq(100L), any(Pageable.class)))
+                .thenReturn(Arrays.asList(msg3, msg2, msg1));
         when(reactionRepository.findByMessageId(anyLong())).thenReturn(Collections.emptyList());
 
-        List<MessageResponse> result = messageService.getMessagesByChannelIdPaginated(1L, 0, 50);
-
+        List<MessageResponse> result = messageService.getMessagesByChannelIdCursor(1L, 100L, 50);
 
         assertThat(result).hasSize(3);
+        // Results are reversed in the service to show oldest first
         assertThat(result.get(0).getId()).isEqualTo(1L);
         assertThat(result.get(1).getId()).isEqualTo(2L);
         assertThat(result.get(2).getId()).isEqualTo(3L);
@@ -227,17 +228,12 @@ class MessageServiceTest {
         when(currentUserService.getCurrentUserIdOrThrow()).thenReturn(1L);
         when(messageRepository.save(any(Message.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(reactionRepository.findByMessageId(1L)).thenReturn(Collections.emptyList());
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         MessageResponse result = messageService.updateMessage(1L, "Updated content");
 
         assertThat(result.getContent()).isEqualTo("Updated content");
         verify(messageRepository, times(1)).save(testMessage);
-        verify(channelMessagesCache, times(1)).evict("channel:1");
-        verify(paginatedCache, times(1)).clear();
-        verify(kafkaProducerService, times(1)).send(any(), any(), any());
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -260,17 +256,12 @@ class MessageServiceTest {
     void deleteMessage_ShouldAllow_OwnerToDelete() throws Exception {
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(testUser);
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         messageService.deleteMessage(1L);
 
         verify(reactionRepository, times(1)).deleteByMessageId(1L);
         verify(messageRepository, times(1)).deleteById(1L);
-        verify(channelMessagesCache, times(1)).evict("channel:1");
-        verify(paginatedCache, times(1)).clear();
-        verify(kafkaProducerService, times(1)).send(any(), any(), any());
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -278,13 +269,11 @@ class MessageServiceTest {
     void deleteMessage_ShouldAllow_ModeratorToDelete() throws Exception {
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(moderatorUser);
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         messageService.deleteMessage(1L);
 
         verify(messageRepository, times(1)).deleteById(1L);
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -293,14 +282,12 @@ class MessageServiceTest {
         testMessage.setImageFilename("test-image.jpg");
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
         when(currentUserService.getCurrentUserOrThrow()).thenReturn(testUser);
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         messageService.deleteMessage(1L);
 
         verify(s3FileStorageService, times(1)).deleteFile("test-image.jpg");
         verify(messageRepository, times(1)).deleteById(1L);
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -336,17 +323,13 @@ class MessageServiceTest {
             reaction.setId(1L);
             return reaction;
         });
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         ReactionResponse result = messageService.addReaction(1L, "👍");
 
         assertThat(result).isNotNull();
         assertThat(result.getEmoji()).isEqualTo("👍");
         verify(reactionRepository, times(1)).save(any(MessageReaction.class));
-        verify(channelMessagesCache, times(1)).evict("channel:1");
-        verify(kafkaProducerService, times(1)).send(any(), any(), any());
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test
@@ -388,15 +371,11 @@ class MessageServiceTest {
         when(reactionRepository.findByMessageIdAndUserIdAndEmoji(1L, 1L, "👍"))
                 .thenReturn(Optional.of(reaction));
         when(messageRepository.findById(1L)).thenReturn(Optional.of(testMessage));
-        when(cacheManager.getCache("channelMessages")).thenReturn(channelMessagesCache);
-        when(cacheManager.getCache("channelMessagesPaginated")).thenReturn(paginatedCache);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
         messageService.removeReaction(1L, "👍");
 
         verify(reactionRepository, times(1)).delete(reaction);
-        verify(channelMessagesCache, times(1)).evict("channel:1");
-        verify(kafkaProducerService, times(1)).send(any(), any(), any());
+        verify(outboxService).saveEvent(any(), any(), any(), any());
     }
 
     @Test

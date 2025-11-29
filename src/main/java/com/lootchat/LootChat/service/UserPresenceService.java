@@ -1,6 +1,5 @@
 package com.lootchat.LootChat.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lootchat.LootChat.dto.UserPresenceEvent;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
@@ -9,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -24,16 +24,17 @@ public class UserPresenceService {
     private static final long PRESENCE_TTL_MINUTES = 5; // Auto-expire after 5 minutes
     
     private final UserRepository userRepository;
-    private final KafkaProducerService kafkaProducerService;
-    private final ObjectMapper objectMapper;
+    private final OutboxService outboxService;
     private final RedisTemplate<String, String> redisTemplate;
     
+    @Transactional
     public void userConnected(String username, Long userId) {
         String key = PRESENCE_KEY_PREFIX + username;
         redisTemplate.opsForValue().set(key, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
         broadcastPresenceUpdate(userId, username, "online");
     }
     
+    @Transactional
     public void userDisconnected(String username, Long userId) {
         String key = PRESENCE_KEY_PREFIX + username;
         redisTemplate.delete(key);
@@ -74,14 +75,14 @@ public class UserPresenceService {
     }
     
     private void broadcastPresenceUpdate(Long userId, String username, String status) {
-        try {
-            UserPresenceEvent event = new UserPresenceEvent(userId, username, status);
-            String payload = objectMapper.writeValueAsString(event);
-            kafkaProducerService.send(null, null, payload);
-            log.debug("Published user presence update to Kafka: userId={}, username={}, status={}", 
-                userId, username, status);
-        } catch (Exception e) {
-            log.error("Failed to publish user presence to Kafka", e);
-        }
+        UserPresenceEvent event = new UserPresenceEvent(userId, username, status);
+        outboxService.saveEvent(
+                OutboxService.EVENT_PRESENCE_UPDATED,
+                OutboxService.TOPIC_PRESENCE,
+                userId.toString(),
+                event
+        );
+        log.debug("Stored user presence update in outbox: userId={}, username={}, status={}", 
+            userId, username, status);
     }
 }
