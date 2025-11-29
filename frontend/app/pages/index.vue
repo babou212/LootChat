@@ -34,10 +34,40 @@ const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
 const { getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
-const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
+const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useWebRTC()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
 const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
+
+// Screen share viewer state
+const selectedScreenShareId = ref<string | null>(null)
+const isScreenShareMinimized = ref(false)
+
+const selectedScreenShare = computed(() => {
+  if (!selectedScreenShareId.value) return null
+  return activeScreenShares.value.find(s => s.sharerId === selectedScreenShareId.value) || null
+})
+
+const handleViewScreenShare = (sharerId: string) => {
+  selectedScreenShareId.value = sharerId
+  isScreenShareMinimized.value = false
+}
+
+const handleCloseScreenShare = () => {
+  selectedScreenShareId.value = null
+  isScreenShareMinimized.value = false
+}
+
+const handleToggleMinimizeScreenShare = () => {
+  isScreenShareMinimized.value = !isScreenShareMinimized.value
+}
+
+// Auto-close viewer when screen share ends
+watch(activeScreenShares, (shares) => {
+  if (selectedScreenShareId.value && !shares.find(s => s.sharerId === selectedScreenShareId.value)) {
+    selectedScreenShareId.value = null
+  }
+}, { deep: true })
 
 // Keep usersComposable for full user data with email/role for UserPanel
 const usersComposable = useUsers()
@@ -445,9 +475,13 @@ watch(usersWithFullData, () => {
         @select-channel="selectChannel"
         @join-voice="handleJoinVoice"
         @leave-voice="handleLeaveVoice"
+        @view-screen-share="handleViewScreenShare"
       />
 
-      <div class="flex-1 flex flex-col min-w-0">
+      <div
+        class="flex-1 flex flex-col min-w-0 transition-all duration-300"
+        :class="{ 'mr-[60%]': selectedScreenShare && !isScreenShareMinimized }"
+      >
         <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
           <div class="flex items-center gap-2">
             <UIcon
@@ -597,10 +631,19 @@ watch(usersWithFullData, () => {
           v-else-if="selectedChannel?.channelType === 'VOICE'"
           :channel="selectedChannel"
           :stomp-client="stompClient"
+          @view-screen-share="handleViewScreenShare"
         />
       </div>
 
       <UserPanel :users="usersWithFullData" />
+
+      <!-- Screen Share Viewer -->
+      <ScreenShareViewer
+        :screen-share="selectedScreenShare"
+        :is-minimized="isScreenShareMinimized"
+        @close="handleCloseScreenShare"
+        @toggle-minimize="handleToggleMinimizeScreenShare"
+      />
     </div>
   </ClientOnly>
 </template>

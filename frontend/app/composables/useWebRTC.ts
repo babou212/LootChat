@@ -17,6 +17,12 @@ export const useWebRTC = () => {
   const currentChannelId = computed(() => store.currentChannelId)
   const currentChannelName = computed(() => store.currentChannelName)
 
+  const isScreenSharing = computed(() => store.isScreenSharing)
+  const screenStream = computed(() => store.screenStream)
+  const activeScreenShares = computed(() => store.activeScreenShares)
+  const hasActiveScreenShare = computed(() => store.hasActiveScreenShare)
+  const currentScreenShare = computed(() => store.currentScreenShare)
+
   const channelWebRTCSub = ref<StompSubscription | null>(null)
   const userSignalSub = ref<StompSubscription | null>(null)
   const beforeUnloadHandler = ref<((e: BeforeUnloadEvent) => void) | null>(null)
@@ -204,9 +210,38 @@ export const useWebRTC = () => {
 
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams
-        logger.debug(`Received track from peer ${userId}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
+        const track = event.track
+        logger.debug(`Received track from peer ${userId}: kind=${track.kind}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
 
         if (remoteStream) {
+          // Handle video track (screen share)
+          if (track.kind === 'video') {
+            logger.info(`Received video track from peer ${userId} - screen share`)
+
+            // Find or create screen share info
+            const existingShare = store.activeScreenShares.find(s => s.sharerId === userId)
+            if (existingShare) {
+              existingShare.stream = remoteStream
+            } else {
+              // Find the participant to get username
+              const participant = participants.value.find(p => p.userId === userId)
+              store.addActiveScreenShare({
+                sharerId: userId,
+                sharerUsername: participant?.username || userId,
+                stream: remoteStream
+              })
+            }
+
+            // Track ended listener for when remote stops sharing
+            track.onended = () => {
+              logger.info(`Video track from ${userId} ended - screen share stopped`)
+              store.removeActiveScreenShare(userId)
+            }
+
+            return
+          }
+
+          // Handle audio track (voice or screen share audio)
           const existingPeer = store.peers.get(userId)
           let audio = existingPeer?.audioEl
 
@@ -356,7 +391,8 @@ export const useWebRTC = () => {
               username: signal.fromUsername || fromUserId,
               avatar,
               isMuted: false,
-              isSpeaking: false
+              isSpeaking: false,
+              isScreenSharing: false
             })
           }
 
@@ -409,6 +445,25 @@ export const useWebRTC = () => {
             await handleIceCandidate(fromUserId, data as RTCIceCandidateInit)
           }
           break
+
+        case 'SCREEN_SHARE_START':
+          if (fromUserId !== myId) {
+            logger.info(`User ${signal.fromUsername || fromUserId} started screen sharing`)
+            store.addActiveScreenShare({
+              sharerId: fromUserId,
+              sharerUsername: signal.fromUsername || fromUserId
+            })
+            // The screen share stream will come through a separate offer
+          }
+          break
+
+        case 'SCREEN_SHARE_STOP':
+          if (fromUserId !== myId) {
+            logger.info(`User ${signal.fromUsername || fromUserId} stopped screen sharing`)
+            store.removeActiveScreenShare(fromUserId)
+            store.removeScreenSharePeer(fromUserId)
+          }
+          break
       }
     } catch (error) {
       logger.error('Error handling WebRTC signal', error)
@@ -422,7 +477,8 @@ export const useWebRTC = () => {
       store.addPeer(userId, pc)
 
       const offer = await pc.createOffer({
-        offerToReceiveAudio: true
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true // Enable receiving video for screen shares
       })
       await pc.setLocalDescription(offer)
 
@@ -444,19 +500,48 @@ export const useWebRTC = () => {
   const handleOffer = async (userId: string, offer: RTCSessionDescriptionInit) => {
     try {
       logger.info(`Received offer from user ${userId}`)
-      let pc = peers.value.get(userId)?.connection
+      const existingPeer = peers.value.get(userId)
+      let pc = existingPeer?.connection
 
       if (pc) {
-        if (pc.signalingState !== 'stable') {
+        // Handle renegotiation - connection exists and is stable, apply the new offer
+        if (pc.signalingState === 'stable') {
+          logger.info(`Renegotiating with ${userId} - existing connection is stable, applying new offer`)
+          // This is a renegotiation (e.g., screen share added), just set the new remote description
+          // Don't recreate the connection, just update it
+        } else if (pc.signalingState === 'have-local-offer') {
+          // Glare situation - both sides sent offers simultaneously
+          // Use tie-breaker: lower ID wins and rolls back
+          const myId = user.value?.userId.toString() || ''
+          const shouldRollback = (() => {
+            try {
+              return BigInt(myId) > BigInt(userId)
+            } catch {
+              return myId > userId
+            }
+          })()
+
+          if (shouldRollback) {
+            logger.info(`Glare with ${userId} - rolling back our offer`)
+            await pc.setLocalDescription({ type: 'rollback' })
+          } else {
+            logger.info(`Glare with ${userId} - ignoring their offer (we win)`)
+            return
+          }
+        } else {
           logger.warn(`Received offer from ${userId} but peer connection is in ${pc.signalingState} state. Recreating connection.`)
           removePeer(userId)
           pc = await createPeerConnection(userId)
+          store.addPeer(userId, pc)
         }
       } else {
         pc = await createPeerConnection(userId)
+        store.addPeer(userId, pc)
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
+
+      // Create answer - include video receiving capability for screen shares
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
 
@@ -643,7 +728,8 @@ export const useWebRTC = () => {
         username: user.value.username,
         avatar: user.value.avatar,
         isMuted: false,
-        isSpeaking: false
+        isSpeaking: false,
+        isScreenSharing: false
       })
 
       channelWebRTCSub.value = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
@@ -740,6 +826,193 @@ export const useWebRTC = () => {
     logger.info(`Deafen toggled: ${store.isDeafened}`)
   }
 
+  /**
+   * Start screen sharing with Discord-like screen picker
+   * Supports capturing entire screens, windows, or browser tabs
+   */
+  const startScreenShare = async () => {
+    if (!user.value || !currentChannelId.value) {
+      logger.warn('Cannot start screen share - not in a voice channel')
+      return
+    }
+
+    if (store.isScreenSharing) {
+      logger.warn('Already screen sharing')
+      return
+    }
+
+    try {
+      // Request screen capture with options for games and applications
+      const displayMediaOptions: DisplayMediaStreamOptions = {
+        video: {
+          displaySurface: 'monitor', // 'monitor', 'window', 'browser'
+          // @ts-expect-error - cursor is not in the TS types but is supported
+          cursor: 'always',
+          frameRate: { ideal: 30, max: 60 },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 }
+        },
+        audio: {
+          // System audio for games
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      }
+
+      logger.info('Requesting screen capture...')
+      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
+
+      // Set up track ended listener to handle browser's native stop sharing button
+      const videoTrack = screenStream.getVideoTracks()[0]
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          logger.info('Screen share ended by user (native browser UI)')
+          stopScreenShare()
+        }
+      }
+
+      store.setScreenStream(screenStream)
+      store.updateParticipantScreenSharing(user.value.userId.toString(), true)
+
+      // Notify other participants that we're starting screen share
+      sendSignal({
+        channelId: currentChannelId.value,
+        type: 'SCREEN_SHARE_START' as WebRTCSignalType,
+        fromUserId: user.value.userId.toString()
+      })
+
+      // Add our own screen share to active shares so we can see it locally
+      store.addActiveScreenShare({
+        sharerId: user.value.userId.toString(),
+        sharerUsername: user.value.username,
+        stream: screenStream
+      })
+
+      // Add screen tracks to all existing peer connections
+      for (const [peerId, peer] of store.peers.entries()) {
+        try {
+          const videoTrack = screenStream.getVideoTracks()[0]
+          const audioTracks = screenStream.getAudioTracks()
+
+          if (videoTrack) {
+            peer.connection.addTrack(videoTrack, screenStream)
+            logger.debug(`Added screen video track to peer ${peerId}`)
+          }
+
+          // Add system audio if available
+          const audioTrack = audioTracks[0]
+          if (audioTrack) {
+            peer.connection.addTrack(audioTrack, screenStream)
+            logger.debug(`Added screen audio track to peer ${peerId}`)
+          }
+
+          // Renegotiate connection
+          const offer = await peer.connection.createOffer()
+          await peer.connection.setLocalDescription(offer)
+
+          sendSignal({
+            channelId: currentChannelId.value!,
+            type: 'OFFER' as WebRTCSignalType,
+            fromUserId: user.value!.userId.toString(),
+            toUserId: peerId,
+            data: offer
+          })
+
+          logger.info(`Renegotiated connection with ${peerId} for screen share`)
+        } catch (error) {
+          logger.error(`Error adding screen share track to peer ${peerId}`, error)
+        }
+      }
+
+      logger.info('Screen sharing started successfully')
+    } catch (error) {
+      if ((error as Error).name === 'NotAllowedError') {
+        logger.info('User cancelled screen share picker')
+      } else {
+        logger.error('Error starting screen share', error)
+        throw error
+      }
+    }
+  }
+
+  /**
+   * Stop screen sharing
+   */
+  const stopScreenShare = () => {
+    if (!user.value || !currentChannelId.value) return
+
+    if (!store.isScreenSharing) {
+      logger.debug('Not currently screen sharing')
+      return
+    }
+
+    const myId = user.value.userId.toString()
+
+    // Stop all screen stream tracks
+    if (store.screenStream) {
+      store.screenStream.getTracks().forEach((track) => {
+        track.stop()
+      })
+    }
+
+    // Remove screen tracks from all peer connections
+    for (const [peerId, peer] of store.peers.entries()) {
+      try {
+        const senders = peer.connection.getSenders()
+        for (const sender of senders) {
+          if (sender.track?.kind === 'video') {
+            peer.connection.removeTrack(sender)
+            logger.debug(`Removed screen video track from peer ${peerId}`)
+          }
+        }
+
+        // Renegotiate connection
+        peer.connection.createOffer()
+          .then((offer) => {
+            peer.connection.setLocalDescription(offer)
+            sendSignal({
+              channelId: currentChannelId.value!,
+              type: 'OFFER' as WebRTCSignalType,
+              fromUserId: user.value!.userId.toString(),
+              toUserId: peerId,
+              data: offer
+            })
+          })
+          .catch((err) => {
+            logger.warn(`Error renegotiating after screen share stop for ${peerId}`, err)
+          })
+      } catch (error) {
+        logger.warn(`Error removing screen share track from peer ${peerId}`, error)
+      }
+    }
+
+    // Update state
+    store.setScreenStream(null)
+    store.removeActiveScreenShare(myId)
+    store.updateParticipantScreenSharing(myId, false)
+
+    // Notify other participants
+    sendSignal({
+      channelId: currentChannelId.value,
+      type: 'SCREEN_SHARE_STOP' as WebRTCSignalType,
+      fromUserId: myId
+    })
+
+    logger.info('Screen sharing stopped')
+  }
+
+  /**
+   * Toggle screen sharing on/off
+   */
+  const toggleScreenShare = async () => {
+    if (store.isScreenSharing) {
+      stopScreenShare()
+    } else {
+      await startScreenShare()
+    }
+  }
+
   return {
     localStream: readonly(localStream),
     peers: readonly(peers),
@@ -748,9 +1021,19 @@ export const useWebRTC = () => {
     isDeafened: readonly(isDeafened),
     currentChannelId: readonly(currentChannelId),
     currentChannelName: readonly(currentChannelName),
+    // Screen sharing
+    isScreenSharing: readonly(isScreenSharing),
+    screenStream: readonly(screenStream),
+    activeScreenShares: readonly(activeScreenShares),
+    hasActiveScreenShare: readonly(hasActiveScreenShare),
+    currentScreenShare: readonly(currentScreenShare),
+    // Methods
     joinVoiceChannel,
     leaveVoiceChannel,
     toggleMute,
-    toggleDeafen
+    toggleDeafen,
+    startScreenShare,
+    stopScreenShare,
+    toggleScreenShare
   }
 }

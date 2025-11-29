@@ -9,7 +9,12 @@ interface Props {
   wsConnected?: boolean
 }
 
+interface Emits {
+  (e: 'viewScreenShare', sharerId: string): void
+}
+
 const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
 const avatarStore = useAvatarStore()
 
 const {
@@ -20,7 +25,12 @@ const {
   joinVoiceChannel,
   leaveVoiceChannel,
   toggleMute,
-  toggleDeafen
+  toggleDeafen,
+  // Screen sharing
+  isScreenSharing,
+  activeScreenShares,
+  hasActiveScreenShare,
+  toggleScreenShare
 } = useWebRTC()
 
 const isConnected = computed(() => currentChannelId.value === props.channel.id)
@@ -28,10 +38,37 @@ const isConnecting = ref(false)
 const error = ref<string | null>(null)
 
 const showAudioSettings = ref(false)
+const showScreenShareViewer = ref(false)
+const selectedScreenShare = ref<string | null>(null)
+
+// Reference to video element for screen share display
+const screenVideoRef = ref<HTMLVideoElement | null>(null)
 
 const getLoadedAvatarUrl = (userId: string | number): string => {
   return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
+
+// Watch for screen share stream changes to update video element
+watch(() => activeScreenShares.value, (shares) => {
+  if (shares.length > 0 && screenVideoRef.value) {
+    const activeShare = shares.find(s => s.sharerId === selectedScreenShare.value) || shares[0]
+    if (activeShare?.stream) {
+      screenVideoRef.value.srcObject = activeShare.stream
+      screenVideoRef.value.play().catch(console.error)
+    }
+  }
+}, { immediate: true, deep: true })
+
+// Auto-select first screen share when one becomes available
+watch(() => hasActiveScreenShare.value, (hasShare) => {
+  if (hasShare && !selectedScreenShare.value) {
+    selectedScreenShare.value = activeScreenShares.value[0]?.sharerId || null
+    showScreenShareViewer.value = true
+  } else if (!hasShare) {
+    selectedScreenShare.value = null
+    showScreenShareViewer.value = false
+  }
+}, { immediate: true })
 
 watch(() => participants.value, (newParticipants) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -102,6 +139,16 @@ const handleLeaveChannel = () => {
 
 const openAudioSettings = () => {
   showAudioSettings.value = true
+}
+
+const isUserSharing = (userId: string) => {
+  return activeScreenShares.value.some(s => s.sharerId === userId)
+}
+
+const handleViewScreenShare = (userId: string) => {
+  if (isUserSharing(userId)) {
+    emit('viewScreenShare', userId)
+  }
 }
 </script>
 
@@ -193,8 +240,10 @@ const openAudioSettings = () => {
               class="flex items-center gap-3 p-3 rounded-lg transition-all duration-200"
               :class="{
                 'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500': participant.isSpeaking,
-                'bg-gray-50 dark:bg-gray-700/50': !participant.isSpeaking
+                'bg-gray-50 dark:bg-gray-700/50': !participant.isSpeaking,
+                'cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/30': isUserSharing(participant.userId)
               }"
+              @click="handleViewScreenShare(participant.userId)"
             >
               <div class="shrink-0 relative">
                 <div
@@ -235,10 +284,29 @@ const openAudioSettings = () => {
                   <span v-if="participant.isSpeaking" class="text-xs text-green-600 dark:text-green-400 ml-2">
                     Speaking
                   </span>
+                  <span v-if="participant.isScreenSharing" class="text-xs text-purple-600 dark:text-purple-400 ml-2">
+                    <UIcon name="i-lucide-monitor" class="inline text-sm" /> Sharing
+                  </span>
                 </p>
               </div>
 
-              <div class="shrink-0">
+              <div class="shrink-0 flex items-center gap-2">
+                <!-- Watch stream button for screen sharers -->
+                <UButton
+                  v-if="isUserSharing(participant.userId)"
+                  color="primary"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-eye"
+                  @click.stop="handleViewScreenShare(participant.userId)"
+                >
+                  Watch
+                </UButton>
+                <UIcon
+                  v-if="participant.isScreenSharing"
+                  name="i-lucide-monitor"
+                  class="text-purple-500 text-xl"
+                />
                 <UIcon
                   v-if="participant.isMuted"
                   name="i-lucide-mic-off"
@@ -271,7 +339,7 @@ const openAudioSettings = () => {
             </button>
           </div>
 
-          <div class="flex gap-4 justify-center">
+          <div class="flex gap-4 justify-center flex-wrap">
             <UButton
               :color="isMuted ? 'error' : 'primary'"
               :variant="isMuted ? 'solid' : 'soft'"
@@ -293,6 +361,16 @@ const openAudioSettings = () => {
             </UButton>
 
             <UButton
+              :color="isScreenSharing ? 'success' : 'primary'"
+              :variant="isScreenSharing ? 'solid' : 'soft'"
+              size="xl"
+              :icon="isScreenSharing ? 'i-lucide-monitor-off' : 'i-lucide-monitor'"
+              @click="toggleScreenShare"
+            >
+              {{ isScreenSharing ? 'Stop Sharing' : 'Share Screen' }}
+            </UButton>
+
+            <UButton
               color="error"
               size="xl"
               icon="i-lucide-phone-off"
@@ -311,6 +389,74 @@ const openAudioSettings = () => {
               <UIcon name="i-lucide-info" class="inline" />
               You are deafened
             </p>
+            <p v-if="isScreenSharing" class="mt-1 text-green-600 dark:text-green-400">
+              <UIcon name="i-lucide-monitor" class="inline" />
+              You are sharing your screen
+            </p>
+          </div>
+        </div>
+
+        <!-- Screen Share Viewer Section -->
+        <div
+          v-if="hasActiveScreenShare"
+          class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+        >
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <UIcon name="i-lucide-monitor" class="text-green-500" />
+              Screen Share
+              <span class="text-sm font-normal text-gray-500">
+                ({{ activeScreenShares.find(s => s.sharerId === selectedScreenShare)?.sharerUsername || 'Unknown' }})
+              </span>
+            </h3>
+            <div class="flex items-center gap-2">
+              <!-- Screen share selector if multiple shares -->
+              <select
+                v-if="activeScreenShares.length > 1"
+                v-model="selectedScreenShare"
+                class="px-3 py-1 rounded bg-gray-100 dark:bg-gray-700 text-sm"
+              >
+                <option
+                  v-for="share in activeScreenShares"
+                  :key="share.sharerId"
+                  :value="share.sharerId"
+                >
+                  {{ share.sharerUsername }}
+                </option>
+              </select>
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :icon="showScreenShareViewer ? 'i-lucide-minimize-2' : 'i-lucide-maximize-2'"
+                @click="showScreenShareViewer = !showScreenShareViewer"
+              >
+                {{ showScreenShareViewer ? 'Minimize' : 'Expand' }}
+              </UButton>
+            </div>
+          </div>
+
+          <div
+            v-show="showScreenShareViewer"
+            class="relative bg-black rounded-lg overflow-hidden"
+            :style="{ aspectRatio: '16/9' }"
+          >
+            <video
+              ref="screenVideoRef"
+              autoplay
+              playsinline
+              muted
+              class="w-full h-full object-contain"
+            />
+            <div
+              v-if="!activeScreenShares.find(s => s.sharerId === selectedScreenShare)?.stream"
+              class="absolute inset-0 flex items-center justify-center"
+            >
+              <div class="text-center text-gray-400">
+                <UIcon name="i-lucide-loader-2" class="text-4xl animate-spin mb-2" />
+                <p>Connecting to screen share...</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { StompSubscription } from '@stomp/stompjs'
-import type { VoiceParticipant } from '../shared/types/chat'
+import type { VoiceParticipant, ScreenShareInfo } from '../shared/types/chat'
 
 /**
  * Enhanced WebRTC Store - Centralized voice channel management
@@ -115,6 +115,12 @@ export const useWebRTCStore = defineStore('webrtc', {
       isMuted: false,
       isDeafened: false,
 
+      // Screen sharing state
+      isScreenSharing: false,
+      screenStream: null as MediaStream | null,
+      activeScreenShares: [] as ScreenShareInfo[],
+      screenSharePeers: new Map<string, { connection: RTCPeerConnection, stream?: MediaStream }>(),
+
       audioProfile: initialProfile,
       selectedAudioDevice: initialDevice,
       availableAudioDevices: [] as MediaDeviceInfo[],
@@ -194,6 +200,28 @@ export const useWebRTCStore = defineStore('webrtc', {
     localStreamActive: (state) => {
       if (!state.localStream) return false
       return state.localStream.getTracks().some(track => track.enabled && track.readyState === 'live')
+    },
+
+    /**
+     * Check if someone is currently sharing their screen
+     */
+    hasActiveScreenShare: state => state.activeScreenShares.length > 0,
+
+    /**
+     * Get the current screen share (first one if multiple)
+     */
+    currentScreenShare: state => state.activeScreenShares[0] || null,
+
+    /**
+     * Get all active screen shares
+     */
+    allScreenShares: state => state.activeScreenShares,
+
+    /**
+     * Check if a specific user is screen sharing
+     */
+    isUserScreenSharing: state => (userId: string) => {
+      return state.activeScreenShares.some(share => share.sharerId === userId)
     },
 
     currentAudioConstraints: (state): MediaTrackConstraints => {
@@ -364,6 +392,104 @@ export const useWebRTCStore = defineStore('webrtc', {
       if (participant) {
         participant.isMuted = isMuted
       }
+    },
+
+    /**
+     * Update participant screen sharing state
+     */
+    updateParticipantScreenSharing(userId: string, isScreenSharing: boolean) {
+      const participant = this.participants.find(p => p.userId === userId)
+      if (participant) {
+        participant.isScreenSharing = isScreenSharing
+      }
+    },
+
+    /**
+     * Set screen stream (local)
+     */
+    setScreenStream(stream: MediaStream | null) {
+      // Cleanup old stream
+      if (this.screenStream && stream !== this.screenStream) {
+        this.screenStream.getTracks().forEach(track => track.stop())
+      }
+      this.screenStream = stream
+      this.isScreenSharing = stream !== null
+    },
+
+    /**
+     * Add an active screen share from a remote user
+     */
+    addActiveScreenShare(info: ScreenShareInfo) {
+      const exists = this.activeScreenShares.find(s => s.sharerId === info.sharerId)
+      if (!exists) {
+        this.activeScreenShares.push(info)
+        this.updateParticipantScreenSharing(info.sharerId, true)
+      } else {
+        // Update existing with new stream
+        exists.stream = info.stream
+      }
+    },
+
+    /**
+     * Remove an active screen share
+     */
+    removeActiveScreenShare(sharerId: string) {
+      const share = this.activeScreenShares.find(s => s.sharerId === sharerId)
+      if (share?.stream) {
+        share.stream.getTracks().forEach(track => track.stop())
+      }
+      this.activeScreenShares = this.activeScreenShares.filter(s => s.sharerId !== sharerId)
+      this.updateParticipantScreenSharing(sharerId, false)
+    },
+
+    /**
+     * Update screen share stream for a user
+     */
+    updateScreenShareStream(sharerId: string, stream: MediaStream) {
+      const share = this.activeScreenShares.find(s => s.sharerId === sharerId)
+      if (share) {
+        share.stream = stream
+      }
+    },
+
+    /**
+     * Add a screen share peer connection
+     */
+    addScreenSharePeer(userId: string, connection: RTCPeerConnection) {
+      this.screenSharePeers.set(userId, { connection })
+    },
+
+    /**
+     * Update screen share peer with stream
+     */
+    updateScreenSharePeer(userId: string, stream: MediaStream) {
+      const existing = this.screenSharePeers.get(userId)
+      if (existing) {
+        this.screenSharePeers.set(userId, { ...existing, stream })
+      }
+    },
+
+    /**
+     * Remove and cleanup a screen share peer connection
+     */
+    removeScreenSharePeer(userId: string) {
+      const peer = this.screenSharePeers.get(userId)
+      if (!peer) return
+
+      try {
+        peer.connection.close()
+      } catch (error) {
+        console.warn(`Error closing screen share peer connection for ${userId}:`, error)
+      }
+
+      if (peer.stream) {
+        peer.stream.getTracks().forEach((track) => {
+          track.stop()
+          track.enabled = false
+        })
+      }
+
+      this.screenSharePeers.delete(userId)
     },
 
     /**
@@ -775,6 +901,25 @@ export const useWebRTCStore = defineStore('webrtc', {
         this.localStream.getTracks().forEach(track => track.stop())
         this.localStream = null
       }
+
+      // Cleanup screen share state
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach(track => track.stop())
+        this.screenStream = null
+      }
+      this.isScreenSharing = false
+
+      // Cleanup screen share peers
+      this.screenSharePeers.forEach((_, userId) => this.removeScreenSharePeer(userId))
+      this.screenSharePeers.clear()
+
+      // Cleanup active screen shares
+      this.activeScreenShares.forEach((share) => {
+        if (share.stream) {
+          share.stream.getTracks().forEach(track => track.stop())
+        }
+      })
+      this.activeScreenShares = []
 
       // Cleanup audio contexts
       if (this.localAudioContext && this.localAudioContext.state !== 'closed') {
