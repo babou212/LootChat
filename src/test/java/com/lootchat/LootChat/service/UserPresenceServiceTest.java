@@ -1,25 +1,21 @@
 package com.lootchat.LootChat.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,15 +23,17 @@ import static org.mockito.Mockito.*;
 class UserPresenceServiceTest {
 
     @Mock
-    private KafkaProducerService kafkaProducerService;
+    private OutboxService outboxService;
 
     @Mock
     private UserRepository userRepository;
 
     @Mock
-    private ObjectMapper objectMapper;
+    private RedisTemplate<String, String> redisTemplate;
 
-    @InjectMocks
+    @Mock
+    private ValueOperations<String, String> valueOperations;
+
     private UserPresenceService userPresenceService;
 
     private User user1;
@@ -44,6 +42,9 @@ class UserPresenceServiceTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        userPresenceService = new UserPresenceService(userRepository, outboxService, redisTemplate);
+        
         user1 = User.builder()
                 .id(1L)
                 .username("user1")
@@ -67,192 +68,108 @@ class UserPresenceServiceTest {
     }
 
     @Test
-    @DisplayName("userConnected should mark user as online and broadcast event")
-    void userConnected_ShouldMarkUserOnline_AndBroadcastEvent() throws Exception {
+    @DisplayName("userConnected should mark user as online and save to outbox")
+    void userConnected_ShouldMarkUserOnline_AndSaveToOutbox() {
         String username = "user1";
         Long userId = 1L;
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"userId\":1,\"username\":\"user1\",\"status\":\"online\"}");
-        when(kafkaProducerService.send(any(), any(), anyString())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
 
         userPresenceService.userConnected(username, userId);
 
-        assertThat(userPresenceService.isUserOnline(username)).isTrue();
-        verify(kafkaProducerService, times(1)).send(null, null, "{\"userId\":1,\"username\":\"user1\",\"status\":\"online\"}");
+        verify(valueOperations).set(eq("user:presence:user1"), eq("online"), eq(5L), eq(TimeUnit.MINUTES));
+        verify(outboxService).saveEvent(
+                eq(OutboxService.EVENT_PRESENCE_UPDATED),
+                eq(OutboxService.TOPIC_PRESENCE),
+                eq("1"),
+                any()
+        );
     }
 
     @Test
-    @DisplayName("userDisconnected should mark user as offline and broadcast event")
-    void userDisconnected_ShouldMarkUserOffline_AndBroadcastEvent() throws Exception {
+    @DisplayName("userDisconnected should remove from Redis and save to outbox")
+    void userDisconnected_ShouldRemoveFromRedis_AndSaveToOutbox() {
         String username = "user1";
         Long userId = 1L;
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        when(kafkaProducerService.send(any(), any(), anyString())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
-        userPresenceService.userConnected(username, userId);
-        
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"userId\":1,\"username\":\"user1\",\"status\":\"offline\"}");
 
         userPresenceService.userDisconnected(username, userId);
 
-        assertThat(userPresenceService.isUserOnline(username)).isFalse();
-        verify(kafkaProducerService, times(1)).send(null, null, "{\"userId\":1,\"username\":\"user1\",\"status\":\"offline\"}");
+        verify(redisTemplate).delete("user:presence:user1");
+        verify(outboxService).saveEvent(
+                eq(OutboxService.EVENT_PRESENCE_UPDATED),
+                eq(OutboxService.TOPIC_PRESENCE),
+                eq("1"),
+                any()
+        );
     }
 
     @Test
-    @DisplayName("isUserOnline should return false for user that never connected")
-    void isUserOnline_ShouldReturnFalse_ForNeverConnectedUser() {
+    @DisplayName("isUserOnline should return true when Redis has online status")
+    void isUserOnline_ShouldReturnTrue_WhenRedisHasOnlineStatus() {
+        when(valueOperations.get("user:presence:user1")).thenReturn("online");
+
+        boolean isOnline = userPresenceService.isUserOnline("user1");
+
+        assertThat(isOnline).isTrue();
+    }
+
+    @Test
+    @DisplayName("isUserOnline should return false when Redis has no status")
+    void isUserOnline_ShouldReturnFalse_WhenRedisHasNoStatus() {
+        when(valueOperations.get("user:presence:nonexistent")).thenReturn(null);
+
         boolean isOnline = userPresenceService.isUserOnline("nonexistent");
 
         assertThat(isOnline).isFalse();
     }
 
     @Test
-    @DisplayName("isUserOnline should return true for connected user")
-    void isUserOnline_ShouldReturnTrue_ForConnectedUser() {
-        String username = "user1";
-        Long userId = 1L;
-        userPresenceService.userConnected(username, userId);
-
-        boolean isOnline = userPresenceService.isUserOnline(username);
-
-        assertThat(isOnline).isTrue();
-    }
-
-    @Test
-    @DisplayName("getOnlineUsers should return only online usernames")
-    void getOnlineUsers_ShouldReturnOnlyOnlineUsernames() {
-        userPresenceService.userConnected("user1", 1L);
-        userPresenceService.userConnected("user2", 2L);
-        userPresenceService.userConnected("user3", 3L);
-        userPresenceService.userDisconnected("user2", 2L);
+    @DisplayName("getOnlineUsers should return usernames from Redis keys")
+    void getOnlineUsers_ShouldReturnUsernames_FromRedisKeys() {
+        Set<String> keys = Set.of("user:presence:user1", "user:presence:user3");
+        when(redisTemplate.keys("user:presence:*")).thenReturn(keys);
 
         Set<String> onlineUsers = userPresenceService.getOnlineUsers();
 
         assertThat(onlineUsers).containsExactlyInAnyOrder("user1", "user3");
-        assertThat(onlineUsers).doesNotContain("user2");
     }
 
     @Test
-    @DisplayName("getOnlineUsers should return empty set when no users online")
-    void getOnlineUsers_ShouldReturnEmptySet_WhenNoUsersOnline() {
+    @DisplayName("getOnlineUsers should return empty set when no keys in Redis")
+    void getOnlineUsers_ShouldReturnEmptySet_WhenNoKeysInRedis() {
+        when(redisTemplate.keys("user:presence:*")).thenReturn(null);
+
         Set<String> onlineUsers = userPresenceService.getOnlineUsers();
 
         assertThat(onlineUsers).isEmpty();
     }
 
     @Test
-    @DisplayName("getAllUserPresence should return presence map for all users")
-    void getAllUserPresence_ShouldReturnPresenceMap_ForAllUsers() {
+    @DisplayName("getAllUserPresence should return presence map from Redis")
+    void getAllUserPresence_ShouldReturnPresenceMap_FromRedis() {
+        Set<String> keys = Set.of("user:presence:user1", "user:presence:user3");
+        when(redisTemplate.keys("user:presence:*")).thenReturn(keys);
         when(userRepository.findByUsername("user1")).thenReturn(user1);
-        when(userRepository.findByUsername("user2")).thenReturn(user2);
         when(userRepository.findByUsername("user3")).thenReturn(user3);
-        
-        userPresenceService.userConnected("user1", 1L);
-        userPresenceService.userConnected("user3", 3L);
-        userPresenceService.userDisconnected("user2", 2L);
+        when(valueOperations.get("user:presence:user1")).thenReturn("online");
+        when(valueOperations.get("user:presence:user3")).thenReturn("online");
 
         Map<Long, Boolean> presenceMap = userPresenceService.getAllUserPresence();
 
         assertThat(presenceMap.get(1L)).isTrue();
-        assertThat(presenceMap.get(2L)).isFalse();
         assertThat(presenceMap.get(3L)).isTrue();
     }
 
     @Test
-    @DisplayName("getAllUserPresence should handle users not found in repository")
-    void getAllUserPresence_ShouldHandleUsersNotFound() {
+    @DisplayName("getAllUserPresence should skip users not found in repository")
+    void getAllUserPresence_ShouldSkipUsersNotFound() {
+        Set<String> keys = Set.of("user:presence:user1", "user:presence:ghost");
+        when(redisTemplate.keys("user:presence:*")).thenReturn(keys);
         when(userRepository.findByUsername("user1")).thenReturn(user1);
         when(userRepository.findByUsername("ghost")).thenReturn(null);
-        
-        userPresenceService.userConnected("user1", 1L);
-        userPresenceService.userConnected("ghost", 999L);
+        when(valueOperations.get("user:presence:user1")).thenReturn("online");
 
         Map<Long, Boolean> presenceMap = userPresenceService.getAllUserPresence();
 
         assertThat(presenceMap).containsKey(1L);
-        assertThat(presenceMap).doesNotContainKey(999L);
-        assertThat(presenceMap.get(1L)).isTrue();
-    }
-
-    @Test
-    @DisplayName("concurrent operations should be thread-safe")
-    void concurrentOperations_ShouldBeThreadSafe() throws Exception {
-        int threadCount = 10;
-        int operationsPerThread = 100;
-        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
-        CountDownLatch latch = new CountDownLatch(threadCount);
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-
-        for (int i = 0; i < threadCount; i++) {
-            final String username = "user" + i;
-            final Long userId = (long) i;
-            executorService.submit(() -> {
-                try {
-                    for (int j = 0; j < operationsPerThread; j++) {
-                        userPresenceService.userConnected(username, userId);
-                        userPresenceService.isUserOnline(username);
-                        userPresenceService.getOnlineUsers();
-                        if (j % 2 == 0) {
-                            userPresenceService.userDisconnected(username, userId);
-                        }
-                    }
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-
-        latch.await(10, TimeUnit.SECONDS);
-        executorService.shutdown();
-
-        assertThat(executorService.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
-        
-        Set<String> onlineUsers = userPresenceService.getOnlineUsers();
-        for (String username : onlineUsers) {
-            assertThat(userPresenceService.isUserOnline(username)).isTrue();
-        }
-    }
-
-    @Test
-    @DisplayName("userConnected should handle multiple connections for same user")
-    void userConnected_ShouldHandleMultipleConnections_ForSameUser() throws Exception {
-        String username = "user1";
-        Long userId = 1L;
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        when(kafkaProducerService.send(any(), any(), anyString())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
-
-        userPresenceService.userConnected(username, userId);
-        userPresenceService.userConnected(username, userId);
-        userPresenceService.userConnected(username, userId);
-
-        assertThat(userPresenceService.isUserOnline(username)).isTrue();
-        Set<String> onlineUsers = userPresenceService.getOnlineUsers();
-        assertThat(onlineUsers).containsExactly(username);
-    }
-
-    @Test
-    @DisplayName("userDisconnected should handle disconnecting already offline user")
-    void userDisconnected_ShouldHandleDisconnecting_AlreadyOfflineUser() throws Exception {
-        String username = "user1";
-        Long userId = 1L;
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
-        when(kafkaProducerService.send(any(), any(), anyString())).thenReturn(java.util.concurrent.CompletableFuture.completedFuture(null));
-
-        userPresenceService.userDisconnected(username, userId);
-
-        assertThat(userPresenceService.isUserOnline(username)).isFalse();
-        verify(kafkaProducerService, times(1)).send(null, null, "{}");
-    }
-
-    @Test
-    @DisplayName("broadcastPresenceUpdate should handle JSON serialization errors")
-    void broadcastPresenceUpdate_ShouldHandleJsonErrors() throws Exception {
-        String username = "user1";
-        Long userId = 1L;
-        when(objectMapper.writeValueAsString(any())).thenThrow(new RuntimeException("JSON error"));
-
-        userPresenceService.userConnected(username, userId);
-
-        assertThat(userPresenceService.isUserOnline(username)).isTrue();
-        verify(kafkaProducerService, never()).send(any(), any(), anyString());
+        assertThat(presenceMap).hasSize(1);
     }
 }

@@ -43,7 +43,7 @@ public class KafkaConfig {
     }
 
     /**
-     * Enhanced producer factory with reliability settings
+     * Enhanced producer factory with reliability settings and transaction support
      */
     @Bean
     public ProducerFactory<String, String> producerFactory() {
@@ -70,7 +70,15 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
         configProps.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120000);
         
-        return new DefaultKafkaProducerFactory<>(configProps);
+        DefaultKafkaProducerFactory<String, String> factory = new DefaultKafkaProducerFactory<>(configProps);
+        
+        // Enable transactions if transaction-id-prefix is configured
+        String transactionIdPrefix = bootKafkaProperties.getProducer().getTransactionIdPrefix();
+        if (transactionIdPrefix != null && !transactionIdPrefix.isEmpty()) {
+            factory.setTransactionIdPrefix(transactionIdPrefix);
+        }
+        
+        return factory;
     }
 
     @Bean

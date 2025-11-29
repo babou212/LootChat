@@ -20,7 +20,6 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,7 +39,7 @@ public class DirectMessageService {
     private final DirectMessageReactionRepository directMessageReactionRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
     private final S3FileStorageService s3FileStorageService;
     private final CacheManager cacheManager;
@@ -408,48 +407,63 @@ public class DirectMessageService {
                 .build();
     }
     
+    /**
+     * Publish message event via outbox pattern for reliable delivery.
+     * This is called within the same @Transactional context as message save,
+     * ensuring atomicity between DB write and event creation.
+     */
     private void publishMessageToKafka(Long messageId, Long directMessageId, Long senderId, 
                                       Long recipientId, String content) {
-        try {
-            DirectMessageEvent event = new DirectMessageEvent(messageId, directMessageId, senderId, recipientId, content);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.messages", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM to Kafka: " + e.getMessage());
-        }
+        DirectMessageEvent event = new DirectMessageEvent(messageId, directMessageId, senderId, recipientId, content);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_CREATED,
+                OutboxService.TOPIC_DIRECT_MESSAGES,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
+    /**
+     * Publish reaction event via outbox pattern.
+     */
     private void publishReactionToKafka(Long reactionId, Long messageId, Long directMessageId,
                                        String action, String emoji, Long userId, String username,
                                        Long user1Id, Long user2Id) {
-        try {
-            DirectMessageReactionEvent event = new DirectMessageReactionEvent(
-                    reactionId, messageId, directMessageId, action, emoji, userId, username, user1Id, user2Id);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.reactions", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM reaction to Kafka: " + e.getMessage());
-        }
+        DirectMessageReactionEvent event = new DirectMessageReactionEvent(
+                reactionId, messageId, directMessageId, action, emoji, userId, username, user1Id, user2Id);
+        String eventType = "add".equals(action) ? OutboxService.EVENT_REACTION_ADDED : OutboxService.EVENT_REACTION_REMOVED;
+        outboxService.saveEvent(
+                eventType,
+                OutboxService.TOPIC_DIRECT_REACTIONS,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
+    /**
+     * Publish edit event via outbox pattern.
+     */
     private void publishEditToKafka(Long messageId, Long directMessageId, String content, Boolean edited) {
-        try {
-            DirectMessageEditEvent event = new DirectMessageEditEvent(messageId, directMessageId, content, edited);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.edits", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM edit to Kafka: " + e.getMessage());
-        }
+        DirectMessageEditEvent event = new DirectMessageEditEvent(messageId, directMessageId, content, edited);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_EDITED,
+                OutboxService.TOPIC_DIRECT_EDITS,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
+    /**
+     * Publish delete event via outbox pattern.
+     */
     private void publishDeleteToKafka(Long messageId, Long directMessageId) {
-        try {
-            DirectMessageDeleteEvent event = new DirectMessageDeleteEvent(messageId, directMessageId);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.deletions", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM deletion to Kafka: " + e.getMessage());
-        }
+        DirectMessageDeleteEvent event = new DirectMessageDeleteEvent(messageId, directMessageId);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_DELETED,
+                OutboxService.TOPIC_DIRECT_DELETIONS,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
     private void evictFirstPageCache(Long directMessageId) {

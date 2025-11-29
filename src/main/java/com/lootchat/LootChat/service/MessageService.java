@@ -7,12 +7,10 @@ import com.lootchat.LootChat.dto.ReactionResponse;
 import com.lootchat.LootChat.entity.Channel;
 import com.lootchat.LootChat.entity.Message;
 import com.lootchat.LootChat.entity.MessageReaction;
-import com.lootchat.LootChat.entity.OutboxEvent;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.ChannelRepository;
 import com.lootchat.LootChat.repository.MessageReactionRepository;
 import com.lootchat.LootChat.repository.MessageRepository;
-import com.lootchat.LootChat.repository.OutboxEventRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +45,7 @@ public class MessageService {
     private final MessageReactionRepository reactionRepository;
     private final CurrentUserService currentUserService;
     private final S3FileStorageService s3FileStorageService;
-    private final OutboxEventRepository outboxEventRepository;
+    private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
 
@@ -160,80 +158,50 @@ public class MessageService {
      * Guarantees event delivery after transaction commits
      */
     private void publishMessageToKafka(Long messageId, String content, Long channelId, Long userId) {
-        try {
-            ChatMessageEvent event = new ChatMessageEvent(messageId, content, channelId, userId);
-            String payload = objectMapper.writeValueAsString(event);
-            
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                .eventType("MESSAGE_CREATED")
-                .payload(payload)
-                .messageKey(channelId != null ? channelId.toString() : null)
-                .build();
-            
-            outboxEventRepository.save(outboxEvent);
-            log.debug("Stored message event in outbox: messageId={}, channelId={}, userId={}", messageId, channelId, userId);
-        } catch (Exception e) {
-            log.error("Failed to store message event in outbox", e);
-            throw new RuntimeException("Failed to queue message event", e);
-        }
+        ChatMessageEvent event = new ChatMessageEvent(messageId, content, channelId, userId);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_CREATED,
+                OutboxService.TOPIC_CHANNEL_MESSAGES,
+                channelId != null ? channelId.toString() : null,
+                event
+        );
+        log.debug("Stored message event in outbox: messageId={}, channelId={}, userId={}", messageId, channelId, userId);
     }
 
     private void publishMessageUpdateToKafka(Long messageId, String content, Long channelId) {
-        try {
-            MessageUpdateEvent event = new MessageUpdateEvent(messageId, content, channelId);
-            String payload = objectMapper.writeValueAsString(event);
-            
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                .eventType("MESSAGE_UPDATED")
-                .payload(payload)
-                .messageKey(channelId != null ? channelId.toString() : null)
-                .build();
-            
-            outboxEventRepository.save(outboxEvent);
-            log.debug("Stored message update event in outbox: messageId={}, channelId={}", messageId, channelId);
-        } catch (Exception e) {
-            log.error("Failed to store message update event in outbox", e);
-            throw new RuntimeException("Failed to queue message update event", e);
-        }
+        MessageUpdateEvent event = new MessageUpdateEvent(messageId, content, channelId);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_EDITED,
+                OutboxService.TOPIC_CHANNEL_MESSAGES,
+                channelId != null ? channelId.toString() : null,
+                event
+        );
+        log.debug("Stored message update event in outbox: messageId={}, channelId={}", messageId, channelId);
     }
 
     private void publishMessageDeleteToKafka(Long messageId, Long channelId) {
-        try {
-            MessageDeleteEvent event = new MessageDeleteEvent(messageId, channelId);
-            String payload = objectMapper.writeValueAsString(event);
-            
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                .eventType("MESSAGE_DELETED")
-                .payload(payload)
-                .messageKey(channelId != null ? channelId.toString() : null)
-                .build();
-            
-            outboxEventRepository.save(outboxEvent);
-            log.debug("Stored message delete event in outbox: messageId={}, channelId={}", messageId, channelId);
-        } catch (Exception e) {
-            log.error("Failed to publish message delete to Kafka", e);
-        }
+        MessageDeleteEvent event = new MessageDeleteEvent(messageId, channelId);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_DELETED,
+                OutboxService.TOPIC_CHANNEL_MESSAGES,
+                channelId != null ? channelId.toString() : null,
+                event
+        );
+        log.debug("Stored message delete event in outbox: messageId={}, channelId={}", messageId, channelId);
     }
 
     private void publishReactionToKafka(Long reactionId, Long messageId, Long channelId, String action, 
                                        String emoji, Long userId, String username) {
-        try {
-            ReactionEvent event = new ReactionEvent(reactionId, messageId, channelId, action, emoji, userId, username);
-            String payload = objectMapper.writeValueAsString(event);
-            
-            OutboxEvent outboxEvent = OutboxEvent.builder()
-                .eventType("REACTION_" + action.toUpperCase())
-                .payload(payload)
-                .messageKey(channelId != null ? channelId.toString() : null)
-                .build();
-            
-            outboxEventRepository.save(outboxEvent);
-            log.debug("Stored reaction {} event in outbox: reactionId={}, messageId={}, channelId={}", 
-                action, reactionId, messageId, channelId);
-        } catch (Exception e) {
-            log.error("Failed to store reaction event in outbox", e);
-            throw new RuntimeException("Failed to queue reaction event", e);
-        }
+        ReactionEvent event = new ReactionEvent(reactionId, messageId, channelId, action, emoji, userId, username);
+        String eventType = "add".equals(action) ? OutboxService.EVENT_REACTION_ADDED : OutboxService.EVENT_REACTION_REMOVED;
+        outboxService.saveEvent(
+                eventType,
+                OutboxService.TOPIC_CHANNEL_MESSAGES,
+                channelId != null ? channelId.toString() : null,
+                event
+        );
+        log.debug("Stored reaction {} event in outbox: reactionId={}, messageId={}, channelId={}", 
+            action, reactionId, messageId, channelId);
     }
 
     @Transactional(readOnly = true)
