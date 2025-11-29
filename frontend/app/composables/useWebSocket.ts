@@ -65,6 +65,18 @@ export const useWebSocket = () => {
   }
 
   /**
+   * Subscribe to presence sync updates (bulk presence state)
+   * This is broadcast periodically to ensure all clients have accurate presence info
+   */
+  const subscribeToPresenceSync = (callback: (updates: UserPresenceUpdate[]) => void) => {
+    return store.subscribe<UserPresenceUpdate[]>(
+      'presence-sync',
+      '/topic/user-presence/sync',
+      callback
+    )
+  }
+
+  /**
    * Subscribe to reactions (global)
    */
   const subscribeToReactions = (callback: (reaction: Reaction) => void) => {
@@ -255,6 +267,7 @@ export const useWebSocket = () => {
     subscribeToChannel,
     subscribeToAllMessages,
     subscribeToUserPresence,
+    subscribeToPresenceSync,
     subscribeToReactions,
     subscribeToReactionRemovals,
     subscribeToChannelReactions,

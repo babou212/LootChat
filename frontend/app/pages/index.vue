@@ -33,11 +33,17 @@ const usersStore = useUsersStore()
 const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
-const { getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
+const { getClient, isConnected, subscribeToUserDirectMessages, subscribeToPresenceSync } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useWebRTC()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
 const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
+
+// Initialize presence heartbeat
+usePresenceHeartbeat()
+
+// Presence sync subscription ref
+let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> = null
 
 // Screen share viewer state
 const selectedScreenShareId = ref<string | null>(null)
@@ -403,6 +409,27 @@ onMounted(async () => {
           }
         })
       }
+
+      // Subscribe to presence sync for bulk presence updates
+      // This ensures we have accurate presence info even if individual updates were missed
+      presenceSyncSubscription = subscribeToPresenceSync((updates) => {
+        // First, mark all users as offline
+        usersWithFullData.value.forEach((u: typeof usersWithFullData.value[0]) => {
+          if (u.userId !== user.value?.userId) { // Don't mark ourselves offline
+            updateUserPresence(u.userId, 'offline')
+            userPresenceStore.setUserPresence(u.userId, 'offline')
+          }
+        })
+
+        // Then, mark online users from the sync
+        updates.forEach((update) => {
+          updateUserPresence(update.userId, 'online')
+          userPresenceStore.setUserPresence(update.userId, 'online')
+          if (!usersWithFullData.value.some((u: typeof usersWithFullData.value[0]) => u.userId === update.userId)) {
+            addUser(update.userId, update.username, 'online')
+          }
+        })
+      })
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err)
     }
@@ -419,6 +446,9 @@ onUnmounted(() => {
   composerStore.cleanup()
   if (dmSubscription) {
     dmSubscription.unsubscribe()
+  }
+  if (presenceSyncSubscription) {
+    presenceSyncSubscription.unsubscribe()
   }
   // Don't disconnect WebSocket - keep it alive for the session
   // The WebSocket plugin handles connection lifecycle
@@ -478,10 +508,7 @@ watch(usersWithFullData, () => {
         @view-screen-share="handleViewScreenShare"
       />
 
-      <div
-        class="flex-1 flex flex-col min-w-0 transition-all duration-300"
-        :class="{ 'mr-[60%]': selectedScreenShare && !isScreenShareMinimized }"
-      >
+      <div class="flex-1 flex flex-col min-w-0">
         <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
           <div class="flex items-center gap-2">
             <UIcon

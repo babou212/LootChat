@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +48,34 @@ public class UserPresenceService {
         String key = PRESENCE_KEY_PREFIX + username;
         String status = redisTemplate.opsForValue().get(key);
         return "online".equals(status);
+    }
+    
+    /**
+     * Refresh the current user's presence TTL without broadcasting.
+     * Called by heartbeat endpoint to keep presence alive.
+     * This method does NOT broadcast through the outbox - it just updates Redis directly.
+     * The PresenceSyncService will periodically broadcast the presence state to all clients.
+     */
+    public void refreshCurrentUserPresence() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof UserDetails) {
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            String username = userDetails.getUsername();
+            
+            String key = PRESENCE_KEY_PREFIX + username;
+            String currentStatus = redisTemplate.opsForValue().get(key);
+            
+            if ("online".equals(currentStatus)) {
+                // Just refresh the TTL, don't broadcast
+                redisTemplate.expire(key, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                log.debug("Refreshed presence TTL for user: {}", username);
+            } else {
+                // User wasn't marked online, re-establish presence in Redis directly
+                // No broadcasting - the PresenceSyncService will handle that
+                redisTemplate.opsForValue().set(key, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                log.info("Re-established presence in Redis for user: {}", username);
+            }
+        }
     }
     
     public Set<String> getOnlineUsers() {

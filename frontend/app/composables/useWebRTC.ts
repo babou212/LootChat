@@ -1,6 +1,6 @@
 import type { StompSubscription } from '@stomp/stompjs'
 import type { WebRTCSignalRequest, WebRTCSignalResponse, WebRTCSignalType, VoiceParticipant } from '../../shared/types/chat'
-import { useWebRTCStore } from '../../stores/webrtc'
+import { useWebRTCStore, SCREEN_SHARE_PROFILES, type ScreenShareQuality } from '../../stores/webrtc'
 import { useVoiceLogger } from './useLogger'
 
 export const useWebRTC = () => {
@@ -22,6 +22,8 @@ export const useWebRTC = () => {
   const activeScreenShares = computed(() => store.activeScreenShares)
   const hasActiveScreenShare = computed(() => store.hasActiveScreenShare)
   const currentScreenShare = computed(() => store.currentScreenShare)
+  const screenShareQuality = computed(() => store.screenShareQuality)
+  const screenShareSettings = computed(() => store.currentScreenShareSettings)
 
   const channelWebRTCSub = ref<StompSubscription | null>(null)
   const userSignalSub = ref<StompSubscription | null>(null)
@@ -74,7 +76,7 @@ export const useWebRTC = () => {
 
     const prevOnConnect = client.onConnect
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    client.onConnect = (frame: any) => {
+    client.onConnect = async (frame: any) => {
       if (prevOnConnect) {
         try {
           prevOnConnect(frame)
@@ -102,18 +104,29 @@ export const useWebRTC = () => {
           channelWebRTCSub.value = wsClient.subscribe(
             `/topic/channels/${currentChannelId.value}/webrtc`,
             (message: { body: string }) => {
-              const signal = JSON.parse(message.body) as WebRTCSignalResponse
-              handleSignal(signal)
+              try {
+                const signal = JSON.parse(message.body) as WebRTCSignalResponse
+                handleSignal(signal)
+              } catch (error) {
+                logger.error('Error parsing WebRTC signal during reconnect', error)
+              }
             }
           )
 
           userSignalSub.value = wsClient.subscribe(
             `/user/queue/webrtc/signal`,
             (message: { body: string }) => {
-              const signal = JSON.parse(message.body) as WebRTCSignalResponse
-              handleSignal(signal)
+              try {
+                const signal = JSON.parse(message.body) as WebRTCSignalResponse
+                handleSignal(signal)
+              } catch (error) {
+                logger.error('Error parsing user WebRTC signal during reconnect', error)
+              }
             }
           )
+
+          // Wait for subscriptions to be ready before sending JOIN
+          await new Promise(resolve => setTimeout(resolve, 100))
 
           sendSignal({
             channelId: currentChannelId.value,
@@ -331,7 +344,8 @@ export const useWebRTC = () => {
     }
   }
 
-  const sendSignal = (signal: WebRTCSignalRequest) => {
+  const sendSignal = (signal: WebRTCSignalRequest, retryCount = 0) => {
+    const maxRetries = 3
     const { getClient, isConnected } = useWebSocket()
     const client = getClient()
 
@@ -341,28 +355,33 @@ export const useWebRTC = () => {
     }
 
     if (!client.connected) {
-      logger.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), queuing for retry...`)
+      if (retryCount < maxRetries) {
+        const delay = 500 * (retryCount + 1)
+        logger.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`)
 
-      setTimeout(() => {
-        const retryClient = getClient()
-        if (retryClient?.connected) {
-          retryClient.publish({
-            destination: '/app/webrtc/signal',
-            body: JSON.stringify(signal)
-          })
-          logger.debug(`Successfully sent queued signal: ${signal.type}`)
-        } else {
-          logger.error('Cannot send signal - STOMP client still not connected after retry')
-        }
-      }, 500)
+        setTimeout(() => {
+          sendSignal(signal, retryCount + 1)
+        }, delay)
+      } else {
+        logger.error(`Failed to send signal (type: ${signal.type}) after ${maxRetries} retries - STOMP client not connected`)
+      }
       return
     }
 
-    client.publish({
-      destination: '/app/webrtc/signal',
-      body: JSON.stringify(signal)
-    })
-    logger.debug(`Sent signal: ${signal.type} to ${signal.toUserId || 'broadcast'}`)
+    try {
+      client.publish({
+        destination: '/app/webrtc/signal',
+        body: JSON.stringify(signal)
+      })
+      logger.debug(`Sent signal: ${signal.type} to ${signal.toUserId || 'broadcast'}`)
+    } catch (error) {
+      logger.error(`Error publishing signal (type: ${signal.type})`, error)
+      if (retryCount < maxRetries) {
+        setTimeout(() => {
+          sendSignal(signal, retryCount + 1)
+        }, 500)
+      }
+    }
   }
 
   const handleSignal = async (signal: WebRTCSignalResponse) => {
@@ -399,6 +418,8 @@ export const useWebRTC = () => {
           if (fromUserId === myId) break
 
           if (!signal.toUserId && currentChannelId.value) {
+            // This is a broadcast JOIN from a new user
+            // Send direct JOIN response so they know we're here
             sendSignal({
               channelId: currentChannelId.value,
               type: 'JOIN' as WebRTCSignalType,
@@ -408,10 +429,13 @@ export const useWebRTC = () => {
 
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
+              // Small delay to ensure the new peer has their subscriptions ready
+              await new Promise(resolve => setTimeout(resolve, 150))
               logger.info(`Creating offer to new peer ${fromUserId} (broadcast JOIN)`)
               await createOffer(fromUserId)
             }
           } else if (signal.toUserId === myId && currentChannelId.value) {
+            // This is a direct JOIN response from an existing user
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
               logger.info(`Creating offer to peer ${fromUserId} (direct JOIN response)`)
@@ -732,15 +756,29 @@ export const useWebRTC = () => {
         isScreenSharing: false
       })
 
+      // Subscribe to channel WebRTC topic for broadcast signals (JOIN, LEAVE, SCREEN_SHARE)
       channelWebRTCSub.value = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
-        const signal = JSON.parse(message.body) as WebRTCSignalResponse
-        handleSignal(signal)
+        try {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        } catch (error) {
+          logger.error('Error parsing WebRTC signal from channel topic', error)
+        }
       })
 
+      // Subscribe to user-specific queue for direct signals (OFFER, ANSWER, ICE_CANDIDATE)
       userSignalSub.value = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
-        const signal = JSON.parse(message.body) as WebRTCSignalResponse
-        handleSignal(signal)
+        try {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        } catch (error) {
+          logger.error('Error parsing WebRTC signal from user queue', error)
+        }
       })
+
+      // Wait a brief moment for subscriptions to be fully established
+      // This prevents race conditions where we send JOIN before subscription is active
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       logger.info(`Subscribed to WebRTC channels, sending JOIN signal`)
 
@@ -842,25 +880,11 @@ export const useWebRTC = () => {
     }
 
     try {
-      // Request screen capture with options for games and applications
-      const displayMediaOptions: DisplayMediaStreamOptions = {
-        video: {
-          displaySurface: 'monitor', // 'monitor', 'window', 'browser'
-          // @ts-expect-error - cursor is not in the TS types but is supported
-          cursor: 'always',
-          frameRate: { ideal: 30, max: 60 },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 }
-        },
-        audio: {
-          // System audio for games
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      }
+      // Get screen share constraints from store based on quality setting
+      const displayMediaOptions = store.currentScreenShareConstraints
+      const qualitySettings = store.currentScreenShareSettings
 
-      logger.info('Requesting screen capture...')
+      logger.info(`Requesting screen capture with quality: ${qualitySettings.label} (${qualitySettings.width}x${qualitySettings.height}@${qualitySettings.frameRate}fps, max ${qualitySettings.maxBitrate}kbps)`)
       const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
 
       // Set up track ended listener to handle browser's native stop sharing button
@@ -870,6 +894,10 @@ export const useWebRTC = () => {
           logger.info('Screen share ended by user (native browser UI)')
           stopScreenShare()
         }
+
+        // Log actual track settings
+        const settings = videoTrack.getSettings()
+        logger.info(`Screen share actual settings: ${settings.width}x${settings.height}@${settings.frameRate}fps`)
       }
 
       store.setScreenStream(screenStream)
@@ -896,7 +924,21 @@ export const useWebRTC = () => {
           const audioTracks = screenStream.getAudioTracks()
 
           if (videoTrack) {
-            peer.connection.addTrack(videoTrack, screenStream)
+            const sender = peer.connection.addTrack(videoTrack, screenStream)
+
+            // Set encoding parameters for video bitrate
+            const params = sender.getParameters()
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}]
+            }
+            if (params.encodings[0]) {
+              params.encodings[0].maxBitrate = qualitySettings.maxBitrate * 1000 // Convert kbps to bps
+              params.encodings[0].maxFramerate = qualitySettings.frameRate
+            }
+            await sender.setParameters(params).catch((err: Error) => {
+              logger.warn('Failed to set video encoding params', err)
+            })
+
             logger.debug(`Added screen video track to peer ${peerId}`)
           }
 
@@ -1013,6 +1055,14 @@ export const useWebRTC = () => {
     }
   }
 
+  /**
+   * Set screen share quality
+   */
+  const setScreenShareQuality = (quality: ScreenShareQuality) => {
+    store.setScreenShareQuality(quality)
+    logger.info(`Screen share quality set to: ${SCREEN_SHARE_PROFILES[quality].label}`)
+  }
+
   return {
     localStream: readonly(localStream),
     peers: readonly(peers),
@@ -1027,6 +1077,9 @@ export const useWebRTC = () => {
     activeScreenShares: readonly(activeScreenShares),
     hasActiveScreenShare: readonly(hasActiveScreenShare),
     currentScreenShare: readonly(currentScreenShare),
+    screenShareQuality: readonly(screenShareQuality),
+    screenShareSettings: readonly(screenShareSettings),
+    screenShareProfiles: SCREEN_SHARE_PROFILES,
     // Methods
     joinVoiceChannel,
     leaveVoiceChannel,
@@ -1034,6 +1087,7 @@ export const useWebRTC = () => {
     toggleDeafen,
     startScreenShare,
     stopScreenShare,
-    toggleScreenShare
+    toggleScreenShare,
+    setScreenShareQuality
   }
 }

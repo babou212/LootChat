@@ -33,6 +33,16 @@ public class UserController {
     public ResponseEntity<Map<Long, Boolean>> getUserPresence() {
         return ResponseEntity.ok(userPresenceService.getAllUserPresence());
     }
+    
+    /**
+     * Heartbeat endpoint to keep user presence alive.
+     * Should be called periodically by the frontend (every 2-3 minutes).
+     */
+    @PostMapping("/presence/heartbeat")
+    public ResponseEntity<Void> heartbeat() {
+        userPresenceService.refreshCurrentUserPresence();
+        return ResponseEntity.ok().build();
+    }
 
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest request) {

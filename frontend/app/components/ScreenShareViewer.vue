@@ -81,14 +81,14 @@ const handleToggleMinimize = () => {
       class="fixed z-50 transition-all duration-300 ease-in-out"
       :class="[
         isMinimized
-          ? 'bottom-4 right-4 w-80 h-52 rounded-lg shadow-2xl'
-          : 'top-0 right-0 w-[60%] h-full shadow-2xl'
+          ? 'bottom-20 right-4 w-80 h-48 rounded-lg shadow-2xl'
+          : 'inset-0 left-16 md:left-64'
       ]"
     >
       <!-- Main container -->
       <div
         class="relative w-full h-full bg-gray-900 flex flex-col overflow-hidden"
-        :class="isMinimized ? 'rounded-lg' : 'rounded-l-lg'"
+        :class="isMinimized ? 'rounded-lg' : ''"
       >
         <!-- Header -->
         <div
@@ -212,12 +212,6 @@ const handleToggleMinimize = () => {
           />
         </div>
       </div>
-
-      <!-- Resize handle (when not minimized) -->
-      <div
-        v-if="!isMinimized"
-        class="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize bg-transparent hover:bg-purple-500/50 transition-colors"
-      />
     </div>
   </Transition>
 </template>
