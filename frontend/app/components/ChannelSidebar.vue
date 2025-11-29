@@ -14,6 +14,7 @@ interface Emits {
   (e: 'selectChannel', channel: Channel): void
   (e: 'joinVoice', channelId: number): void
   (e: 'leaveVoice'): void
+  (e: 'viewScreenShare', sharerId: string): void
 }
 
 const props = defineProps<Props>()
@@ -45,6 +46,10 @@ const handleJoinVoice = (channelId: number) => {
 
 const handleLeaveVoice = () => {
   emit('leaveVoice')
+}
+
+const handleViewScreenShare = (sharerId: string) => {
+  emit('viewScreenShare', sharerId)
 }
 
 const toggleSidebar = () => {
@@ -154,6 +159,7 @@ onMounted(() => {
         :is-collapsed="isCollapsed"
         @join-voice="handleJoinVoice"
         @leave-voice="handleLeaveVoice"
+        @view-screen-share="handleViewScreenShare"
       />
     </div>
   </div>

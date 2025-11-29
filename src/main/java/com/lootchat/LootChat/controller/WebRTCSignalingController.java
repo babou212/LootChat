@@ -70,6 +70,17 @@ public class WebRTCSignalingController {
                         log.warn("OFFER/ANSWER/ICE_CANDIDATE signal without target user");
                     }
                     break;
+
+                case SCREEN_SHARE_START:
+                case SCREEN_SHARE_STOP:
+                    // Broadcast screen share status to all channel participants
+                    messagingTemplate.convertAndSend(
+                        "/topic/channels/" + request.getChannelId() + "/webrtc",
+                        response
+                    );
+                    log.info("Broadcasted {} from user {} (username: {})", 
+                        request.getType(), request.getFromUserId(), fromUser.getUsername());
+                    break;
                     
                 default:
                     log.warn("Unknown signal type: {}", request.getType());
