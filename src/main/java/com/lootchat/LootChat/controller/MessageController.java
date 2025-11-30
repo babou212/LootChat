@@ -2,6 +2,7 @@ package com.lootchat.LootChat.controller;
 
 import com.lootchat.LootChat.dto.CreateMessageRequest;
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.dto.MessageSearchRequest;
 import com.lootchat.LootChat.dto.UpdateMessageRequest;
 import com.lootchat.LootChat.entity.MessageDocument;
 import com.lootchat.LootChat.service.MessageSearchService;
@@ -72,25 +73,10 @@ public class MessageController {
         return ResponseEntity.ok(messages);
     }
 
-    @GetMapping("/search")
-    public ResponseEntity<List<MessageDocument>> searchMessages(
-            @RequestParam String query,
-            @RequestParam(required = false) String  channelName,
-            @RequestParam(required = false) String  username,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-
-        List<MessageDocument> results;
-
-        if (channelName != null) {
-            results = messageSearchService.searchMessagesInChannel(channelName, query, page, size);
-        } else if (username != null) {
-            results = messageSearchService.searchMessagesByUser(username, query, page, size);
-        } else {
-            results = messageSearchService.searchAllMessages(query, page, size);
-        }
-
-        return ResponseEntity.ok(results);
+    @PostMapping("/search")
+    public ResponseEntity<List<MessageDocument>> searchMessages(@RequestBody MessageSearchRequest messageSearchRequest) {
+        List<MessageDocument> messageResponse = messageSearchService.searchMessages(messageSearchRequest);
+        return ResponseEntity.ok(messageResponse);
     }
 
     @PutMapping("/{id}")
