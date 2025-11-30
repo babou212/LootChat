@@ -107,7 +107,7 @@ const resendCode = async () => {
       <UForm
         :state="state"
         :schema="schema"
-        class="space-y-6"
+        class="space-y-8"
         @submit="onSubmit"
       >
         <UFormGroup
