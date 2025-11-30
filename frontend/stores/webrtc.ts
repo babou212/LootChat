@@ -314,28 +314,22 @@ export const useWebRTCStore = defineStore('webrtc', {
       // Build video constraints - DisplayMediaStreamOptions uses different types
       const videoConstraints: Record<string, unknown> = {
         cursor: 'always',
-        // Use 'exact' for frameRate to force the browser to use this value
-        frameRate: { ideal: profile.frameRate, min: Math.max(15, profile.frameRate - 15), max: profile.frameRate },
-        // Hint that we want detail preservation over smooth motion
-        // This prevents aggressive frame dropping
-        displaySurface: 'monitor' // or 'window' or 'browser'
+        frameRate: { ideal: profile.frameRate, max: profile.frameRate }
       }
 
-      // Only set resolution constraints if not 'source' quality
       if (profile.width > 0 && profile.height > 0) {
-        // Use 'min' alongside 'ideal' to prevent downscaling
-        videoConstraints.width = { min: Math.floor(profile.width * 0.75), ideal: profile.width, max: profile.width }
-        videoConstraints.height = { min: Math.floor(profile.height * 0.75), ideal: profile.height, max: profile.height }
+        videoConstraints.width = { ideal: profile.width, max: profile.width }
+        videoConstraints.height = { ideal: profile.height, max: profile.height }
       }
 
       return {
         video: videoConstraints as MediaTrackConstraints,
-        // Request system audio - browser will show checkbox to share audio
-        // Setting to true enables the "Share audio" checkbox in Chrome/Edge
-        // For tab sharing, audio is often available; for window/screen it depends on OS
-        audio: true
-        // Note: preferCurrentTab, selfBrowserSurface, systemAudio, surfaceSwitching
-        // are Chrome-specific and may not be in the TypeScript types yet
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          suppressLocalAudioPlayback: false
+        }
       } as DisplayMediaStreamOptions
     },
 
