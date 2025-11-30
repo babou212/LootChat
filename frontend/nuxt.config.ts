@@ -91,9 +91,9 @@ export default defineNuxtConfig({
             'style-src \'self\' \'unsafe-inline\'',
             'img-src \'self\' data: https: blob:',
             'font-src \'self\' data:',
-            // LiveKit WebSocket signaling goes through localhost (Docker port forward)
-            // WebRTC media uses LAN IP but that's handled by ICE, not CSP
-            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 http://localhost:7880 ws://localhost:7880 ws: wss: https://tenor.googleapis.com',
+            // LiveKit uses HTTPS for validation and WSS for signaling
+            // WebRTC media uses ICE, not CSP
+            'connect-src \'self\' https: ws: wss:',
             'media-src \'self\' https: blob:',
             'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
             'worker-src \'self\' blob:',
