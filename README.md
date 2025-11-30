@@ -16,6 +16,8 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 - **Role-based Access Control**
 - **Admin Invite System**
 - **Modern UI** with Nuxt UI
+- **Kubernetes** for reliable performant deployments
+- **FluxCD** for GitOPS 
 - **Docker Compose** for full stack orchestration
 
 ---
@@ -53,11 +55,14 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 ## 📝 Features
 
 - Registration/login with email confirmation
-- Real-time chat
+- Forgotten password resetting with OTP
+- Real-time message retrieval
 - Channel & user management
-- Admin invites
+- Admin invites for user registrations
 - Responsive, modern UI
 - Email notifications
+- Voice chat
+- Screen Sharing
 
 ---
 
@@ -68,15 +73,6 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 - **DevOps:** Docker, Kubernetes, FluxCD (GitOps), GitHub Actions
 
 ---
-
-## 🚢 Deployment
-
-LootChat supports both Docker Compose and Kubernetes deployments:
-
-### Docker Compose (Development)
-```bash
-docker compose up -d
-```
 
 ### Kubernetes + FluxCD (Production)
 
