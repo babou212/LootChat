@@ -40,6 +40,8 @@ spec:
           mkdir -p /mnt/disks/local-storage/redis
           mkdir -p /mnt/disks/local-storage/kafka
           mkdir -p /mnt/disks/local-storage/minio
+          mkdir -p /mnt/disks/local-storage/grafana
+          mkdir -p /mnt/disks/local-storage/prometheus
           chmod -R 777 /mnt/disks/local-storage
           echo "Local storage directories created on $(hostname)"
         securityContext:

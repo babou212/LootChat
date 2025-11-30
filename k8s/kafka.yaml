@@ -108,6 +108,29 @@ spec:
               key: CLUSTER_ID
         - name: KAFKA_LOG_DIRS
           value: /var/lib/kafka/data
+        - name: JMX_PORT
+          value: "9999"
+        - name: KAFKA_JMX_HOSTNAME
+          value: "localhost"
+        - name: KAFKA_OPTS
+          value: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=localhost -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.rmi.port=9999"
+      - name: jmx-exporter
+        image: bitnami/jmx-exporter:latest
+        ports:
+        - containerPort: 5556
+          name: metrics
+        env:
+        - name: JMX_PORT
+          value: "9999"
+        - name: SERVICE_PORT
+          value: "5556"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
       volumes:
       - name: kafka-data
         persistentVolumeClaim:
@@ -118,6 +141,8 @@ kind: Service
 metadata:
   name: lootchat-kafka
   namespace: lootchat
+  labels:
+    app: lootchat-kafka
 spec:
   clusterIP: None
   selector:
@@ -129,3 +154,21 @@ spec:
   - port: 9093
     targetPort: 9093
     name: controller
+  - port: 5556
+    targetPort: 5556
+    name: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-metrics
+  namespace: lootchat
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: lootchat-kafka
+  endpoints:
+  - port: metrics
+    interval: 30s

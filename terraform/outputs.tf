@@ -65,14 +65,7 @@ output "cluster_summary" {
   }
 }
 
-output "volume_ids" {
-  description = "IDs of created volumes"
-  value = {
-    postgres = hcloud_volume.postgres_data.id
-    redis    = hcloud_volume.redis_data.id
-    uploads  = hcloud_volume.backend_uploads.id
-  }
-}
+# Volume outputs removed - volumes managed by Kubernetes PVCs
 
 output "next_steps" {
   description = "Next steps after infrastructure is created"

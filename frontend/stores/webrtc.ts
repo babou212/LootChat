@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import type { StompSubscription } from '@stomp/stompjs'
-import type { VoiceParticipant } from '../shared/types/chat'
+import type { VoiceParticipant, ScreenShareInfo } from '../shared/types/chat'
 
 /**
  * Enhanced WebRTC Store - Centralized voice channel management
@@ -86,10 +86,77 @@ export interface PeerConnectionState {
   iceGatheringState: RTCIceGatheringState
 }
 
+/**
+ * Screen share quality profiles
+ * Different presets for various use cases
+ */
+export type ScreenShareQuality = 'source' | '1080p60' | '1080p30' | '720p60' | '720p30' | '480p30'
+
+export interface ScreenShareSettings {
+  width: number
+  height: number
+  frameRate: number
+  maxBitrate: number // in kbps
+  label: string
+  description: string
+}
+
+export const SCREEN_SHARE_PROFILES: Record<ScreenShareQuality, ScreenShareSettings> = {
+  'source': {
+    width: 0, // 0 means use source resolution
+    height: 0,
+    frameRate: 60,
+    maxBitrate: 8000,
+    label: 'Source Quality',
+    description: 'Native resolution up to 60fps (highest bandwidth)'
+  },
+  '1080p60': {
+    width: 1920,
+    height: 1080,
+    frameRate: 60,
+    maxBitrate: 6000,
+    label: '1080p 60fps',
+    description: 'Full HD at 60fps (high bandwidth)'
+  },
+  '1080p30': {
+    width: 1920,
+    height: 1080,
+    frameRate: 30,
+    maxBitrate: 4000,
+    label: '1080p 30fps',
+    description: 'Full HD at 30fps (balanced)'
+  },
+  '720p60': {
+    width: 1280,
+    height: 720,
+    frameRate: 60,
+    maxBitrate: 3000,
+    label: '720p 60fps',
+    description: 'HD at 60fps (good for gaming)'
+  },
+  '720p30': {
+    width: 1280,
+    height: 720,
+    frameRate: 30,
+    maxBitrate: 2000,
+    label: '720p 30fps',
+    description: 'HD at 30fps (lower bandwidth)'
+  },
+  '480p30': {
+    width: 854,
+    height: 480,
+    frameRate: 30,
+    maxBitrate: 1000,
+    label: '480p 30fps',
+    description: 'SD quality (minimal bandwidth)'
+  }
+}
+
 export const useWebRTCStore = defineStore('webrtc', {
   state: () => {
     let initialProfile: AudioProfile = 'balanced'
     let initialDevice: string | null = null
+    let initialScreenShareQuality: ScreenShareQuality = '1080p30'
 
     if (typeof window !== 'undefined') {
       try {
@@ -101,6 +168,19 @@ export const useWebRTCStore = defineStore('webrtc', {
         }
       } catch (error) {
         console.warn('Failed to load audio preferences:', error)
+      }
+
+      try {
+        const storedScreenShare = localStorage.getItem('lootchat_screenshare_preferences')
+        if (storedScreenShare) {
+          const prefs = JSON.parse(storedScreenShare)
+          // Validate that the stored quality is a valid profile key
+          if (prefs.quality && SCREEN_SHARE_PROFILES[prefs.quality as ScreenShareQuality]) {
+            initialScreenShareQuality = prefs.quality
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load screen share preferences:', error)
       }
     }
 
@@ -114,6 +194,13 @@ export const useWebRTCStore = defineStore('webrtc', {
 
       isMuted: false,
       isDeafened: false,
+
+      // Screen sharing state
+      isScreenSharing: false,
+      screenStream: null as MediaStream | null,
+      activeScreenShares: [] as ScreenShareInfo[],
+      screenSharePeers: new Map<string, { connection: RTCPeerConnection, stream?: MediaStream }>(),
+      screenShareQuality: initialScreenShareQuality,
 
       audioProfile: initialProfile,
       selectedAudioDevice: initialDevice,
@@ -194,6 +281,63 @@ export const useWebRTCStore = defineStore('webrtc', {
     localStreamActive: (state) => {
       if (!state.localStream) return false
       return state.localStream.getTracks().some(track => track.enabled && track.readyState === 'live')
+    },
+
+    /**
+     * Check if someone is currently sharing their screen
+     */
+    hasActiveScreenShare: state => state.activeScreenShares.length > 0,
+
+    /**
+     * Get the current screen share (first one if multiple)
+     */
+    currentScreenShare: state => state.activeScreenShares[0] || null,
+
+    /**
+     * Get all active screen shares
+     */
+    allScreenShares: state => state.activeScreenShares,
+
+    /**
+     * Check if a specific user is screen sharing
+     */
+    isUserScreenSharing: state => (userId: string) => {
+      return state.activeScreenShares.some(share => share.sharerId === userId)
+    },
+
+    /**
+     * Get current screen share video constraints based on quality setting
+     */
+    currentScreenShareConstraints: (state): DisplayMediaStreamOptions => {
+      const profile = SCREEN_SHARE_PROFILES[state.screenShareQuality] || SCREEN_SHARE_PROFILES['1080p30']
+
+      // Build video constraints - DisplayMediaStreamOptions uses different types
+      const videoConstraints: Record<string, unknown> = {
+        cursor: 'always',
+        frameRate: { ideal: profile.frameRate, max: profile.frameRate }
+      }
+
+      if (profile.width > 0 && profile.height > 0) {
+        videoConstraints.width = { ideal: profile.width, max: profile.width }
+        videoConstraints.height = { ideal: profile.height, max: profile.height }
+      }
+
+      return {
+        video: videoConstraints as MediaTrackConstraints,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          suppressLocalAudioPlayback: false
+        }
+      } as DisplayMediaStreamOptions
+    },
+
+    /**
+     * Get current screen share settings info
+     */
+    currentScreenShareSettings: (state): ScreenShareSettings => {
+      return SCREEN_SHARE_PROFILES[state.screenShareQuality] || SCREEN_SHARE_PROFILES['1080p30']
     },
 
     currentAudioConstraints: (state): MediaTrackConstraints => {
@@ -367,6 +511,104 @@ export const useWebRTCStore = defineStore('webrtc', {
     },
 
     /**
+     * Update participant screen sharing state
+     */
+    updateParticipantScreenSharing(userId: string, isScreenSharing: boolean) {
+      const participant = this.participants.find(p => p.userId === userId)
+      if (participant) {
+        participant.isScreenSharing = isScreenSharing
+      }
+    },
+
+    /**
+     * Set screen stream (local)
+     */
+    setScreenStream(stream: MediaStream | null) {
+      // Cleanup old stream
+      if (this.screenStream && stream !== this.screenStream) {
+        this.screenStream.getTracks().forEach(track => track.stop())
+      }
+      this.screenStream = stream
+      this.isScreenSharing = stream !== null
+    },
+
+    /**
+     * Add an active screen share from a remote user
+     */
+    addActiveScreenShare(info: ScreenShareInfo) {
+      const exists = this.activeScreenShares.find(s => s.sharerId === info.sharerId)
+      if (!exists) {
+        this.activeScreenShares.push(info)
+        this.updateParticipantScreenSharing(info.sharerId, true)
+      } else {
+        // Update existing with new stream
+        exists.stream = info.stream
+      }
+    },
+
+    /**
+     * Remove an active screen share
+     */
+    removeActiveScreenShare(sharerId: string) {
+      const share = this.activeScreenShares.find(s => s.sharerId === sharerId)
+      if (share?.stream) {
+        share.stream.getTracks().forEach(track => track.stop())
+      }
+      this.activeScreenShares = this.activeScreenShares.filter(s => s.sharerId !== sharerId)
+      this.updateParticipantScreenSharing(sharerId, false)
+    },
+
+    /**
+     * Update screen share stream for a user
+     */
+    updateScreenShareStream(sharerId: string, stream: MediaStream) {
+      const share = this.activeScreenShares.find(s => s.sharerId === sharerId)
+      if (share) {
+        share.stream = stream
+      }
+    },
+
+    /**
+     * Add a screen share peer connection
+     */
+    addScreenSharePeer(userId: string, connection: RTCPeerConnection) {
+      this.screenSharePeers.set(userId, { connection })
+    },
+
+    /**
+     * Update screen share peer with stream
+     */
+    updateScreenSharePeer(userId: string, stream: MediaStream) {
+      const existing = this.screenSharePeers.get(userId)
+      if (existing) {
+        this.screenSharePeers.set(userId, { ...existing, stream })
+      }
+    },
+
+    /**
+     * Remove and cleanup a screen share peer connection
+     */
+    removeScreenSharePeer(userId: string) {
+      const peer = this.screenSharePeers.get(userId)
+      if (!peer) return
+
+      try {
+        peer.connection.close()
+      } catch (error) {
+        console.warn(`Error closing screen share peer connection for ${userId}:`, error)
+      }
+
+      if (peer.stream) {
+        peer.stream.getTracks().forEach((track) => {
+          track.stop()
+          track.enabled = false
+        })
+      }
+
+      this.screenSharePeers.delete(userId)
+    },
+
+    /**
      * Set local stream
      */
     setLocalStream(stream: MediaStream | null) {
@@ -417,6 +659,25 @@ export const useWebRTCStore = defineStore('webrtc', {
           })
         }
       })
+    },
+
+    /**
+     * Set screen share quality
+     */
+    setScreenShareQuality(quality: ScreenShareQuality) {
+      this.screenShareQuality = quality
+
+      // Persist to localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('lootchat_screenshare_preferences')
+          const prefs = stored ? JSON.parse(stored) : {}
+          prefs.quality = quality
+          localStorage.setItem('lootchat_screenshare_preferences', JSON.stringify(prefs))
+        } catch (error) {
+          console.warn('Failed to save screen share quality preference:', error)
+        }
+      }
     },
 
     /**
@@ -775,6 +1036,25 @@ export const useWebRTCStore = defineStore('webrtc', {
         this.localStream.getTracks().forEach(track => track.stop())
         this.localStream = null
       }
+
+      // Cleanup screen share state
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach(track => track.stop())
+        this.screenStream = null
+      }
+      this.isScreenSharing = false
+
+      // Cleanup screen share peers
+      this.screenSharePeers.forEach((_, userId) => this.removeScreenSharePeer(userId))
+      this.screenSharePeers.clear()
+
+      // Cleanup active screen shares
+      this.activeScreenShares.forEach((share) => {
+        if (share.stream) {
+          share.stream.getTracks().forEach(track => track.stop())
+        }
+      })
+      this.activeScreenShares = []
 
       // Cleanup audio contexts
       if (this.localAudioContext && this.localAudioContext.state !== 'closed') {

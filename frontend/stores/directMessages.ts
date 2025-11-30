@@ -51,6 +51,13 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       }
     },
 
+    getCurrentPage: (state) => {
+      return (directMessageId: number): number => {
+        const cache = state.messageCache.get(directMessageId)
+        return cache?.currentPage ?? 0
+      }
+    },
+
     getTotalUnreadCount: (state) => {
       return state.directMessages.reduce((sum, dm) => sum + dm.unreadCount, 0)
     }
@@ -259,6 +266,32 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       this.messageCache.delete(directMessageId)
     },
 
+    /**
+     * Mark a message as deleted (soft delete).
+     * Preserves the message in the list but marks it as deleted.
+     * Also updates any messages that reply to this one.
+     */
+    markAsDeleted(directMessageId: number, messageId: number) {
+      const cache = this.messageCache.get(directMessageId)
+      if (!cache) return
+
+      const message = cache.messages.find(m => m.id === messageId)
+      if (message) {
+        message.deleted = true
+        message.content = '[Message deleted]'
+        message.imageUrl = undefined
+        message.imageFilename = undefined
+        message.reactions = []
+      }
+
+      // Update any messages that reply to this deleted message
+      cache.messages.forEach((m) => {
+        if (m.replyToMessageId === messageId) {
+          m.replyToContent = '[Message deleted]'
+        }
+      })
+    },
+
     removeMessage(directMessageId: number, messageId: number) {
       const cache = this.messageCache.get(directMessageId)
       if (!cache) return
@@ -306,6 +339,18 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       if (updates.edited !== undefined) {
         message.edited = updates.edited
       }
+    },
+
+    /**
+     * Clear all direct messages state.
+     * Called on logout to ensure clean state.
+     */
+    clearAll() {
+      this.directMessages = []
+      this.messageCache.clear()
+      this.selectedDirectMessageId = null
+      this.loading = false
+      this.error = null
     }
   }
 })

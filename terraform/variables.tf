@@ -87,24 +87,6 @@ variable "kubernetes_version" {
   default     = "1.32.0"
 }
 
-variable "postgres_volume_size" {
-  description = "Size of PostgreSQL volume in GB"
-  type        = number
-  default     = 10
-}
-
-variable "redis_volume_size" {
-  description = "Size of Redis volume in GB"
-  type        = number
-  default     = 10
-}
-
-variable "uploads_volume_size" {
-  description = "Size of backend uploads volume in GB"
-  type        = number
-  default     = 10
-}
-
 variable "enable_ccm" {
   description = "Enable Hetzner Cloud Controller Manager"
   type        = bool

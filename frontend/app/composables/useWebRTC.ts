@@ -1,6 +1,6 @@
 import type { StompSubscription } from '@stomp/stompjs'
 import type { WebRTCSignalRequest, WebRTCSignalResponse, WebRTCSignalType, VoiceParticipant } from '../../shared/types/chat'
-import { useWebRTCStore } from '../../stores/webrtc'
+import { useWebRTCStore, SCREEN_SHARE_PROFILES, type ScreenShareQuality } from '../../stores/webrtc'
 import { useVoiceLogger } from './useLogger'
 
 export const useWebRTC = () => {
@@ -17,12 +17,32 @@ export const useWebRTC = () => {
   const currentChannelId = computed(() => store.currentChannelId)
   const currentChannelName = computed(() => store.currentChannelName)
 
+  const isScreenSharing = computed(() => store.isScreenSharing)
+  const screenStream = computed(() => store.screenStream)
+  const activeScreenShares = computed(() => store.activeScreenShares)
+  const hasActiveScreenShare = computed(() => store.hasActiveScreenShare)
+  const currentScreenShare = computed(() => store.currentScreenShare)
+  const screenShareQuality = computed(() => store.screenShareQuality)
+  const screenShareSettings = computed(() => store.currentScreenShareSettings)
+
   const channelWebRTCSub = ref<StompSubscription | null>(null)
   const userSignalSub = ref<StompSubscription | null>(null)
   const beforeUnloadHandler = ref<((e: BeforeUnloadEvent) => void) | null>(null)
   const stompHandlersBound = ref(false)
   const speakingCheckFrame = ref<number | null>(null)
   const pendingCandidates = ref<Map<string, RTCIceCandidateInit[]>>(new Map())
+
+  const CONNECTION_TIMEOUT = 15000
+  const PEER_SYNC_INTERVAL = 10000
+  const HEARTBEAT_INTERVAL = 5000
+  const STALE_PEER_TIMEOUT = 30000
+
+  // Connection tracking
+  const connectionTimeouts = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const peerLastSeen = ref<Map<string, number>>(new Map())
+  const heartbeatInterval = ref<ReturnType<typeof setInterval> | null>(null)
+  const peerSyncInterval = ref<ReturnType<typeof setInterval> | null>(null)
+  const pendingOffers = ref<Map<string, { timestamp: number, retries: number }>>(new Map())
 
   const avatarCache = new Map<string, string | undefined>()
 
@@ -68,7 +88,7 @@ export const useWebRTC = () => {
 
     const prevOnConnect = client.onConnect
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    client.onConnect = (frame: any) => {
+    client.onConnect = async (frame: any) => {
       if (prevOnConnect) {
         try {
           prevOnConnect(frame)
@@ -96,18 +116,29 @@ export const useWebRTC = () => {
           channelWebRTCSub.value = wsClient.subscribe(
             `/topic/channels/${currentChannelId.value}/webrtc`,
             (message: { body: string }) => {
-              const signal = JSON.parse(message.body) as WebRTCSignalResponse
-              handleSignal(signal)
+              try {
+                const signal = JSON.parse(message.body) as WebRTCSignalResponse
+                handleSignal(signal)
+              } catch (error) {
+                logger.error('Error parsing WebRTC signal during reconnect', error)
+              }
             }
           )
 
           userSignalSub.value = wsClient.subscribe(
             `/user/queue/webrtc/signal`,
             (message: { body: string }) => {
-              const signal = JSON.parse(message.body) as WebRTCSignalResponse
-              handleSignal(signal)
+              try {
+                const signal = JSON.parse(message.body) as WebRTCSignalResponse
+                handleSignal(signal)
+              } catch (error) {
+                logger.error('Error parsing user WebRTC signal during reconnect', error)
+              }
             }
           )
+
+          // Wait for subscriptions to be ready before sending JOIN
+          await new Promise(resolve => setTimeout(resolve, 100))
 
           sendSignal({
             channelId: currentChannelId.value,
@@ -139,34 +170,35 @@ export const useWebRTC = () => {
   }
 
   const getRTCConfiguration = (): RTCConfiguration => {
-    const baseStun = [
-      'stun:stun.l.google.com:19302',
-      'stun:stun1.l.google.com:19302'
-    ]
-
-    const iceServers: RTCIceServer[] = baseStun.map(url => ({ urls: url }))
-
     const turnUrlsRaw = (publicRuntime.webrtcTurnUrls as string | undefined) || ''
-    const turnUsername = (publicRuntime.webrtcTurnUsername as string | undefined) || undefined
-    const turnCredential = (publicRuntime.webrtcTurnCredential as string | undefined) || undefined
+    const turnUsername = (publicRuntime.webrtcTurnUsername as string | undefined) || ''
+    const turnCredential = (publicRuntime.webrtcTurnCredential as string | undefined) || ''
     const policy = (publicRuntime.webrtcIceTransportPolicy as 'all' | 'relay' | undefined) || 'all'
 
-    if (turnUrlsRaw.trim().length > 0) {
-      const turnUrls = turnUrlsRaw
-        .split(',')
-        .map(u => u.trim())
-        .filter(Boolean)
+    const turnUrls = turnUrlsRaw.split(',').map(u => u.trim()).filter(Boolean)
 
-      turnUrls.forEach((url) => {
-        iceServers.push({
-          urls: url,
-          username: turnUsername,
-          credential: turnCredential
-        })
-      })
+    const iceServers: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' }
+    ]
+
+    // Add TURN servers as fallback for restrictive NATs/firewalls
+    if (turnUrls.length > 0 && turnUsername && turnCredential) {
+      iceServers.push(...turnUrls.map(url => ({
+        urls: url,
+        username: turnUsername,
+        credential: turnCredential
+      })))
     }
 
-    const cfg: RTCConfiguration = { iceServers }
+    const cfg: RTCConfiguration = {
+      iceServers,
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    }
     if (policy === 'relay') cfg.iceTransportPolicy = 'relay'
     return cfg
   }
@@ -204,9 +236,38 @@ export const useWebRTC = () => {
 
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams
-        logger.debug(`Received track from peer ${userId}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
+        const track = event.track
+        logger.debug(`Received track from peer ${userId}: kind=${track.kind}, stream has ${remoteStream?.getTracks().length || 0} tracks`)
 
         if (remoteStream) {
+          // Handle video track (screen share)
+          if (track.kind === 'video') {
+            logger.info(`Received video track from peer ${userId} - screen share`)
+
+            // Find or create screen share info
+            const existingShare = store.activeScreenShares.find(s => s.sharerId === userId)
+            if (existingShare) {
+              existingShare.stream = remoteStream
+            } else {
+              // Find the participant to get username
+              const participant = participants.value.find(p => p.userId === userId)
+              store.addActiveScreenShare({
+                sharerId: userId,
+                sharerUsername: participant?.username || userId,
+                stream: remoteStream
+              })
+            }
+
+            // Track ended listener for when remote stops sharing
+            track.onended = () => {
+              logger.info(`Video track from ${userId} ended - screen share stopped`)
+              store.removeActiveScreenShare(userId)
+            }
+
+            return
+          }
+
+          // Handle audio track (voice or screen share audio)
           const existingPeer = store.peers.get(userId)
           let audio = existingPeer?.audioEl
 
@@ -245,18 +306,43 @@ export const useWebRTC = () => {
       pc.oniceconnectionstatechange = async () => {
         logger.debug(`ICE connection state for ${userId}: ${pc.iceConnectionState}`)
 
-        if (pc.iceConnectionState === 'failed') {
+        // Clear connection timeout on successful connection
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          const timeout = connectionTimeouts.value.get(userId)
+          if (timeout) {
+            clearTimeout(timeout)
+            connectionTimeouts.value.delete(userId)
+          }
+          pendingOffers.value.delete(userId)
+          peerLastSeen.value.set(userId, Date.now())
+          logger.info(`Successfully connected to peer ${userId}`)
+        } else if (pc.iceConnectionState === 'failed') {
           logger.warn(`ICE connection failed for ${userId}, attempting restart`)
+          store.trackError(userId, 'ICE connection failed')
           await tryIceRestart(userId)
         } else if (pc.iceConnectionState === 'disconnected') {
-          setTimeout(() => {
-            if (pc.iceConnectionState === 'disconnected') {
-              logger.info(`Peer ${userId} disconnected, removing`)
-              removePeer(userId)
+          // Wait longer before removing - connection might recover
+          logger.info(`Peer ${userId} ICE disconnected, waiting for recovery...`)
+          setTimeout(async () => {
+            const peer = peers.value.get(userId)
+            if (peer && peer.connection.iceConnectionState === 'disconnected') {
+              logger.info(`Peer ${userId} still disconnected after timeout, attempting ICE restart`)
+              await tryIceRestart(userId)
             }
-          }, 3000)
-        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-          logger.info(`Successfully connected to peer ${userId}`)
+          }, 5000)
+        } else if (pc.iceConnectionState === 'checking') {
+          // Set connection timeout
+          if (!connectionTimeouts.value.has(userId)) {
+            const timeout = setTimeout(async () => {
+              const peer = peers.value.get(userId)
+              if (peer && (peer.connection.iceConnectionState === 'checking' || peer.connection.iceConnectionState === 'new')) {
+                logger.warn(`Connection to ${userId} timed out during ICE checking`)
+                store.trackError(userId, 'Connection timeout')
+                await tryIceRestart(userId)
+              }
+            }, CONNECTION_TIMEOUT)
+            connectionTimeouts.value.set(userId, timeout)
+          }
         }
       }
 
@@ -264,17 +350,30 @@ export const useWebRTC = () => {
         logger.debug(`Connection state for ${userId}: ${pc.connectionState}`)
 
         if (pc.connectionState === 'failed') {
-          logger.warn(`Connection failed for ${userId}, attempting restart`)
-          await tryIceRestart(userId)
+          logger.warn(`Connection failed for ${userId}, attempting full reconnect`)
+          store.trackError(userId, 'Connection failed')
+
+          // Check retry count before attempting reconnection
+          const pending = pendingOffers.value.get(userId)
+          if (!pending || pending.retries < 3) {
+            await reconnectToPeer(userId)
+          } else {
+            logger.error(`Max retries reached for ${userId}, removing peer`)
+            removePeer(userId)
+          }
         } else if (pc.connectionState === 'disconnected') {
-          setTimeout(() => {
-            if (pc.connectionState === 'disconnected') {
-              logger.info(`Peer ${userId} disconnected, removing`)
-              removePeer(userId)
+          // Give more time for recovery before taking action
+          setTimeout(async () => {
+            const peer = peers.value.get(userId)
+            if (peer && peer.connection.connectionState === 'disconnected') {
+              logger.info(`Peer ${userId} still disconnected, attempting reconnect`)
+              await reconnectToPeer(userId)
             }
-          }, 3000)
+          }, 8000) // Wait 8 seconds before reconnecting
         } else if (pc.connectionState === 'connected') {
           logger.info(`Peer connection established with user ${userId}`)
+          store.clearError(userId)
+          peerLastSeen.value.set(userId, Date.now())
           // Start connection quality monitoring
           store.checkConnectionQuality(userId, pc)
         }
@@ -296,7 +395,8 @@ export const useWebRTC = () => {
     }
   }
 
-  const sendSignal = (signal: WebRTCSignalRequest) => {
+  const sendSignal = (signal: WebRTCSignalRequest, retryCount = 0) => {
+    const maxRetries = 3
     const { getClient, isConnected } = useWebSocket()
     const client = getClient()
 
@@ -306,28 +406,33 @@ export const useWebRTC = () => {
     }
 
     if (!client.connected) {
-      logger.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), queuing for retry...`)
+      if (retryCount < maxRetries) {
+        const delay = 500 * (retryCount + 1)
+        logger.warn(`Cannot send signal (type: ${signal.type}) - STOMP client not connected (isConnected: ${isConnected.value}), retrying in ${delay}ms... (attempt ${retryCount + 1}/${maxRetries})`)
 
-      setTimeout(() => {
-        const retryClient = getClient()
-        if (retryClient?.connected) {
-          retryClient.publish({
-            destination: '/app/webrtc/signal',
-            body: JSON.stringify(signal)
-          })
-          logger.debug(`Successfully sent queued signal: ${signal.type}`)
-        } else {
-          logger.error('Cannot send signal - STOMP client still not connected after retry')
-        }
-      }, 500)
+        setTimeout(() => {
+          sendSignal(signal, retryCount + 1)
+        }, delay)
+      } else {
+        logger.error(`Failed to send signal (type: ${signal.type}) after ${maxRetries} retries - STOMP client not connected`)
+      }
       return
     }
 
-    client.publish({
-      destination: '/app/webrtc/signal',
-      body: JSON.stringify(signal)
-    })
-    logger.debug(`Sent signal: ${signal.type} to ${signal.toUserId || 'broadcast'}`)
+    try {
+      client.publish({
+        destination: '/app/webrtc/signal',
+        body: JSON.stringify(signal)
+      })
+      logger.debug(`Sent signal: ${signal.type} to ${signal.toUserId || 'broadcast'}`)
+    } catch (error) {
+      logger.error(`Error publishing signal (type: ${signal.type})`, error)
+      if (retryCount < maxRetries) {
+        setTimeout(() => {
+          sendSignal(signal, retryCount + 1)
+        }, 500)
+      }
+    }
   }
 
   const handleSignal = async (signal: WebRTCSignalResponse) => {
@@ -356,13 +461,16 @@ export const useWebRTC = () => {
               username: signal.fromUsername || fromUserId,
               avatar,
               isMuted: false,
-              isSpeaking: false
+              isSpeaking: false,
+              isScreenSharing: false
             })
           }
 
           if (fromUserId === myId) break
 
           if (!signal.toUserId && currentChannelId.value) {
+            // This is a broadcast JOIN from a new user
+            // Send direct JOIN response so they know we're here
             sendSignal({
               channelId: currentChannelId.value,
               type: 'JOIN' as WebRTCSignalType,
@@ -370,12 +478,25 @@ export const useWebRTC = () => {
               toUserId: fromUserId
             })
 
+            if (store.isScreenSharing) {
+              logger.info(`Notifying new user ${fromUserId} about our active screen share`)
+              sendSignal({
+                channelId: currentChannelId.value,
+                type: 'SCREEN_SHARE_START' as WebRTCSignalType,
+                fromUserId: myId,
+                toUserId: fromUserId
+              })
+            }
+
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
+              // Small delay to ensure the new peer has their subscriptions ready
+              await new Promise(resolve => setTimeout(resolve, 150))
               logger.info(`Creating offer to new peer ${fromUserId} (broadcast JOIN)`)
               await createOffer(fromUserId)
             }
           } else if (signal.toUserId === myId && currentChannelId.value) {
+            // This is a direct JOIN response from an existing user
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
               logger.info(`Creating offer to peer ${fromUserId} (direct JOIN response)`)
@@ -409,6 +530,67 @@ export const useWebRTC = () => {
             await handleIceCandidate(fromUserId, data as RTCIceCandidateInit)
           }
           break
+
+        case 'SCREEN_SHARE_START':
+          if (fromUserId !== myId) {
+            logger.info(`User ${signal.fromUsername || fromUserId} started screen sharing`)
+            const existingShare = store.activeScreenShares.find(s => s.sharerId === fromUserId)
+            if (!existingShare) {
+              store.addActiveScreenShare({
+                sharerId: fromUserId,
+                sharerUsername: signal.fromUsername || fromUserId
+              })
+            }
+            store.updateParticipantScreenSharing(fromUserId, true)
+          }
+          break
+
+        case 'SCREEN_SHARE_STOP':
+          if (fromUserId !== myId) {
+            logger.info(`User ${signal.fromUsername || fromUserId} stopped screen sharing`)
+            store.removeActiveScreenShare(fromUserId)
+            store.removeScreenSharePeer(fromUserId)
+            store.updateParticipantScreenSharing(fromUserId, false)
+          }
+          break
+
+        case 'SYNC':
+          // Handle sync signal - update last seen and ensure participant exists
+          if (fromUserId !== myId) {
+            peerLastSeen.value.set(fromUserId, Date.now())
+
+            // Ensure participant is in our list
+            if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
+              const avatar = await fetchUserAvatar(fromUserId)
+              store.addParticipant({
+                userId: fromUserId,
+                username: signal.fromUsername || fromUserId,
+                avatar,
+                isMuted: false,
+                isSpeaking: false,
+                isScreenSharing: false
+              })
+              logger.info(`Added missing participant ${fromUserId} from SYNC`)
+            }
+
+            // Ensure we have a peer connection
+            const existingPeer = peers.value.get(fromUserId)
+            if (!existingPeer) {
+              const shouldInitiate = (() => {
+                try {
+                  return BigInt(myId) < BigInt(fromUserId)
+                } catch {
+                  return myId < fromUserId
+                }
+              })()
+
+              if (shouldInitiate) {
+                logger.info(`Creating connection to ${fromUserId} from SYNC`)
+                await createOffer(fromUserId)
+              }
+            }
+          }
+          break
       }
     } catch (error) {
       logger.error('Error handling WebRTC signal', error)
@@ -422,7 +604,8 @@ export const useWebRTC = () => {
       store.addPeer(userId, pc)
 
       const offer = await pc.createOffer({
-        offerToReceiveAudio: true
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true // Enable receiving video for screen shares
       })
       await pc.setLocalDescription(offer)
 
@@ -444,19 +627,48 @@ export const useWebRTC = () => {
   const handleOffer = async (userId: string, offer: RTCSessionDescriptionInit) => {
     try {
       logger.info(`Received offer from user ${userId}`)
-      let pc = peers.value.get(userId)?.connection
+      const existingPeer = peers.value.get(userId)
+      let pc = existingPeer?.connection
 
       if (pc) {
-        if (pc.signalingState !== 'stable') {
+        // Handle renegotiation - connection exists and is stable, apply the new offer
+        if (pc.signalingState === 'stable') {
+          logger.info(`Renegotiating with ${userId} - existing connection is stable, applying new offer`)
+          // This is a renegotiation (e.g., screen share added), just set the new remote description
+          // Don't recreate the connection, just update it
+        } else if (pc.signalingState === 'have-local-offer') {
+          // Glare situation - both sides sent offers simultaneously
+          // Use tie-breaker: lower ID wins and rolls back
+          const myId = user.value?.userId.toString() || ''
+          const shouldRollback = (() => {
+            try {
+              return BigInt(myId) > BigInt(userId)
+            } catch {
+              return myId > userId
+            }
+          })()
+
+          if (shouldRollback) {
+            logger.info(`Glare with ${userId} - rolling back our offer`)
+            await pc.setLocalDescription({ type: 'rollback' })
+          } else {
+            logger.info(`Glare with ${userId} - ignoring their offer (we win)`)
+            return
+          }
+        } else {
           logger.warn(`Received offer from ${userId} but peer connection is in ${pc.signalingState} state. Recreating connection.`)
           removePeer(userId)
           pc = await createPeerConnection(userId)
+          store.addPeer(userId, pc)
         }
       } else {
         pc = await createPeerConnection(userId)
+        store.addPeer(userId, pc)
       }
 
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
+
+      // Create answer - include video receiving capability for screen shares
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
 
@@ -553,14 +765,197 @@ export const useWebRTC = () => {
         })
       } else {
         logger.warn(`Cannot ICE-restart with ${userId}, signalingState=${pc.signalingState}`)
+        // If not stable, try full reconnect
+        await reconnectToPeer(userId)
       }
     } catch (e) {
-      logger.error('ICE restart failed, removing peer', e)
-      removePeer(userId)
+      logger.error('ICE restart failed, attempting full reconnect', e)
+      await reconnectToPeer(userId)
     }
   }
 
+  /**
+   * Full reconnection to a peer - removes existing connection and creates new one
+   */
+  const reconnectToPeer = async (userId: string) => {
+    if (!user.value || !currentChannelId.value) return
+
+    // Track retry attempts
+    const pending = pendingOffers.value.get(userId) || { timestamp: Date.now(), retries: 0 }
+    pending.retries++
+    pending.timestamp = Date.now()
+    pendingOffers.value.set(userId, pending)
+
+    if (pending.retries > 3) {
+      logger.error(`Max reconnection retries reached for ${userId}`)
+      store.trackError(userId, 'Max reconnection retries reached')
+      return
+    }
+
+    logger.info(`Reconnecting to peer ${userId} (attempt ${pending.retries}/3)`)
+
+    // Clean up existing connection
+    removePeer(userId)
+
+    // Exponential backoff delay
+    const delay = Math.pow(2, pending.retries - 1) * 1000 // 1s, 2s, 4s
+    await new Promise(resolve => setTimeout(resolve, delay))
+
+    // Create new connection - use tie-breaker to decide who initiates
+    const myId = user.value.userId.toString()
+    const shouldInitiate = (() => {
+      try {
+        return BigInt(myId) < BigInt(userId)
+      } catch {
+        return myId < userId
+      }
+    })()
+
+    if (shouldInitiate) {
+      await createOffer(userId)
+    } else {
+      // Send JOIN signal to trigger the other peer to send offer
+      sendSignal({
+        channelId: currentChannelId.value,
+        type: 'JOIN' as WebRTCSignalType,
+        fromUserId: myId,
+        toUserId: userId
+      })
+    }
+  }
+
+  /**
+   * Start heartbeat mechanism to detect stale peers
+   */
+  const startHeartbeat = () => {
+    if (heartbeatInterval.value) return
+
+    heartbeatInterval.value = setInterval(() => {
+      const now = Date.now()
+
+      peers.value.forEach((peer, peerId) => {
+        const lastSeen = peerLastSeen.value.get(peerId) || 0
+        const isConnected = peer.connection.connectionState === 'connected'
+          || peer.connection.iceConnectionState === 'connected'
+          || peer.connection.iceConnectionState === 'completed'
+
+        if (isConnected) {
+          // Update last seen for connected peers
+          peerLastSeen.value.set(peerId, now)
+        } else if (now - lastSeen > STALE_PEER_TIMEOUT) {
+          // Peer is stale, attempt reconnection
+          logger.warn(`Peer ${peerId} is stale (no activity for ${STALE_PEER_TIMEOUT}ms), reconnecting`)
+          reconnectToPeer(peerId)
+        }
+      })
+    }, HEARTBEAT_INTERVAL)
+  }
+
+  const stopHeartbeat = () => {
+    if (heartbeatInterval.value) {
+      clearInterval(heartbeatInterval.value)
+      heartbeatInterval.value = null
+    }
+  }
+
+  /**
+   * Sync peer list with participants to ensure consistency
+   */
+  const syncPeers = async () => {
+    if (!user.value || !currentChannelId.value) return
+
+    const myId = user.value.userId.toString()
+
+    // Send SYNC signal to broadcast our presence
+    sendSignal({
+      channelId: currentChannelId.value,
+      type: 'SYNC' as WebRTCSignalType,
+      fromUserId: myId
+    })
+
+    // Check if we have peers for all participants (except self)
+    for (const participant of participants.value) {
+      if (participant.userId === myId) continue
+
+      const peer = peers.value.get(participant.userId)
+      const isConnected = peer && (
+        peer.connection.connectionState === 'connected'
+        || peer.connection.iceConnectionState === 'connected'
+        || peer.connection.iceConnectionState === 'completed'
+      )
+
+      if (!peer) {
+        logger.info(`Missing peer connection for participant ${participant.userId}, initiating connection`)
+        const shouldInitiate = (() => {
+          try {
+            return BigInt(myId) < BigInt(participant.userId)
+          } catch {
+            return myId < participant.userId
+          }
+        })()
+
+        if (shouldInitiate) {
+          await createOffer(participant.userId)
+        }
+      } else if (!isConnected && peer.connection.connectionState !== 'connecting') {
+        // Peer exists but not connected and not in process of connecting
+        const pending = pendingOffers.value.get(participant.userId)
+        if (!pending || Date.now() - pending.timestamp > 30000) {
+          logger.info(`Peer ${participant.userId} not connected, attempting reconnection`)
+          await reconnectToPeer(participant.userId)
+        }
+      }
+    }
+
+    // Remove peers for participants that are no longer in the channel
+    peers.value.forEach((_, peerId) => {
+      if (!participants.value.find(p => p.userId === peerId)) {
+        logger.info(`Removing peer ${peerId} - no longer a participant`)
+        removePeer(peerId)
+      }
+    })
+  }
+
+  const startPeerSync = () => {
+    if (peerSyncInterval.value) return
+
+    peerSyncInterval.value = setInterval(() => {
+      syncPeers()
+    }, PEER_SYNC_INTERVAL)
+  }
+
+  const stopPeerSync = () => {
+    if (peerSyncInterval.value) {
+      clearInterval(peerSyncInterval.value)
+      peerSyncInterval.value = null
+    }
+  }
+
+  /**
+   * Clean up all connection tracking state
+   */
+  const cleanupConnectionTracking = () => {
+    connectionTimeouts.value.forEach(timeout => clearTimeout(timeout))
+    connectionTimeouts.value.clear()
+
+    peerLastSeen.value.clear()
+    pendingOffers.value.clear()
+
+    stopHeartbeat()
+    stopPeerSync()
+  }
+
   const removePeer = (userId: string) => {
+    // Clear connection timeout for this peer
+    const timeout = connectionTimeouts.value.get(userId)
+    if (timeout) {
+      clearTimeout(timeout)
+      connectionTimeouts.value.delete(userId)
+    }
+
+    peerLastSeen.value.delete(userId)
+    pendingCandidates.value.delete(userId)
+
     const peer = peers.value.get(userId)
     if (peer) {
       peer.connection.close()
@@ -643,18 +1038,33 @@ export const useWebRTC = () => {
         username: user.value.username,
         avatar: user.value.avatar,
         isMuted: false,
-        isSpeaking: false
+        isSpeaking: false,
+        isScreenSharing: false
       })
 
+      // Subscribe to channel WebRTC topic for broadcast signals (JOIN, LEAVE, SCREEN_SHARE)
       channelWebRTCSub.value = client.subscribe(`/topic/channels/${channelId}/webrtc`, (message: { body: string }) => {
-        const signal = JSON.parse(message.body) as WebRTCSignalResponse
-        handleSignal(signal)
+        try {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        } catch (error) {
+          logger.error('Error parsing WebRTC signal from channel topic', error)
+        }
       })
 
+      // Subscribe to user-specific queue for direct signals (OFFER, ANSWER, ICE_CANDIDATE)
       userSignalSub.value = client.subscribe(`/user/queue/webrtc/signal`, (message: { body: string }) => {
-        const signal = JSON.parse(message.body) as WebRTCSignalResponse
-        handleSignal(signal)
+        try {
+          const signal = JSON.parse(message.body) as WebRTCSignalResponse
+          handleSignal(signal)
+        } catch (error) {
+          logger.error('Error parsing WebRTC signal from user queue', error)
+        }
       })
+
+      // Wait a brief moment for subscriptions to be fully established
+      // This prevents race conditions where we send JOIN before subscription is active
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       logger.info(`Subscribed to WebRTC channels, sending JOIN signal`)
 
@@ -663,6 +1073,11 @@ export const useWebRTC = () => {
         type: 'JOIN' as WebRTCSignalType,
         fromUserId: user.value.userId.toString()
       })
+
+      // Start reliability mechanisms
+      startHeartbeat()
+      startPeerSync()
+      store.startQualityMonitoring()
 
       if (typeof window !== 'undefined') {
         beforeUnloadHandler.value = () => {
@@ -693,6 +1108,9 @@ export const useWebRTC = () => {
       fromUserId: user.value.userId.toString()
     })
 
+    // Stop reliability mechanisms
+    cleanupConnectionTracking()
+    store.stopQualityMonitoring()
     stopSpeakingDetection()
 
     try {
@@ -740,6 +1158,208 @@ export const useWebRTC = () => {
     logger.info(`Deafen toggled: ${store.isDeafened}`)
   }
 
+  const startScreenShare = async () => {
+    if (!user.value || !currentChannelId.value) {
+      logger.warn('Cannot start screen share - not in a voice channel')
+      return
+    }
+
+    if (store.isScreenSharing) {
+      logger.warn('Already screen sharing')
+      return
+    }
+
+    try {
+      const displayMediaOptions = store.currentScreenShareConstraints
+      const qualitySettings = store.currentScreenShareSettings
+
+      logger.info(`Requesting screen capture with quality: ${qualitySettings.label} (${qualitySettings.width}x${qualitySettings.height}@${qualitySettings.frameRate}fps, max ${qualitySettings.maxBitrate}kbps)`)
+      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
+
+      const videoTrack = screenStream.getVideoTracks()[0]
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          logger.info('Screen share ended by user (native browser UI)')
+          stopScreenShare()
+        }
+
+        const settings = videoTrack.getSettings()
+        logger.info(`Screen share actual settings: ${settings.width}x${settings.height}@${settings.frameRate}fps`)
+      }
+
+      store.setScreenStream(screenStream)
+      store.updateParticipantScreenSharing(user.value.userId.toString(), true)
+
+      // Notify other participants that we're starting screen share
+      sendSignal({
+        channelId: currentChannelId.value,
+        type: 'SCREEN_SHARE_START' as WebRTCSignalType,
+        fromUserId: user.value.userId.toString()
+      })
+
+      store.addActiveScreenShare({
+        sharerId: user.value.userId.toString(),
+        sharerUsername: user.value.username,
+        stream: screenStream
+      })
+
+      for (const [peerId, peer] of store.peers.entries()) {
+        try {
+          const videoTrack = screenStream.getVideoTracks()[0]
+          const audioTracks = screenStream.getAudioTracks()
+
+          if (videoTrack) {
+            if (qualitySettings.frameRate >= 60) {
+              videoTrack.contentHint = 'motion'
+            } else {
+              videoTrack.contentHint = 'detail'
+            }
+
+            const sender = peer.connection.addTrack(videoTrack, screenStream)
+
+            const params = sender.getParameters()
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}]
+            }
+            if (params.encodings[0]) {
+              params.encodings[0].maxBitrate = qualitySettings.maxBitrate * 1000 // Convert kbps to bps
+              params.encodings[0].maxFramerate = qualitySettings.frameRate
+              params.encodings[0].scaleResolutionDownBy = 1.0
+              params.encodings[0].priority = 'high'
+              params.encodings[0].networkPriority = 'high'
+            }
+
+            if (params.degradationPreference !== undefined || 'degradationPreference' in params) {
+              const degradationPref = qualitySettings.frameRate >= 60 ? 'maintain-framerate' : 'maintain-resolution';
+              (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = degradationPref
+            }
+
+            await sender.setParameters(params).catch((err: Error) => {
+              logger.warn('Failed to set video encoding params', err)
+            })
+
+            logger.debug(`Added screen video track to peer ${peerId} with contentHint=${videoTrack.contentHint}`)
+          }
+
+          const audioTrack = audioTracks[0]
+          if (audioTrack) {
+            peer.connection.addTrack(audioTrack, screenStream)
+            logger.debug(`Added screen audio track to peer ${peerId}`)
+          }
+
+          const offer = await peer.connection.createOffer()
+          await peer.connection.setLocalDescription(offer)
+
+          sendSignal({
+            channelId: currentChannelId.value!,
+            type: 'OFFER' as WebRTCSignalType,
+            fromUserId: user.value!.userId.toString(),
+            toUserId: peerId,
+            data: offer
+          })
+
+          logger.info(`Renegotiated connection with ${peerId} for screen share`)
+        } catch (error) {
+          logger.error(`Error adding screen share track to peer ${peerId}`, error)
+        }
+      }
+
+      logger.info('Screen sharing started successfully')
+    } catch (error) {
+      if ((error as Error).name === 'NotAllowedError') {
+        logger.info('User cancelled screen share picker')
+      } else {
+        logger.error('Error starting screen share', error)
+        throw error
+      }
+    }
+  }
+
+  /**
+   * Stop screen sharing
+   */
+  const stopScreenShare = () => {
+    if (!user.value || !currentChannelId.value) return
+
+    if (!store.isScreenSharing) {
+      logger.debug('Not currently screen sharing')
+      return
+    }
+
+    const myId = user.value.userId.toString()
+
+    // Stop all screen stream tracks
+    if (store.screenStream) {
+      store.screenStream.getTracks().forEach((track) => {
+        track.stop()
+      })
+    }
+
+    // Remove screen tracks from all peer connections
+    for (const [peerId, peer] of store.peers.entries()) {
+      try {
+        const senders = peer.connection.getSenders()
+        for (const sender of senders) {
+          if (sender.track?.kind === 'video') {
+            peer.connection.removeTrack(sender)
+            logger.debug(`Removed screen video track from peer ${peerId}`)
+          }
+        }
+
+        // Renegotiate connection
+        peer.connection.createOffer()
+          .then((offer) => {
+            peer.connection.setLocalDescription(offer)
+            sendSignal({
+              channelId: currentChannelId.value!,
+              type: 'OFFER' as WebRTCSignalType,
+              fromUserId: user.value!.userId.toString(),
+              toUserId: peerId,
+              data: offer
+            })
+          })
+          .catch((err) => {
+            logger.warn(`Error renegotiating after screen share stop for ${peerId}`, err)
+          })
+      } catch (error) {
+        logger.warn(`Error removing screen share track from peer ${peerId}`, error)
+      }
+    }
+
+    // Update state
+    store.setScreenStream(null)
+    store.removeActiveScreenShare(myId)
+    store.updateParticipantScreenSharing(myId, false)
+
+    // Notify other participants
+    sendSignal({
+      channelId: currentChannelId.value,
+      type: 'SCREEN_SHARE_STOP' as WebRTCSignalType,
+      fromUserId: myId
+    })
+
+    logger.info('Screen sharing stopped')
+  }
+
+  /**
+   * Toggle screen sharing on/off
+   */
+  const toggleScreenShare = async () => {
+    if (store.isScreenSharing) {
+      stopScreenShare()
+    } else {
+      await startScreenShare()
+    }
+  }
+
+  /**
+   * Set screen share quality
+   */
+  const setScreenShareQuality = (quality: ScreenShareQuality) => {
+    store.setScreenShareQuality(quality)
+    logger.info(`Screen share quality set to: ${SCREEN_SHARE_PROFILES[quality].label}`)
+  }
+
   return {
     localStream: readonly(localStream),
     peers: readonly(peers),
@@ -748,9 +1368,23 @@ export const useWebRTC = () => {
     isDeafened: readonly(isDeafened),
     currentChannelId: readonly(currentChannelId),
     currentChannelName: readonly(currentChannelName),
+    // Screen sharing
+    isScreenSharing: readonly(isScreenSharing),
+    screenStream: readonly(screenStream),
+    activeScreenShares: readonly(activeScreenShares),
+    hasActiveScreenShare: readonly(hasActiveScreenShare),
+    currentScreenShare: readonly(currentScreenShare),
+    screenShareQuality: readonly(screenShareQuality),
+    screenShareSettings: readonly(screenShareSettings),
+    screenShareProfiles: SCREEN_SHARE_PROFILES,
+    // Methods
     joinVoiceChannel,
     leaveVoiceChannel,
     toggleMute,
-    toggleDeafen
+    toggleDeafen,
+    startScreenShare,
+    stopScreenShare,
+    toggleScreenShare,
+    setScreenShareQuality
   }
 }

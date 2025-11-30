@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { useAvatarStore } from '../../stores/avatars'
+
 const { user, logout } = useAuth()
 const router = useRouter()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const open = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
-const avatarUrl = ref<string>('')
 
 useClickAway(
   rootRef,
@@ -13,18 +14,16 @@ useClickAway(
   { active: open }
 )
 
-const loadAvatarUrl = async () => {
-  if (user.value?.avatar) {
-    const url = await getAvatarUrl(user.value.avatar)
-    if (url) {
-      avatarUrl.value = url
-    }
-  }
+const getAvatarUrl = (): string => {
+  if (!user.value?.userId) return ''
+  return avatarStore.getAvatarUrl(user.value.userId) || ''
 }
 
 // Load avatar when user changes
-watch(() => user.value?.avatar, () => {
-  loadAvatarUrl()
+watch(() => user.value?.avatar, (newAvatar) => {
+  if (newAvatar && user.value?.userId) {
+    avatarStore.loadAvatar(user.value.userId, newAvatar)
+  }
 }, { immediate: true })
 
 const goProfile = () => {
@@ -51,10 +50,10 @@ const getInitials = (username: string) => {
     >
       <div class="relative">
         <div
-          v-if="user.avatar && avatarUrl"
+          v-if="user.avatar && getAvatarUrl()"
           class="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 overflow-hidden"
         >
-          <img :src="avatarUrl" :alt="user.username" class="w-full h-full object-cover">
+          <img :src="getAvatarUrl()" :alt="user.username" class="w-full h-full object-cover">
         </div>
         <div
           v-else

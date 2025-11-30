@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type GifPicker from '~/components/GifPicker.vue'
 import type { DirectMessageMessage } from '../../shared/types/directMessage.d'
 import { useDirectMessagesStore } from '../../stores/directMessages'
@@ -6,6 +7,13 @@ import { useUserPresenceStore } from '../../stores/userPresence'
 import { useAvatarStore } from '../../stores/avatars'
 import { useComposerStore } from '../../stores/composer'
 import type { DirectMessageMessageResponse } from '../../app/api/directMessageApi'
+
+const messageSchema = z.object({
+  content: z.string()
+    .max(25000, 'Message must be less than 25000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 definePageMeta({
   middleware: 'auth'
@@ -26,19 +34,36 @@ const {
   subscribeToDirectMessageEdits,
   subscribeToDirectMessageDeletions,
   subscribeToUserPresence,
+  subscribeToPresenceSync,
   isConnected
 } = useWebSocket()
+
+// Initialize presence heartbeat
+usePresenceHeartbeat()
+
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 let reactionSubscription: ReturnType<typeof subscribeToDirectMessageReactions> | null = null
 let reactionRemovalSubscription: ReturnType<typeof subscribeToDirectMessageReactionRemovals> | null = null
 let editSubscription: ReturnType<typeof subscribeToDirectMessageEdits> | null = null
 let deleteSubscription: ReturnType<typeof subscribeToDirectMessageDeletions> | null = null
 let presenceSubscription: ReturnType<typeof subscribeToUserPresence> | null = null
+let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> | null = null
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
+const loadingMoreMessages = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
+
+const hasMoreMessages = computed(() => {
+  if (!directMessagesStore.selectedDirectMessageId) return true
+  return directMessagesStore.hasMoreMessages(directMessagesStore.selectedDirectMessageId)
+})
+
+const currentPage = computed(() => {
+  if (!directMessagesStore.selectedDirectMessageId) return 0
+  return directMessagesStore.getCurrentPage(directMessagesStore.selectedDirectMessageId)
+})
 
 const toggleEmojiPicker = () => {
   composerStore.toggleEmojiPicker()
@@ -156,6 +181,9 @@ onUnmounted(() => {
   if (presenceSubscription) {
     presenceSubscription.unsubscribe()
   }
+  if (presenceSyncSubscription) {
+    presenceSyncSubscription.unsubscribe()
+  }
 })
 
 onMounted(async () => {
@@ -191,6 +219,23 @@ onMounted(async () => {
       updateUserPresence(update.userId, update.status)
       // Also update presence store
       userPresenceStore.updateUserPresence(update)
+    })
+
+    // Subscribe to presence sync for bulk presence updates
+    presenceSyncSubscription = subscribeToPresenceSync((updates) => {
+      // Mark all users offline first (except ourselves)
+      users.value.forEach((u) => {
+        if (u.userId !== user.value?.userId) {
+          updateUserPresence(u.userId, 'offline')
+          userPresenceStore.setUserPresence(u.userId, 'offline')
+        }
+      })
+
+      // Then mark online users from the sync
+      updates.forEach((update) => {
+        updateUserPresence(update.userId, 'online')
+        userPresenceStore.setUserPresence(update.userId, 'online')
+      })
     })
 
     dmSubscription = subscribeToUserDirectMessages(user.value.userId, (message: DirectMessageMessageResponse) => {
@@ -298,6 +343,20 @@ const sendMessage = async () => {
   const replyId = composerStore.replyingTo?.id
   const replyUsername = (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
   const replyContent = composerStore.replyingTo?.content
+
+  // Validate message content if present
+  if (messageContent) {
+    const validation = messageSchema.safeParse({ content: messageContent })
+    if (!validation.success) {
+      const errorMessage = validation.error.issues[0]?.message || 'Invalid message'
+      composerStore.setError(errorMessage)
+      return
+    }
+  } else if (!imageToSend) {
+    // No content and no image
+    composerStore.setError('Message cannot be empty')
+    return
+  }
 
   try {
     composerStore.setError(null)
@@ -412,7 +471,23 @@ const cancelReply = () => {
 
 const removeMessageById = (id: number) => {
   if (directMessagesStore.selectedDirectMessageId) {
-    directMessagesStore.removeMessage(directMessagesStore.selectedDirectMessageId, id)
+    // Soft delete: mark as deleted instead of removing
+    // This preserves reply chain context in the UI
+    directMessagesStore.markAsDeleted(directMessagesStore.selectedDirectMessageId, id)
+  }
+}
+
+const loadMoreMessages = async () => {
+  if (!hasMoreMessages.value || loadingMoreMessages.value || !directMessagesStore.selectedDirectMessageId) return
+
+  loadingMoreMessages.value = true
+  try {
+    const page = currentPage.value + 1
+    await directMessagesStore.fetchMessages(directMessagesStore.selectedDirectMessageId, page)
+  } catch (err) {
+    console.error('Failed to load more messages:', err)
+  } finally {
+    loadingMoreMessages.value = false
   }
 }
 
@@ -548,13 +623,17 @@ const isUserOnline = (userId: number): boolean => {
         :messages="directMessagesStore.getMessages(directMessagesStore.selectedDirectMessageId)"
         :loading="false"
         :error="null"
+        :has-more="hasMoreMessages"
+        :loading-more="loadingMoreMessages"
         @message-deleted="removeMessageById"
         @reply-to-message="setReplyingTo"
+        @load-more="loadMoreMessages"
       />
 
       <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-        <div v-if="composerStore.error" class="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-600 dark:text-red-400 text-sm">
-          {{ composerStore.error }}
+        <div v-if="composerStore.error" class="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm flex items-start gap-2">
+          <UIcon name="i-lucide-alert-circle" class="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{{ composerStore.error }}</span>
         </div>
 
         <div
@@ -644,9 +723,9 @@ const isUserOnline = (userId: number): boolean => {
             v-model="composerStore.newMessage"
             placeholder="Type a message..."
             :rows="1"
+            :maxrows="6"
             autoresize
             class="flex-1"
-            :disabled="composerStore.loading"
             @keydown.enter.exact.prevent="sendMessage"
           />
 
@@ -654,7 +733,7 @@ const isUserOnline = (userId: number): boolean => {
             type="submit"
             icon="i-lucide-send"
             color="primary"
-            :disabled="!composerStore.hasContent || composerStore.loading"
+            :disabled="!composerStore.hasContent || composerStore.loading || !!composerStore.error"
           >
             Send
           </UButton>

@@ -1,5 +1,18 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type { CreateChannelRequest } from '~/api/channelApi'
+
+const channelSchema = z.object({
+  name: z.string()
+    .min(3, 'Channel name must be at least 3 characters')
+    .max(50, 'Channel name must be less than 50 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Channel name cannot be only whitespace'),
+  description: z.string()
+    .max(200, 'Description must be less than 200 characters')
+    .trim()
+    .optional()
+})
 
 const emit = defineEmits<{
   (e: 'created'): void
@@ -38,16 +51,21 @@ const close = () => {
 }
 
 const submit = async () => {
-  if (nameError.value) {
-    emit('error', nameError.value)
+  const validation = channelSchema.safeParse({
+    name: state.name.trim(),
+    description: state.description.trim()
+  })
+
+  if (!validation.success) {
+    emit('error', validation.error.issues[0]?.message || 'Invalid channel data')
     return
   }
 
   loading.value = true
   try {
     const payload: CreateChannelRequest = {
-      name: trimmedName.value,
-      description: state.description.trim(),
+      name: validation.data.name,
+      description: validation.data.description || '',
       channelType: state.channelType
     }
     await $fetch('/api/channels', {

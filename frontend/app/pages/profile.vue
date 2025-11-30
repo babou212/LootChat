@@ -5,28 +5,24 @@ import ChannelCreate from '~/components/ChannelCreate.vue'
 import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'
 import PasswordChange from '~/components/PasswordChange.vue'
 import AvatarUpload from '~/components/AvatarUpload.vue'
+import { useAvatarStore } from '../../stores/avatars'
 
 definePageMeta({ layout: false, middleware: 'auth' })
 
 const { user, refreshSession } = useAuth()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const isAdmin = computed(() => user.value?.role === 'ADMIN')
-const currentAvatarUrl = ref<string>('')
 
-const loadCurrentAvatar = async () => {
-  if (user.value?.avatar) {
-    const url = await getAvatarUrl(user.value.avatar)
-    if (url) {
-      currentAvatarUrl.value = url
-    }
-  } else {
-    currentAvatarUrl.value = ''
-  }
+const getCurrentAvatarUrl = (): string => {
+  if (!user.value?.userId) return ''
+  return avatarStore.getAvatarUrl(user.value.userId) || ''
 }
 
-watch(() => user.value?.avatar, () => {
-  loadCurrentAvatar()
+watch(() => user.value?.avatar, (newAvatar) => {
+  if (newAvatar && user.value?.userId) {
+    avatarStore.loadAvatar(user.value.userId, newAvatar)
+  }
 }, { immediate: true })
 
 const channels = ref<Channel[]>([])
@@ -156,7 +152,7 @@ watch(isAdmin, (admin) => {
 
         <div class="space-y-4">
           <AvatarUpload
-            :current-avatar="currentAvatarUrl"
+            :current-avatar="getCurrentAvatarUrl()"
             @uploaded="handleAvatarUploaded"
             @error="handleAvatarError"
           />

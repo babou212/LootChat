@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { User } from '../../shared/types/user'
 import UserProfileCard from '~/components/UserProfileCard.vue'
+import { useAvatarStore } from '../../stores/avatars'
 
 export interface UserPresence extends User {
   status: 'online' | 'offline'
@@ -12,10 +13,9 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const isCollapsed = ref(false)
-const avatarUrls = ref<Map<number, string>>(new Map())
 
 const onlineUsers = computed(() =>
   props.users.filter(user => user.status === 'online')
@@ -34,24 +34,15 @@ const getInitials = (user: UserPresence) => {
   return user.username.substring(0, 2).toUpperCase()
 }
 
-const loadAvatarUrl = async (user: UserPresence) => {
-  if (user.avatar && !avatarUrls.value.has(user.userId)) {
-    const url = await getAvatarUrl(user.avatar)
-    if (url) {
-      avatarUrls.value.set(user.userId, url)
-    }
-  }
-}
-
 const getLoadedAvatarUrl = (userId: number): string => {
-  return avatarUrls.value.get(userId) || ''
+  return avatarStore.getAvatarUrl(userId) || ''
 }
 
 // Load avatar URLs for all users
 watch(() => props.users, (newUsers) => {
   newUsers.forEach((user) => {
     if (user.avatar) {
-      loadAvatarUrl(user)
+      avatarStore.loadAvatar(user.userId, user.avatar)
     }
   })
 }, { immediate: true, deep: true })

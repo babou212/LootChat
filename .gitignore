@@ -47,9 +47,7 @@ certbot/conf/
 certbot/www/
 
 ### Kubernetes Secrets ###
-# Never commit actual secrets!
-k8s/secrets.yaml
 secrets-backup-*.yaml
 secrets-generated.yaml
-# Keep example files
 !k8s/secrets.yaml.example
+lootchat-sops-key.asc

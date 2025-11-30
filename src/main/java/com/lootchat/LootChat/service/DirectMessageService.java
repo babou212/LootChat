@@ -13,9 +13,15 @@ import com.lootchat.LootChat.repository.DirectMessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,10 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DirectMessageService {
     
     private final DirectMessageRepository directMessageRepository;
@@ -35,13 +43,21 @@ public class DirectMessageService {
     private final DirectMessageReactionRepository directMessageReactionRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
     private final S3FileStorageService s3FileStorageService;
+    private final CacheManager cacheManager;
+    private final SimpMessagingTemplate messagingTemplate;
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
         Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
+        return getAllDirectMessagesForUser(currentUserId);
+    }
+    
+    @Cacheable(cacheNames = "directMessages", key = "'user:' + #userId")
+    public List<DirectMessageResponse> getAllDirectMessagesForUser(Long userId) {
+        Long currentUserId = userId;
         List<DirectMessage> directMessages = directMessageRepository.findAllByUser(currentUserId);
         
         return directMessages.stream()
@@ -78,6 +94,7 @@ public class DirectMessageService {
     }
     
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "dmMessagesPaginated", key = "'dm:' + #directMessageId + ':page:' + #page + ':size:' + #size")
     public List<DirectMessageMessageResponse> getDirectMessages(Long directMessageId, int page, int size) {
         Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
         
@@ -136,6 +153,10 @@ public class DirectMessageService {
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
         
+        evictFirstPageCache(dm.getId());
+
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
+        
         publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
                 dm.getOtherUser(currentUserId).getId(), request.getContent());
         
@@ -188,6 +209,9 @@ public class DirectMessageService {
         
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
+        
+        evictFirstPageCache(dm.getId());
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
         publishMessageToKafka(savedMessage.getId(), dm.getId(), currentUserId, 
                 dm.getOtherUser(currentUserId).getId(), messageContent);
@@ -242,6 +266,11 @@ public class DirectMessageService {
         
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
+
+        // Cannot react to deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot add reaction to a deleted message");
+        }
         
         if (!message.getDirectMessage().includesUser(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
@@ -267,6 +296,7 @@ public class DirectMessageService {
         DirectMessageReaction savedReaction = directMessageReactionRepository.save(reaction);
         
         DirectMessage dm = message.getDirectMessage();
+        
         publishReactionToKafka(savedReaction.getId(), messageId, dm.getId(),
                 "add", emoji, currentUserId, user.getUsername(),
                 dm.getUser1().getId(), dm.getUser2().getId());
@@ -308,6 +338,11 @@ public class DirectMessageService {
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
         
+        // Cannot edit deleted messages
+        if (message.isDeleted()) {
+            throw new ResponseStatusException(HttpStatus.GONE, "Cannot edit a deleted message");
+        }
+        
         if (!message.getSender().getId().equals(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Can only edit your own messages");
         }
@@ -328,6 +363,11 @@ public class DirectMessageService {
         DirectMessageMessage message = directMessageMessageRepository.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
         
+        // Already deleted - idempotent operation
+        if (message.isDeleted()) {
+            return;
+        }
+        
         User user = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
@@ -338,20 +378,65 @@ public class DirectMessageService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
         }
         
+        // Delete reactions for this message
         directMessageReactionRepository.deleteByMessageId(messageId);
         
-        Long directMessageId = message.getDirectMessage().getId();
+        // Delete image from S3 if present
+        if (message.getImageFilename() != null) {
+            s3FileStorageService.deleteFile(message.getImageFilename());
+        }
         
-        directMessageMessageRepository.delete(message);
+        Long directMessageId = message.getDirectMessage().getId();
+        DirectMessage dm = message.getDirectMessage();
+
+        // Soft delete: mark as deleted and clear content
+        // This preserves reply chain integrity while hiding message content
+        message.setDeleted(true);
+        message.setDeletedAt(LocalDateTime.now());
+        message.setContent(""); // Clear original content for privacy
+        message.setImageUrl(null);
+        message.setImageFilename(null);
+        directMessageMessageRepository.save(message);
+
+        evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
         publishDeleteToKafka(messageId, directMessageId);
     }
     
     private DirectMessageMessageResponse mapToDirectMessageMessageResponse(DirectMessageMessage message) {
+        // For deleted messages, return minimal info with placeholder content
+        if (message.isDeleted()) {
+            return DirectMessageMessageResponse.builder()
+                    .id(message.getId())
+                    .content("[Message deleted]")
+                    .senderId(message.getSender().getId())
+                    .senderUsername(message.getSender().getUsername())
+                    .senderAvatar(null) // Hide avatar for deleted messages
+                    .directMessageId(message.getDirectMessage().getId())
+                    .imageUrl(null)
+                    .imageFilename(null)
+                    .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
+                    .replyToUsername(message.getReplyToUsername())
+                    .replyToContent(message.getReplyToContent())
+                    .isRead(message.isRead())
+                    .edited(message.isEdited())
+                    .deleted(true)
+                    .createdAt(message.getCreatedAt())
+                    .updatedAt(message.getUpdatedAt())
+                    .reactions(new ArrayList<>()) // No reactions for deleted messages
+                    .build();
+        }
+
         List<DirectMessageReaction> reactions = directMessageReactionRepository.findByMessageId(message.getId());
         List<DirectMessageReactionResponse> reactionResponses = reactions.stream()
                 .map(this::mapToDirectMessageReactionResponse)
                 .collect(Collectors.toList());
+
+        // Check if this message replies to a deleted message
+        String replyToContent = message.getReplyToContent();
+        if (message.getReplyToMessage() != null && message.getReplyToMessage().isDeleted()) {
+            replyToContent = "[Message deleted]";
+        }
         
         return DirectMessageMessageResponse.builder()
                 .id(message.getId())
@@ -364,9 +449,10 @@ public class DirectMessageService {
                 .imageFilename(message.getImageFilename())
                 .replyToMessageId(message.getReplyToMessage() != null ? message.getReplyToMessage().getId() : null)
                 .replyToUsername(message.getReplyToUsername())
-                .replyToContent(message.getReplyToContent())
+                .replyToContent(replyToContent)
                 .isRead(message.isRead())
                 .edited(message.isEdited())
+                .deleted(false)
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .reactions(reactionResponses)
@@ -384,47 +470,203 @@ public class DirectMessageService {
                 .build();
     }
     
+    /**
+     * Publish message event via outbox pattern for reliable delivery.
+     * This is called within the same @Transactional context as message save,
+     * ensuring atomicity between DB write and event creation.
+     */
     private void publishMessageToKafka(Long messageId, Long directMessageId, Long senderId, 
                                       Long recipientId, String content) {
-        try {
-            DirectMessageEvent event = new DirectMessageEvent(messageId, directMessageId, senderId, recipientId, content);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.messages", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM to Kafka: " + e.getMessage());
-        }
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageImmediately(messageId, directMessageId, senderId, recipientId, content);
+        
+        // Also save to outbox for multi-pod consistency
+        DirectMessageEvent event = new DirectMessageEvent(messageId, directMessageId, senderId, recipientId, content);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_CREATED,
+                OutboxService.TOPIC_DIRECT_MESSAGES,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
+    /**
+     * Publish reaction event via outbox pattern.
+     */
     private void publishReactionToKafka(Long reactionId, Long messageId, Long directMessageId,
                                        String action, String emoji, Long userId, String username,
                                        Long user1Id, Long user2Id) {
-        try {
-            DirectMessageReactionEvent event = new DirectMessageReactionEvent(
-                    reactionId, messageId, directMessageId, action, emoji, userId, username, user1Id, user2Id);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.reactions", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM reaction to Kafka: " + e.getMessage());
-        }
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageReactionImmediately(reactionId, messageId, directMessageId, 
+                action, emoji, userId, username, user1Id, user2Id);
+        
+        // Also save to outbox for multi-pod consistency
+        DirectMessageReactionEvent event = new DirectMessageReactionEvent(
+                reactionId, messageId, directMessageId, action, emoji, userId, username, user1Id, user2Id);
+        String eventType = "add".equals(action) ? OutboxService.EVENT_REACTION_ADDED : OutboxService.EVENT_REACTION_REMOVED;
+        outboxService.saveEvent(
+                eventType,
+                OutboxService.TOPIC_DIRECT_REACTIONS,
+                String.valueOf(directMessageId),
+                event
+        );
     }
     
+    /**
+     * Publish edit event via outbox pattern.
+     */
     private void publishEditToKafka(Long messageId, Long directMessageId, String content, Boolean edited) {
-        try {
-            DirectMessageEditEvent event = new DirectMessageEditEvent(messageId, directMessageId, content, edited);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.edits", json);
-        } catch (Exception e) {
-            System.err.println("Failed to publish DM edit to Kafka: " + e.getMessage());
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageEditImmediately(messageId, directMessageId, content, edited);
+        
+        // Also save to outbox for multi-pod consistency
+        DirectMessageEditEvent event = new DirectMessageEditEvent(messageId, directMessageId, content, edited);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_EDITED,
+                OutboxService.TOPIC_DIRECT_EDITS,
+                String.valueOf(directMessageId),
+                event
+        );
+    }
+    
+    /**
+     * Publish delete event via outbox pattern.
+     */
+    private void publishDeleteToKafka(Long messageId, Long directMessageId) {
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageDeleteImmediately(messageId, directMessageId);
+        
+        // Also save to outbox for multi-pod consistency
+        DirectMessageDeleteEvent event = new DirectMessageDeleteEvent(messageId, directMessageId);
+        outboxService.saveEvent(
+                OutboxService.EVENT_MESSAGE_DELETED,
+                OutboxService.TOPIC_DIRECT_DELETIONS,
+                String.valueOf(directMessageId),
+                event
+        );
+    }
+    
+    private void evictFirstPageCache(Long directMessageId) {
+        Cache cache = cacheManager.getCache("dmMessagesPaginated");
+        if (cache != null) {
+            cache.evict("dm:" + directMessageId + ":page:0:size:50");
+            cache.evict("dm:" + directMessageId + ":page:0:size:30");
+            cache.evict("dm:" + directMessageId + ":page:0:size:20");
         }
     }
     
-    private void publishDeleteToKafka(Long messageId, Long directMessageId) {
+    private void evictDirectMessagesListCache(Long user1Id, Long user2Id) {
+        Cache cache = cacheManager.getCache("directMessages");
+        if (cache != null) {
+            cache.evict("user:" + user1Id);
+            cache.evict("user:" + user2Id);
+        }
+    }
+    
+    // ============ Immediate WebSocket Broadcasting Methods ============
+    // These provide instant real-time updates while the outbox pattern ensures multi-pod consistency
+    
+    /**
+     * Broadcasts a new direct message immediately via WebSocket.
+     */
+    private void broadcastDirectMessageImmediately(Long messageId, Long directMessageId, 
+                                                   Long senderId, Long recipientId, String content) {
         try {
-            DirectMessageDeleteEvent event = new DirectMessageDeleteEvent(messageId, directMessageId);
-            String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("lootchat.direct.message.deletions", json);
+            Map<String, Object> payload = Map.of(
+                "type", "new_message",
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "senderId", senderId,
+                "content", content
+            );
+            
+            // Send to both participants of the DM conversation
+            messagingTemplate.convertAndSend("/topic/dm/" + senderId, payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + recipientId, payload);
+            log.debug("Broadcasted DM immediately to users {} and {}", senderId, recipientId);
         } catch (Exception e) {
-            System.err.println("Failed to publish DM deletion to Kafka: " + e.getMessage());
+            log.error("Error broadcasting direct message immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a direct message edit immediately via WebSocket.
+     */
+    private void broadcastDirectMessageEditImmediately(Long messageId, Long directMessageId, 
+                                                       String content, Boolean edited) {
+        try {
+            DirectMessage dm = directMessageRepository.findById(directMessageId).orElse(null);
+            if (dm == null) {
+                log.warn("Could not broadcast DM edit - DM not found: {}", directMessageId);
+                return;
+            }
+            
+            Map<String, Object> payload = Map.of(
+                "type", "message_updated",
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "content", content,
+                "edited", edited != null ? edited : false
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            log.debug("Broadcasted DM edit immediately to users {} and {}", 
+                    dm.getUser1().getId(), dm.getUser2().getId());
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message edit immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a direct message delete immediately via WebSocket.
+     */
+    private void broadcastDirectMessageDeleteImmediately(Long messageId, Long directMessageId) {
+        try {
+            DirectMessage dm = directMessageRepository.findById(directMessageId).orElse(null);
+            if (dm == null) {
+                log.warn("Could not broadcast DM delete - DM not found: {}", directMessageId);
+                return;
+            }
+            
+            Map<String, Object> payload = Map.of(
+                "type", "message_deleted",
+                "messageId", messageId,
+                "directMessageId", directMessageId
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            log.debug("Broadcasted DM delete immediately to users {} and {}", 
+                    dm.getUser1().getId(), dm.getUser2().getId());
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message delete immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a reaction update immediately via WebSocket.
+     */
+    private void broadcastDirectMessageReactionImmediately(Long reactionId, Long messageId, 
+                                                           Long directMessageId, String action,
+                                                           String emoji, Long userId, String username,
+                                                           Long user1Id, Long user2Id) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "type", "add".equals(action) ? "reaction_added" : "reaction_removed",
+                "reactionId", reactionId != null ? reactionId : 0,
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "emoji", emoji,
+                "userId", userId,
+                "username", username
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + user1Id, payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + user2Id, payload);
+            log.debug("Broadcasted DM reaction immediately to users {} and {}", user1Id, user2Id);
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message reaction immediately: {}", e.getMessage(), e);
         }
     }
 }

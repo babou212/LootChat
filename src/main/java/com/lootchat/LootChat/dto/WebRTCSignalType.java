@@ -5,5 +5,8 @@ public enum WebRTCSignalType {
     ANSWER,
     ICE_CANDIDATE,
     JOIN,
-    LEAVE
+    LEAVE,
+    SCREEN_SHARE_START,
+    SCREEN_SHARE_STOP,
+    SYNC
 }

@@ -1,7 +1,17 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type { User } from '../../shared/types/user'
 import { directMessageApi } from '../api/directMessageApi'
 import EmojiPicker from '~/components/EmojiPicker.vue'
+import { useAvatarStore } from '../../stores/avatars'
+
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(2000, 'Message must be less than 2000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 export interface UserPresence extends User {
   status: 'online' | 'offline'
@@ -13,12 +23,16 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
+const { user: currentUser } = useAuth()
 
-const avatarUrl = ref<string>('')
 const messageInput = ref('')
 const showEmojiPicker = ref(false)
 const emojiPickerRef = ref<HTMLElement | null>(null)
+
+const isCurrentUser = computed(() => {
+  return currentUser.value?.userId === props.user.userId
+})
 
 const getInitials = (user: UserPresence) => {
   if (user.firstName && user.lastName) {
@@ -27,29 +41,28 @@ const getInitials = (user: UserPresence) => {
   return user.username.substring(0, 2).toUpperCase()
 }
 
-const loadAvatarUrl = async () => {
-  if (props.user.avatar) {
-    const url = await getAvatarUrl(props.user.avatar)
-    if (url) {
-      avatarUrl.value = url
-    }
-  }
+const getAvatarUrl = (): string => {
+  return avatarStore.getAvatarUrl(props.user.userId) || ''
 }
 
-onMounted(() => {
-  loadAvatarUrl()
-})
-
-watch(() => props.user.avatar, () => {
-  loadAvatarUrl()
-})
+watch(() => props.user.avatar, (newAvatar) => {
+  if (newAvatar) {
+    avatarStore.loadAvatar(props.user.userId, newAvatar)
+  }
+}, { immediate: true })
 
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
 const sendDirectMessage = async () => {
-  if (!messageInput.value.trim()) return
+  const trimmedMessage = messageInput.value.trim()
+  if (!trimmedMessage) return
+
+  const validation = messageSchema.safeParse({ content: trimmedMessage })
+  if (!validation.success) {
+    return
+  }
 
   try {
     // First, create or get the DM conversation
@@ -57,7 +70,7 @@ const sendDirectMessage = async () => {
 
     // Then send the message
     await directMessageApi.sendMessage({
-      content: messageInput.value.trim(),
+      content: trimmedMessage,
       directMessageId: dm.id
     })
 
@@ -110,10 +123,10 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
       <div class="relative -mt-10 mb-3">
         <div class="relative inline-block">
           <div
-            v-if="user.avatar && avatarUrl"
+            v-if="user.avatar && getAvatarUrl()"
             class="w-20 h-20 rounded-full bg-gray-700 border-[6px] border-gray-900 overflow-hidden"
           >
-            <img :src="avatarUrl" :alt="user.username" class="w-full h-full object-cover">
+            <img :src="getAvatarUrl()" :alt="user.username" class="w-full h-full object-cover">
           </div>
           <div
             v-else
@@ -155,7 +168,7 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
       </div>
 
       <!-- Message Input -->
-      <div class="relative">
+      <div v-if="!isCurrentUser" class="relative">
         <input
           v-model="messageInput"
           type="text"

@@ -11,11 +11,9 @@ const { login, loading, error } = useAuth()
 
 const schema = z.object({
   username: z.string()
-    .min(3, 'Username must be at least 3 characters')
     .max(50, 'Username must be less than 50 characters')
     .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores and hyphens'),
   password: z.string()
-    .min(8, 'Password must be at least 8 characters')
     .max(255, 'Password is too long')
 })
 
@@ -90,6 +88,15 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
             class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full pt-3 pb-3"
           />
         </UFormGroup>
+
+        <div class="flex justify-end">
+          <NuxtLink
+            to="/forgot-password"
+            class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            Forgot password?
+          </NuxtLink>
+        </div>
 
         <div v-if="error" class="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
           <div class="flex items-center gap-2">

@@ -1,10 +1,10 @@
 export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const channelIdRaw = query.channelId
-  const pageRaw = query.page
+  const beforeRaw = query.before
   const sizeRaw = query.size
   let channelIdParam: string | undefined
-  let pageParam: string | undefined
+  let beforeParam: string | undefined
   let sizeParam: string | undefined
 
   if (typeof channelIdRaw === 'string' && channelIdRaw.trim() !== '') {
@@ -15,9 +15,9 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  if (typeof pageRaw === 'string' && pageRaw.trim() !== '') {
-    if (/^\d+$/.test(pageRaw)) {
-      pageParam = pageRaw
+  if (typeof beforeRaw === 'string' && beforeRaw.trim() !== '') {
+    if (/^\d+$/.test(beforeRaw)) {
+      beforeParam = beforeRaw
     }
   }
 
@@ -34,8 +34,8 @@ export default defineEventHandler(async (event) => {
     if (channelIdParam) {
       params.set('channelId', channelIdParam)
     }
-    if (pageParam) {
-      params.set('page', pageParam)
+    if (beforeParam) {
+      params.set('before', beforeParam)
     }
     if (sizeParam) {
       params.set('size', sizeParam)

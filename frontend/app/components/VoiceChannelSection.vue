@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Channel } from '../../shared/types/chat'
+import { useAvatarStore } from '../../stores/avatars'
 
 interface Props {
   channels: Channel[]
@@ -9,11 +10,12 @@ interface Props {
 interface Emits {
   (e: 'joinVoice', channelId: number): void
   (e: 'leaveVoice'): void
+  (e: 'viewScreenShare', sharerId: string): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
-const { getAvatarUrl } = useAvatarUrl()
+const avatarStore = useAvatarStore()
 
 const { user } = useAuth()
 
@@ -23,12 +25,17 @@ const {
   isDeafened,
   currentChannelId,
   toggleMute,
-  toggleDeafen
+  toggleDeafen,
+  // Screen sharing
+  isScreenSharing,
+  hasActiveScreenShare,
+  activeScreenShares,
+  toggleScreenShare
 } = useWebRTC()
 
 const isConnecting = ref(false)
-const avatarUrls = ref<Map<string, string>>(new Map())
 const showAudioSettings = ref(false)
+const settingsTab = ref<'audio' | 'screenshare'>('audio')
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -49,23 +56,14 @@ const isCurrentUser = (userId: string) => {
   return user.value?.userId.toString() === userId
 }
 
-const loadAvatarUrl = async (userId: string, avatarPath: string | undefined) => {
-  if (avatarPath && !avatarUrls.value.has(userId)) {
-    const url = await getAvatarUrl(avatarPath)
-    if (url) {
-      avatarUrls.value.set(userId, url)
-    }
-  }
-}
-
-const getLoadedAvatarUrl = (userId: string): string => {
-  return avatarUrls.value.get(userId) || ''
+const getLoadedAvatarUrl = (userId: string | number): string => {
+  return avatarStore.getAvatarUrl(Number(userId)) || ''
 }
 
 watch(() => participants.value, (newParticipants) => {
   newParticipants.forEach((participant) => {
     if (participant.avatar) {
-      loadAvatarUrl(participant.userId, participant.avatar)
+      avatarStore.loadAvatar(Number(participant.userId), participant.avatar)
     }
   })
 }, { immediate: true, deep: true })
@@ -84,6 +82,17 @@ const handleJoinVoice = async (channelId: number) => {
 
 const handleLeaveVoice = () => {
   emit('leaveVoice')
+}
+
+const handleViewScreenShare = (userId: string) => {
+  const share = activeScreenShares.value.find(s => s.sharerId === userId)
+  if (share) {
+    emit('viewScreenShare', userId)
+  }
+}
+
+const isUserSharing = (userId: string) => {
+  return activeScreenShares.value.some(s => s.sharerId === userId)
 }
 </script>
 
@@ -126,17 +135,21 @@ const handleLeaveVoice = () => {
         <div
           v-for="participant in participants"
           :key="participant.userId"
-          class="group relative flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-all duration-150"
+          class="group relative flex items-center gap-2.5 px-2 py-1.5 rounded transition-all duration-150"
           :class="{
-            'bg-green-50 dark:bg-green-900/30': participant.isSpeaking
+            'bg-green-50 dark:bg-green-900/30': participant.isSpeaking,
+            'hover:bg-gray-100 dark:hover:bg-gray-700/50': !isUserSharing(participant.userId),
+            'hover:bg-purple-100 dark:hover:bg-purple-900/30 cursor-pointer': isUserSharing(participant.userId)
           }"
+          @click="isUserSharing(participant.userId) ? handleViewScreenShare(participant.userId) : undefined"
         >
           <div class="relative shrink-0">
             <div
               class="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 overflow-hidden"
               :class="{
                 'ring-2 ring-green-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': participant.isSpeaking && !participant.isMuted,
-                'ring-2 ring-gray-300 dark:ring-gray-600 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': !participant.isSpeaking
+                'ring-2 ring-purple-500 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': isUserSharing(participant.userId) && !participant.isSpeaking,
+                'ring-2 ring-gray-300 dark:ring-gray-600 ring-offset-2 ring-offset-white dark:ring-offset-gray-800': !participant.isSpeaking && !isUserSharing(participant.userId)
               }"
             >
               <UAvatar
@@ -166,6 +179,12 @@ const handleLeaveVoice = () => {
             >
               <UIcon name="i-lucide-mic-off" class="text-white text-[10px]" />
             </div>
+            <div
+              v-else-if="participant.isScreenSharing"
+              class="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-purple-500 border-2 border-white dark:border-gray-800 flex items-center justify-center"
+            >
+              <UIcon name="i-lucide-monitor" class="text-white text-[10px]" />
+            </div>
           </div>
           <div class="flex-1 min-w-0 flex items-center gap-2">
             <span
@@ -188,7 +207,17 @@ const handleLeaveVoice = () => {
               <div class="w-0.5 bg-green-500 rounded-full audio-bar" style="animation-delay: 300ms" />
             </div>
           </div>
-          <div class="opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+            <!-- Watch stream button for screen sharers -->
+            <UButton
+              v-if="isUserSharing(participant.userId)"
+              color="primary"
+              variant="soft"
+              size="xs"
+              icon="i-lucide-eye"
+              class="p-1!"
+              @click.stop="handleViewScreenShare(participant.userId)"
+            />
             <UIcon
               :name="participant.isMuted ? 'i-lucide-mic-off' : participant.isSpeaking ? 'i-lucide-volume-2' : 'i-lucide-mic'"
               class="text-xs"
@@ -240,6 +269,16 @@ const handleLeaveVoice = () => {
       </div>
       <div class="flex gap-2 mt-2">
         <UButton
+          :color="isScreenSharing ? 'success' : 'neutral'"
+          :variant="isScreenSharing ? 'solid' : 'soft'"
+          size="sm"
+          :icon="isScreenSharing ? 'i-lucide-monitor-off' : 'i-lucide-monitor'"
+          class="flex-1"
+          @click="toggleScreenShare"
+        >
+          {{ isScreenSharing ? 'Stop Share' : 'Share' }}
+        </UButton>
+        <UButton
           color="neutral"
           variant="soft"
           size="sm"
@@ -249,6 +288,8 @@ const handleLeaveVoice = () => {
         >
           Settings
         </UButton>
+      </div>
+      <div class="flex gap-2 mt-2">
         <UButton
           color="error"
           size="sm"
@@ -260,23 +301,74 @@ const handleLeaveVoice = () => {
         </UButton>
       </div>
 
+      <!-- Screen share indicator -->
+      <div
+        v-if="hasActiveScreenShare && activeScreenShares[0]?.sharerId"
+        class="mt-2 p-2 bg-purple-100 dark:bg-purple-900/30 rounded flex items-center gap-2 cursor-pointer hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
+        @click="handleViewScreenShare(activeScreenShares[0].sharerId)"
+      >
+        <UIcon name="i-lucide-monitor" class="text-purple-600 dark:text-purple-400" />
+        <span class="text-xs text-purple-700 dark:text-purple-300 truncate flex-1">
+          {{ activeScreenShares[0]?.sharerUsername || 'Someone' }} is sharing
+        </span>
+        <UButton
+          color="primary"
+          variant="soft"
+          size="xs"
+          icon="i-lucide-eye"
+        >
+          Watch
+        </UButton>
+      </div>
+
       <div
         v-if="showAudioSettings"
-        class="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg"
+        class="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/50"
+        @click.self="showAudioSettings = false"
       >
-        <div class="flex items-center justify-between mb-3">
-          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            🎙️ Audio Settings
-          </h4>
-          <button
-            class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            @click="showAudioSettings = false"
-          >
-            <UIcon name="i-lucide-x" class="text-lg" />
-          </button>
-        </div>
+        <div
+          class="w-full max-w-sm p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-xl max-h-[80vh] overflow-y-auto"
+        >
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+              ⚙️ Settings
+            </h4>
+            <button
+              class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              @click="showAudioSettings = false"
+            >
+              <UIcon name="i-lucide-x" class="text-lg" />
+            </button>
+          </div>
 
-        <AudioSettingsPanel @close="showAudioSettings = false" />
+          <!-- Settings Tabs -->
+          <div class="flex gap-1 mb-3 p-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
+            <button
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
+              :class="settingsTab === 'audio'
+                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="settingsTab = 'audio'"
+            >
+              🎙️ Audio
+            </button>
+            <button
+              class="flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all"
+              :class="settingsTab === 'screenshare'
+                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="settingsTab = 'screenshare'"
+            >
+              🖥️ Screen Share
+            </button>
+          </div>
+
+          <!-- Audio Settings Panel -->
+          <AudioSettingsPanel v-if="settingsTab === 'audio'" @close="showAudioSettings = false" />
+
+          <!-- Screen Share Settings Panel -->
+          <ScreenShareSettingsPanel v-else-if="settingsTab === 'screenshare'" />
+        </div>
       </div>
     </div>
 

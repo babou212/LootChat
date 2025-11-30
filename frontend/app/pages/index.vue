@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { z } from 'zod'
 import type GifPicker from '~/components/GifPicker.vue'
 import type { Message } from '../../shared/types/chat'
 import type { DirectMessageMessage } from '../../shared/types/directMessage'
@@ -9,6 +10,14 @@ import { useChannelsStore } from '../../stores/channels'
 import { useUsersStore } from '../../stores/users'
 import { useComposerStore } from '../../stores/composer'
 import { useWebSocketStore } from '../../stores/websocket'
+
+const messageSchema = z.object({
+  content: z.string()
+    .min(1, 'Message cannot be empty')
+    .max(50000, 'Message must be less than 50000 characters')
+    .trim()
+    .refine(val => val.length > 0, 'Message cannot be only whitespace')
+})
 
 definePageMeta({
   middleware: 'auth',
@@ -24,11 +33,47 @@ const usersStore = useUsersStore()
 const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
-const { disconnect, getClient, isConnected, subscribeToUserDirectMessages } = useWebSocket()
-const { joinVoiceChannel, leaveVoiceChannel } = useWebRTC()
+const { getClient, isConnected, subscribeToUserDirectMessages, subscribeToPresenceSync } = useWebSocket()
+const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useWebRTC()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
 const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
+
+// Initialize presence heartbeat
+usePresenceHeartbeat()
+
+// Presence sync subscription ref
+let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> = null
+
+// Screen share viewer state
+const selectedScreenShareId = ref<string | null>(null)
+const isScreenShareMinimized = ref(false)
+
+const selectedScreenShare = computed(() => {
+  if (!selectedScreenShareId.value) return null
+  return activeScreenShares.value.find(s => s.sharerId === selectedScreenShareId.value) || null
+})
+
+const handleViewScreenShare = (sharerId: string) => {
+  selectedScreenShareId.value = sharerId
+  isScreenShareMinimized.value = false
+}
+
+const handleCloseScreenShare = () => {
+  selectedScreenShareId.value = null
+  isScreenShareMinimized.value = false
+}
+
+const handleToggleMinimizeScreenShare = () => {
+  isScreenShareMinimized.value = !isScreenShareMinimized.value
+}
+
+// Auto-close viewer when screen share ends
+watch(activeScreenShares, (shares) => {
+  if (selectedScreenShareId.value && !shares.find(s => s.sharerId === selectedScreenShareId.value)) {
+    selectedScreenShareId.value = null
+  }
+}, { deep: true })
 
 // Keep usersComposable for full user data with email/role for UserPanel
 const usersComposable = useUsers()
@@ -56,14 +101,10 @@ const hasMoreMessages = computed(() => {
   return messagesStore.hasMoreMessages(selectedChannel.value.id)
 })
 
-const currentPage = computed(() => {
-  if (!selectedChannel.value) return 0
-  return messagesStore.getCurrentPage(selectedChannel.value.id)
-})
-
 const loadingMoreMessages = ref(false)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const validationError = ref<string | null>(null)
 
 const stompClient = computed(() => getClient())
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
@@ -140,7 +181,7 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
 
     const token = websocketStore.token
     if (token) {
-      // Wait for WebSocket connection (plugin handles auto-connect)
+      // Only wait for WebSocket connection if not already connected
       if (!isConnected.value) {
         console.log('Waiting for WebSocket connection...')
         let attempts = 0
@@ -162,7 +203,7 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
   }
 }
 
-const fetchMessages = async (append = false) => {
+const fetchMessages = async (loadOlder = false) => {
   try {
     if (!user.value) {
       return navigateTo('/login')
@@ -173,13 +214,14 @@ const fetchMessages = async (append = false) => {
       return
     }
 
-    if (!append) {
+    if (!loadOlder) {
       loading.value = true
     } else {
       loadingMoreMessages.value = true
     }
 
-    const page = append ? currentPage.value + 1 : 0
+    // page=0 for initial load, page=1 signals "load older" (cursor-based)
+    const page = loadOlder ? 1 : 0
     await messagesStore.fetchMessages(channelId, page)
 
     loading.value = false
@@ -199,7 +241,9 @@ const loadMoreMessages = async () => {
 
 const removeMessageById = (id: number) => {
   if (selectedChannel.value) {
-    messagesStore.removeMessage(selectedChannel.value.id, id)
+    // Soft delete: mark as deleted instead of removing
+    // This preserves reply chain context in the UI
+    messagesStore.markAsDeleted(selectedChannel.value.id, id)
   }
 }
 
@@ -213,8 +257,20 @@ const sendMessage = async () => {
   const replyUsername = (composerStore.replyingTo as Message)?.username || (composerStore.replyingTo as DirectMessageMessage)?.senderUsername
   const replyContent = composerStore.replyingTo?.content
 
+  // Validate message content if present
+  if (messageContent) {
+    const validation = messageSchema.safeParse({ content: messageContent })
+    if (!validation.success) {
+      validationError.value = validation.error.issues[0]?.message || 'Invalid message'
+      return
+    }
+  } else if (!imageToSend) {
+    validationError.value = 'Message cannot be empty'
+    return
+  }
+
   try {
-    error.value = null
+    validationError.value = null
     await sendMessageToServer(channelId, messageContent, imageToSend, replyId, replyUsername, replyContent)
     resetComposer()
   } catch (err: unknown) {
@@ -227,6 +283,19 @@ const sendMessage = async () => {
 }
 
 const isClient = ref(false)
+
+watch(() => composerStore.newMessage, (newValue) => {
+  if (newValue && newValue.trim()) {
+    const validation = messageSchema.safeParse({ content: newValue })
+    if (!validation.success) {
+      validationError.value = validation.error.issues[0]?.message || 'Invalid message'
+    } else {
+      validationError.value = null
+    }
+  } else {
+    validationError.value = null
+  }
+})
 
 const toast = useToast()
 
@@ -294,11 +363,14 @@ onMounted(async () => {
   await channelsStore.fetchChannels()
   await fetchUsers()
 
-  // Wait for WebSocket connection (plugin handles auto-connect and token refresh)
-  let attempts = 0
-  while (!isConnected.value && attempts < 20) {
-    await new Promise(resolve => setTimeout(resolve, 250))
-    attempts++
+  // Wait for WebSocket connection if not already connected
+  // Plugin handles auto-connect, but we may need to wait briefly on initial load
+  if (!isConnected.value) {
+    let attempts = 0
+    while (!isConnected.value && attempts < 20) {
+      await new Promise(resolve => setTimeout(resolve, 250))
+      attempts++
+    }
   }
 
   if (isConnected.value) {
@@ -337,6 +409,27 @@ onMounted(async () => {
           }
         })
       }
+
+      // Subscribe to presence sync for bulk presence updates
+      // This ensures we have accurate presence info even if individual updates were missed
+      presenceSyncSubscription = subscribeToPresenceSync((updates) => {
+        // First, mark all users as offline
+        usersWithFullData.value.forEach((u: typeof usersWithFullData.value[0]) => {
+          if (u.userId !== user.value?.userId) { // Don't mark ourselves offline
+            updateUserPresence(u.userId, 'offline')
+            userPresenceStore.setUserPresence(u.userId, 'offline')
+          }
+        })
+
+        // Then, mark online users from the sync
+        updates.forEach((update) => {
+          updateUserPresence(update.userId, 'online')
+          userPresenceStore.setUserPresence(update.userId, 'online')
+          if (!usersWithFullData.value.some((u: typeof usersWithFullData.value[0]) => u.userId === update.userId)) {
+            addUser(update.userId, update.username, 'online')
+          }
+        })
+      })
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err)
     }
@@ -354,7 +447,11 @@ onUnmounted(() => {
   if (dmSubscription) {
     dmSubscription.unsubscribe()
   }
-  disconnect()
+  if (presenceSyncSubscription) {
+    presenceSyncSubscription.unsubscribe()
+  }
+  // Don't disconnect WebSocket - keep it alive for the session
+  // The WebSocket plugin handles connection lifecycle
 })
 
 watch(channels, (newChannels) => {
@@ -408,6 +505,7 @@ watch(usersWithFullData, () => {
         @select-channel="selectChannel"
         @join-voice="handleJoinVoice"
         @leave-voice="handleLeaveVoice"
+        @view-screen-share="handleViewScreenShare"
       />
 
       <div class="flex-1 flex flex-col min-w-0">
@@ -448,6 +546,11 @@ watch(usersWithFullData, () => {
           <div
             class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4"
           >
+            <div v-if="validationError" class="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm flex items-start gap-2">
+              <UIcon name="i-lucide-alert-circle" class="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{{ validationError }}</span>
+            </div>
+
             <div
               v-if="composerStore.replyingTo"
               class="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border-l-2 border-blue-500 rounded-r flex items-center justify-between"
@@ -533,6 +636,7 @@ watch(usersWithFullData, () => {
                 v-model="composerStore.newMessage"
                 placeholder="Type a message..."
                 :rows="1"
+                :maxrows="6"
                 autoresize
                 class="flex-1"
                 @keydown.enter.exact.prevent="sendMessage"
@@ -542,7 +646,7 @@ watch(usersWithFullData, () => {
                 type="submit"
                 icon="i-lucide-send"
                 color="primary"
-                :disabled="!composerStore.hasContent"
+                :disabled="!composerStore.hasContent || !!validationError"
               >
                 Send
               </UButton>
@@ -554,10 +658,19 @@ watch(usersWithFullData, () => {
           v-else-if="selectedChannel?.channelType === 'VOICE'"
           :channel="selectedChannel"
           :stomp-client="stompClient"
+          @view-screen-share="handleViewScreenShare"
         />
       </div>
 
       <UserPanel :users="usersWithFullData" />
+
+      <!-- Screen Share Viewer -->
+      <ScreenShareViewer
+        :screen-share="selectedScreenShare"
+        :is-minimized="isScreenShareMinimized"
+        @close="handleCloseScreenShare"
+        @toggle-minimize="handleToggleMinimizeScreenShare"
+      />
     </div>
   </ClientOnly>
 </template>

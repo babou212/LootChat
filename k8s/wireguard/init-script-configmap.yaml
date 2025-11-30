@@ -7,21 +7,38 @@ data:
   init-wg0-config.sh: |
     #!/bin/bash
     # This script generates the WireGuard server config from Kubernetes Secret
-
+    
+    # Always regenerate configs on startup
+    rm -rf /config/wg_confs /config/peer1 /config/peer_*
     mkdir -p /config/wg_confs
+    mkdir -p /config/peer1
 
+    # Generate server config
     cat > /config/wg_confs/wg0.conf << EOF
     [Interface]
     Address = 10.8.0.1/24
     ListenPort = 51820
     PrivateKey = $(cat /run/secrets/wireguard/server-private-key)
-    PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-    PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
     [Peer]
     PublicKey = $(cat /run/secrets/wireguard/peer1-public-key)
     PresharedKey = $(cat /run/secrets/wireguard/peer1-preshared-key)
-    AllowedIPs = 10.8.0.2/32,10.96.0.0/12,10.244.0.0/16
+    AllowedIPs = 10.8.0.2/32
     EOF
 
-    echo "WireGuard config generated at /config/wg_confs/wg0.conf"
+    # Generate client config
+    cat > /config/peer1/peer1.conf << EOF
+    [Interface]
+    Address = 10.8.0.2/32
+    PrivateKey = $(cat /run/secrets/wireguard/peer1-private-key)
+    DNS = 10.96.0.10
+
+    [Peer]
+    PublicKey = $(cat /run/secrets/wireguard/server-public-key)
+    PresharedKey = $(cat /run/secrets/wireguard/peer1-preshared-key)
+    Endpoint = 116.203.192.48:51820
+    AllowedIPs = 10.8.0.0/24,10.96.0.0/12,10.244.0.0/16
+    PersistentKeepalive = 25
+    EOF
+
+    echo "WireGuard configs generated at /config/wg_confs/wg0.conf and /config/peer1/peer1.conf"

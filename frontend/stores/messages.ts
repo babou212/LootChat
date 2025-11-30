@@ -7,10 +7,10 @@ import type { MessageResponse } from '../app/api/messageApi'
  *
  * Features:
  * - Per-channel message caching with 5-minute TTL
+ * - Cursor-based pagination for infinite scroll (cache-friendly)
  * - Automatic cache invalidation on user actions (send, edit, delete)
  * - WebSocket integration for real-time updates
  * - Memory management (keeps last 10 accessed channels)
- * - Pagination support with seamless loading
  *
  * Usage:
  * ```ts
@@ -18,6 +18,9 @@ import type { MessageResponse } from '../app/api/messageApi'
  *
  * // Fetch messages (uses cache if valid)
  * await messagesStore.fetchMessages(channelId)
+ *
+ * // Load older messages (infinite scroll)
+ * await messagesStore.fetchOlderMessages(channelId)
  *
  * // Get cached messages
  * const messages = messagesStore.getChannelMessages(channelId)
@@ -29,10 +32,9 @@ import type { MessageResponse } from '../app/api/messageApi'
 
 interface ChannelCache {
   messages: Message[]
-  currentPage: number
   hasMore: boolean
   lastFetched: number
-  totalPages: number
+  oldestMessageId: number | null // Cursor for loading older messages
 }
 
 interface MessagesState {
@@ -66,10 +68,10 @@ export const useMessagesStore = defineStore('messages', {
       }
     },
 
-    getCurrentPage: (state) => {
-      return (channelId: number): number => {
+    getOldestMessageId: (state) => {
+      return (channelId: number): number | null => {
         const cache = state.channelCaches.get(channelId)
-        return cache?.currentPage ?? 0
+        return cache?.oldestMessageId ?? null
       }
     },
 
@@ -125,16 +127,25 @@ export const useMessagesStore = defineStore('messages', {
     async fetchMessages(channelId: number, page = 0, forceRefresh = false): Promise<Message[]> {
       const cache = this.channelCaches.get(channelId)
 
+      // For initial load (page 0), use cache if valid
       if (!forceRefresh && cache && page === 0 && this.isCacheValid(channelId)) {
         return cache.messages
       }
 
       try {
-        const apiMessages = await fetch('/api/messages?' + new URLSearchParams({
+        // Build URL with cursor-based pagination
+        const params: Record<string, string> = {
           channelId: channelId.toString(),
-          page: page.toString(),
           size: this.pageSize.toString()
-        })).then(res => res.json()) as MessageResponse[]
+        }
+
+        // For loading older messages, use the oldest message ID as cursor
+        if (page > 0 && cache?.oldestMessageId) {
+          params.before = cache.oldestMessageId.toString()
+        }
+
+        const url = '/api/messages?' + new URLSearchParams(params)
+        const apiMessages = await fetch(url).then(res => res.json()) as MessageResponse[]
 
         const convertedMessages = apiMessages
           .map((msg: MessageResponse) => this.convertToMessage(msg))
@@ -142,24 +153,33 @@ export const useMessagesStore = defineStore('messages', {
 
         const hasMore = apiMessages.length === this.pageSize
 
+        // Find the oldest message ID for next cursor
+        const oldestMessageId = convertedMessages.length > 0
+          ? Math.min(...convertedMessages.map(m => m.id))
+          : null
+
         if (page === 0) {
+          // Initial load: replace cache
           this.channelCaches.set(channelId, {
             messages: convertedMessages,
-            currentPage: 0,
             hasMore,
             lastFetched: Date.now(),
-            totalPages: 1
+            oldestMessageId
           })
         } else {
+          // Loading older messages: prepend to existing
           const existingCache = this.channelCaches.get(channelId)
           if (existingCache) {
-            const updatedMessages = [...convertedMessages, ...existingCache.messages]
+            // Deduplicate messages by ID
+            const existingIds = new Set(existingCache.messages.map(m => m.id))
+            const newMessages = convertedMessages.filter(m => !existingIds.has(m.id))
+
+            const updatedMessages = [...newMessages, ...existingCache.messages]
             this.channelCaches.set(channelId, {
               ...existingCache,
               messages: updatedMessages,
-              currentPage: page,
               hasMore,
-              totalPages: Math.max(existingCache.totalPages, page + 1)
+              oldestMessageId: oldestMessageId ?? existingCache.oldestMessageId
             })
           }
         }
@@ -188,10 +208,9 @@ export const useMessagesStore = defineStore('messages', {
       } else {
         this.channelCaches.set(channelId, {
           messages: [message],
-          currentPage: 0,
           hasMore: true,
           lastFetched: Date.now(),
-          totalPages: 1
+          oldestMessageId: message.id
         })
       }
     },
@@ -213,10 +232,9 @@ export const useMessagesStore = defineStore('messages', {
       } else {
         this.channelCaches.set(channelId, {
           messages: [optimisticMessage],
-          currentPage: 0,
           hasMore: true,
           lastFetched: Date.now(),
-          totalPages: 1
+          oldestMessageId: null
         })
       }
 
@@ -258,6 +276,32 @@ export const useMessagesStore = defineStore('messages', {
           ...updates
         }
       }
+    },
+
+    /**
+     * Mark a message as deleted (soft delete).
+     * Preserves the message in the list but marks it as deleted.
+     * Also updates any messages that reply to this one.
+     */
+    markAsDeleted(channelId: number, messageId: number) {
+      const cache = this.channelCaches.get(channelId)
+      if (!cache) return
+
+      const message = cache.messages.find(m => m.id === messageId)
+      if (message) {
+        message.deleted = true
+        message.content = '[Message deleted]'
+        message.imageUrl = undefined
+        message.imageFilename = undefined
+        message.reactions = []
+      }
+
+      // Update any messages that reply to this deleted message
+      cache.messages.forEach((m) => {
+        if (m.replyToMessageId === messageId) {
+          m.replyToContent = '[Message deleted]'
+        }
+      })
     },
 
     removeMessage(channelId: number, messageId: number) {

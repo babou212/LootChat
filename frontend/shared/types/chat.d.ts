@@ -36,6 +36,7 @@ export interface Message {
   replyToMessageId?: number
   replyToUsername?: string
   replyToContent?: string
+  deleted?: boolean
 }
 
 export enum WebRTCSignalType {
@@ -43,7 +44,10 @@ export enum WebRTCSignalType {
   ANSWER = 'ANSWER',
   ICE_CANDIDATE = 'ICE_CANDIDATE',
   JOIN = 'JOIN',
-  LEAVE = 'LEAVE'
+  LEAVE = 'LEAVE',
+  SCREEN_SHARE_START = 'SCREEN_SHARE_START',
+  SCREEN_SHARE_STOP = 'SCREEN_SHARE_STOP',
+  SYNC = 'SYNC'
 }
 
 export interface WebRTCSignalRequest {
@@ -69,4 +73,11 @@ export interface VoiceParticipant {
   avatar?: string
   isMuted: boolean
   isSpeaking: boolean
+  isScreenSharing: boolean
+}
+
+export interface ScreenShareInfo {
+  sharerId: string
+  sharerUsername: string
+  stream?: MediaStream
 }
