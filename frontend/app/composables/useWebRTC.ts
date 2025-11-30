@@ -32,6 +32,18 @@ export const useWebRTC = () => {
   const speakingCheckFrame = ref<number | null>(null)
   const pendingCandidates = ref<Map<string, RTCIceCandidateInit[]>>(new Map())
 
+  const CONNECTION_TIMEOUT = 15000
+  const PEER_SYNC_INTERVAL = 10000
+  const HEARTBEAT_INTERVAL = 5000
+  const STALE_PEER_TIMEOUT = 30000
+
+  // Connection tracking
+  const connectionTimeouts = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const peerLastSeen = ref<Map<string, number>>(new Map())
+  const heartbeatInterval = ref<ReturnType<typeof setInterval> | null>(null)
+  const peerSyncInterval = ref<ReturnType<typeof setInterval> | null>(null)
+  const pendingOffers = ref<Map<string, { timestamp: number, retries: number }>>(new Map())
+
   const avatarCache = new Map<string, string | undefined>()
 
   const fetchUserAvatar = async (userId: string): Promise<string | undefined> => {
@@ -167,7 +179,9 @@ export const useWebRTC = () => {
 
     const iceServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' }
     ]
 
     // Add TURN servers as fallback for restrictive NATs/firewalls
@@ -179,7 +193,12 @@ export const useWebRTC = () => {
       })))
     }
 
-    const cfg: RTCConfiguration = { iceServers }
+    const cfg: RTCConfiguration = {
+      iceServers,
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    }
     if (policy === 'relay') cfg.iceTransportPolicy = 'relay'
     return cfg
   }
@@ -287,18 +306,43 @@ export const useWebRTC = () => {
       pc.oniceconnectionstatechange = async () => {
         logger.debug(`ICE connection state for ${userId}: ${pc.iceConnectionState}`)
 
-        if (pc.iceConnectionState === 'failed') {
+        // Clear connection timeout on successful connection
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          const timeout = connectionTimeouts.value.get(userId)
+          if (timeout) {
+            clearTimeout(timeout)
+            connectionTimeouts.value.delete(userId)
+          }
+          pendingOffers.value.delete(userId)
+          peerLastSeen.value.set(userId, Date.now())
+          logger.info(`Successfully connected to peer ${userId}`)
+        } else if (pc.iceConnectionState === 'failed') {
           logger.warn(`ICE connection failed for ${userId}, attempting restart`)
+          store.trackError(userId, 'ICE connection failed')
           await tryIceRestart(userId)
         } else if (pc.iceConnectionState === 'disconnected') {
-          setTimeout(() => {
-            if (pc.iceConnectionState === 'disconnected') {
-              logger.info(`Peer ${userId} disconnected, removing`)
-              removePeer(userId)
+          // Wait longer before removing - connection might recover
+          logger.info(`Peer ${userId} ICE disconnected, waiting for recovery...`)
+          setTimeout(async () => {
+            const peer = peers.value.get(userId)
+            if (peer && peer.connection.iceConnectionState === 'disconnected') {
+              logger.info(`Peer ${userId} still disconnected after timeout, attempting ICE restart`)
+              await tryIceRestart(userId)
             }
-          }, 3000)
-        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-          logger.info(`Successfully connected to peer ${userId}`)
+          }, 5000)
+        } else if (pc.iceConnectionState === 'checking') {
+          // Set connection timeout
+          if (!connectionTimeouts.value.has(userId)) {
+            const timeout = setTimeout(async () => {
+              const peer = peers.value.get(userId)
+              if (peer && (peer.connection.iceConnectionState === 'checking' || peer.connection.iceConnectionState === 'new')) {
+                logger.warn(`Connection to ${userId} timed out during ICE checking`)
+                store.trackError(userId, 'Connection timeout')
+                await tryIceRestart(userId)
+              }
+            }, CONNECTION_TIMEOUT)
+            connectionTimeouts.value.set(userId, timeout)
+          }
         }
       }
 
@@ -306,17 +350,30 @@ export const useWebRTC = () => {
         logger.debug(`Connection state for ${userId}: ${pc.connectionState}`)
 
         if (pc.connectionState === 'failed') {
-          logger.warn(`Connection failed for ${userId}, attempting restart`)
-          await tryIceRestart(userId)
+          logger.warn(`Connection failed for ${userId}, attempting full reconnect`)
+          store.trackError(userId, 'Connection failed')
+
+          // Check retry count before attempting reconnection
+          const pending = pendingOffers.value.get(userId)
+          if (!pending || pending.retries < 3) {
+            await reconnectToPeer(userId)
+          } else {
+            logger.error(`Max retries reached for ${userId}, removing peer`)
+            removePeer(userId)
+          }
         } else if (pc.connectionState === 'disconnected') {
-          setTimeout(() => {
-            if (pc.connectionState === 'disconnected') {
-              logger.info(`Peer ${userId} disconnected, removing`)
-              removePeer(userId)
+          // Give more time for recovery before taking action
+          setTimeout(async () => {
+            const peer = peers.value.get(userId)
+            if (peer && peer.connection.connectionState === 'disconnected') {
+              logger.info(`Peer ${userId} still disconnected, attempting reconnect`)
+              await reconnectToPeer(userId)
             }
-          }, 3000)
+          }, 8000) // Wait 8 seconds before reconnecting
         } else if (pc.connectionState === 'connected') {
           logger.info(`Peer connection established with user ${userId}`)
+          store.clearError(userId)
+          peerLastSeen.value.set(userId, Date.now())
           // Start connection quality monitoring
           store.checkConnectionQuality(userId, pc)
         }
@@ -496,6 +553,44 @@ export const useWebRTC = () => {
             store.updateParticipantScreenSharing(fromUserId, false)
           }
           break
+
+        case 'SYNC':
+          // Handle sync signal - update last seen and ensure participant exists
+          if (fromUserId !== myId) {
+            peerLastSeen.value.set(fromUserId, Date.now())
+
+            // Ensure participant is in our list
+            if (!participants.value.find((p: VoiceParticipant) => p.userId === fromUserId)) {
+              const avatar = await fetchUserAvatar(fromUserId)
+              store.addParticipant({
+                userId: fromUserId,
+                username: signal.fromUsername || fromUserId,
+                avatar,
+                isMuted: false,
+                isSpeaking: false,
+                isScreenSharing: false
+              })
+              logger.info(`Added missing participant ${fromUserId} from SYNC`)
+            }
+
+            // Ensure we have a peer connection
+            const existingPeer = peers.value.get(fromUserId)
+            if (!existingPeer) {
+              const shouldInitiate = (() => {
+                try {
+                  return BigInt(myId) < BigInt(fromUserId)
+                } catch {
+                  return myId < fromUserId
+                }
+              })()
+
+              if (shouldInitiate) {
+                logger.info(`Creating connection to ${fromUserId} from SYNC`)
+                await createOffer(fromUserId)
+              }
+            }
+          }
+          break
       }
     } catch (error) {
       logger.error('Error handling WebRTC signal', error)
@@ -670,14 +765,197 @@ export const useWebRTC = () => {
         })
       } else {
         logger.warn(`Cannot ICE-restart with ${userId}, signalingState=${pc.signalingState}`)
+        // If not stable, try full reconnect
+        await reconnectToPeer(userId)
       }
     } catch (e) {
-      logger.error('ICE restart failed, removing peer', e)
-      removePeer(userId)
+      logger.error('ICE restart failed, attempting full reconnect', e)
+      await reconnectToPeer(userId)
     }
   }
 
+  /**
+   * Full reconnection to a peer - removes existing connection and creates new one
+   */
+  const reconnectToPeer = async (userId: string) => {
+    if (!user.value || !currentChannelId.value) return
+
+    // Track retry attempts
+    const pending = pendingOffers.value.get(userId) || { timestamp: Date.now(), retries: 0 }
+    pending.retries++
+    pending.timestamp = Date.now()
+    pendingOffers.value.set(userId, pending)
+
+    if (pending.retries > 3) {
+      logger.error(`Max reconnection retries reached for ${userId}`)
+      store.trackError(userId, 'Max reconnection retries reached')
+      return
+    }
+
+    logger.info(`Reconnecting to peer ${userId} (attempt ${pending.retries}/3)`)
+
+    // Clean up existing connection
+    removePeer(userId)
+
+    // Exponential backoff delay
+    const delay = Math.pow(2, pending.retries - 1) * 1000 // 1s, 2s, 4s
+    await new Promise(resolve => setTimeout(resolve, delay))
+
+    // Create new connection - use tie-breaker to decide who initiates
+    const myId = user.value.userId.toString()
+    const shouldInitiate = (() => {
+      try {
+        return BigInt(myId) < BigInt(userId)
+      } catch {
+        return myId < userId
+      }
+    })()
+
+    if (shouldInitiate) {
+      await createOffer(userId)
+    } else {
+      // Send JOIN signal to trigger the other peer to send offer
+      sendSignal({
+        channelId: currentChannelId.value,
+        type: 'JOIN' as WebRTCSignalType,
+        fromUserId: myId,
+        toUserId: userId
+      })
+    }
+  }
+
+  /**
+   * Start heartbeat mechanism to detect stale peers
+   */
+  const startHeartbeat = () => {
+    if (heartbeatInterval.value) return
+
+    heartbeatInterval.value = setInterval(() => {
+      const now = Date.now()
+
+      peers.value.forEach((peer, peerId) => {
+        const lastSeen = peerLastSeen.value.get(peerId) || 0
+        const isConnected = peer.connection.connectionState === 'connected'
+          || peer.connection.iceConnectionState === 'connected'
+          || peer.connection.iceConnectionState === 'completed'
+
+        if (isConnected) {
+          // Update last seen for connected peers
+          peerLastSeen.value.set(peerId, now)
+        } else if (now - lastSeen > STALE_PEER_TIMEOUT) {
+          // Peer is stale, attempt reconnection
+          logger.warn(`Peer ${peerId} is stale (no activity for ${STALE_PEER_TIMEOUT}ms), reconnecting`)
+          reconnectToPeer(peerId)
+        }
+      })
+    }, HEARTBEAT_INTERVAL)
+  }
+
+  const stopHeartbeat = () => {
+    if (heartbeatInterval.value) {
+      clearInterval(heartbeatInterval.value)
+      heartbeatInterval.value = null
+    }
+  }
+
+  /**
+   * Sync peer list with participants to ensure consistency
+   */
+  const syncPeers = async () => {
+    if (!user.value || !currentChannelId.value) return
+
+    const myId = user.value.userId.toString()
+
+    // Send SYNC signal to broadcast our presence
+    sendSignal({
+      channelId: currentChannelId.value,
+      type: 'SYNC' as WebRTCSignalType,
+      fromUserId: myId
+    })
+
+    // Check if we have peers for all participants (except self)
+    for (const participant of participants.value) {
+      if (participant.userId === myId) continue
+
+      const peer = peers.value.get(participant.userId)
+      const isConnected = peer && (
+        peer.connection.connectionState === 'connected'
+        || peer.connection.iceConnectionState === 'connected'
+        || peer.connection.iceConnectionState === 'completed'
+      )
+
+      if (!peer) {
+        logger.info(`Missing peer connection for participant ${participant.userId}, initiating connection`)
+        const shouldInitiate = (() => {
+          try {
+            return BigInt(myId) < BigInt(participant.userId)
+          } catch {
+            return myId < participant.userId
+          }
+        })()
+
+        if (shouldInitiate) {
+          await createOffer(participant.userId)
+        }
+      } else if (!isConnected && peer.connection.connectionState !== 'connecting') {
+        // Peer exists but not connected and not in process of connecting
+        const pending = pendingOffers.value.get(participant.userId)
+        if (!pending || Date.now() - pending.timestamp > 30000) {
+          logger.info(`Peer ${participant.userId} not connected, attempting reconnection`)
+          await reconnectToPeer(participant.userId)
+        }
+      }
+    }
+
+    // Remove peers for participants that are no longer in the channel
+    peers.value.forEach((_, peerId) => {
+      if (!participants.value.find(p => p.userId === peerId)) {
+        logger.info(`Removing peer ${peerId} - no longer a participant`)
+        removePeer(peerId)
+      }
+    })
+  }
+
+  const startPeerSync = () => {
+    if (peerSyncInterval.value) return
+
+    peerSyncInterval.value = setInterval(() => {
+      syncPeers()
+    }, PEER_SYNC_INTERVAL)
+  }
+
+  const stopPeerSync = () => {
+    if (peerSyncInterval.value) {
+      clearInterval(peerSyncInterval.value)
+      peerSyncInterval.value = null
+    }
+  }
+
+  /**
+   * Clean up all connection tracking state
+   */
+  const cleanupConnectionTracking = () => {
+    connectionTimeouts.value.forEach(timeout => clearTimeout(timeout))
+    connectionTimeouts.value.clear()
+
+    peerLastSeen.value.clear()
+    pendingOffers.value.clear()
+
+    stopHeartbeat()
+    stopPeerSync()
+  }
+
   const removePeer = (userId: string) => {
+    // Clear connection timeout for this peer
+    const timeout = connectionTimeouts.value.get(userId)
+    if (timeout) {
+      clearTimeout(timeout)
+      connectionTimeouts.value.delete(userId)
+    }
+
+    peerLastSeen.value.delete(userId)
+    pendingCandidates.value.delete(userId)
+
     const peer = peers.value.get(userId)
     if (peer) {
       peer.connection.close()
@@ -796,6 +1074,11 @@ export const useWebRTC = () => {
         fromUserId: user.value.userId.toString()
       })
 
+      // Start reliability mechanisms
+      startHeartbeat()
+      startPeerSync()
+      store.startQualityMonitoring()
+
       if (typeof window !== 'undefined') {
         beforeUnloadHandler.value = () => {
           try {
@@ -825,6 +1108,9 @@ export const useWebRTC = () => {
       fromUserId: user.value.userId.toString()
     })
 
+    // Stop reliability mechanisms
+    cleanupConnectionTracking()
+    store.stopQualityMonitoring()
     stopSpeakingDetection()
 
     try {
