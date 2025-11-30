@@ -2,7 +2,10 @@ package com.lootchat.LootChat.controller;
 
 import com.lootchat.LootChat.dto.CreateMessageRequest;
 import com.lootchat.LootChat.dto.MessageResponse;
+import com.lootchat.LootChat.dto.MessageSearchRequest;
 import com.lootchat.LootChat.dto.UpdateMessageRequest;
+import com.lootchat.LootChat.entity.MessageDocument;
+import com.lootchat.LootChat.service.MessageSearchService;
 import com.lootchat.LootChat.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +22,7 @@ import java.util.List;
 public class MessageController {
 
     private final MessageService messageService;
+    private final MessageSearchService messageSearchService;
 
     @PostMapping
     public ResponseEntity<MessageResponse> createMessage(@RequestBody CreateMessageRequest request) {
@@ -68,6 +72,12 @@ public class MessageController {
     public ResponseEntity<List<MessageResponse>> getMessagesByUserId(@PathVariable Long userId) {
         List<MessageResponse> messages = messageService.getMessagesForCurrentUser();
         return ResponseEntity.ok(messages);
+    }
+
+    @PostMapping("/search")
+    public ResponseEntity<List<MessageDocument>> searchMessages(@RequestBody MessageSearchRequest messageSearchRequest) {
+        List<MessageDocument> messageResponse = messageSearchService.searchMessages(messageSearchRequest);
+        return ResponseEntity.ok(messageResponse);
     }
 
     @PutMapping("/{id}")
