@@ -23,6 +23,7 @@ const { isScreenSharing, startScreenShare, stopScreenShare } = useLiveKit()
 /**
  * Handle quality change
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const handleQualityChange = (quality: unknown) => {
   if (typeof quality === 'string') {
     selectedQuality.value = quality
