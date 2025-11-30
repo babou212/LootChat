@@ -12,6 +12,7 @@ resources:
   - redis.yaml
   - kafka.yaml
   - minio.yaml
+  - coturn.yaml
   - backend.yaml
   - frontend.yaml
   - ingress.yaml

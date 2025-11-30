@@ -104,8 +104,8 @@ export default defineNuxtConfig({
           ].join('; '),
           'Permissions-Policy': [
             'microphone=(self)',
-            'camera=()',
-            'geolocation=()',
+            'camera=(self)',
+            'geolocation=(self)',
             'payment=()',
             'usb=()',
             'magnetometer=()',
@@ -115,7 +115,7 @@ export default defineNuxtConfig({
             'autoplay=()',
             'encrypted-media=()',
             'fullscreen=(self)',
-            'picture-in-picture=()'
+            'picture-in-picture=(self)'
           ].join(', '),
           'Referrer-Policy': 'strict-origin-when-cross-origin'
         }

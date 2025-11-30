@@ -13,6 +13,7 @@ import com.lootchat.LootChat.repository.DirectMessageRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
@@ -20,6 +21,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,10 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DirectMessageService {
     
     private final DirectMessageRepository directMessageRepository;
@@ -43,6 +47,7 @@ public class DirectMessageService {
     private final ObjectMapper objectMapper;
     private final S3FileStorageService s3FileStorageService;
     private final CacheManager cacheManager;
+    private final SimpMessagingTemplate messagingTemplate;
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
@@ -472,6 +477,10 @@ public class DirectMessageService {
      */
     private void publishMessageToKafka(Long messageId, Long directMessageId, Long senderId, 
                                       Long recipientId, String content) {
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageImmediately(messageId, directMessageId, senderId, recipientId, content);
+        
+        // Also save to outbox for multi-pod consistency
         DirectMessageEvent event = new DirectMessageEvent(messageId, directMessageId, senderId, recipientId, content);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_CREATED,
@@ -487,6 +496,11 @@ public class DirectMessageService {
     private void publishReactionToKafka(Long reactionId, Long messageId, Long directMessageId,
                                        String action, String emoji, Long userId, String username,
                                        Long user1Id, Long user2Id) {
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageReactionImmediately(reactionId, messageId, directMessageId, 
+                action, emoji, userId, username, user1Id, user2Id);
+        
+        // Also save to outbox for multi-pod consistency
         DirectMessageReactionEvent event = new DirectMessageReactionEvent(
                 reactionId, messageId, directMessageId, action, emoji, userId, username, user1Id, user2Id);
         String eventType = "add".equals(action) ? OutboxService.EVENT_REACTION_ADDED : OutboxService.EVENT_REACTION_REMOVED;
@@ -502,6 +516,10 @@ public class DirectMessageService {
      * Publish edit event via outbox pattern.
      */
     private void publishEditToKafka(Long messageId, Long directMessageId, String content, Boolean edited) {
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageEditImmediately(messageId, directMessageId, content, edited);
+        
+        // Also save to outbox for multi-pod consistency
         DirectMessageEditEvent event = new DirectMessageEditEvent(messageId, directMessageId, content, edited);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_EDITED,
@@ -515,6 +533,10 @@ public class DirectMessageService {
      * Publish delete event via outbox pattern.
      */
     private void publishDeleteToKafka(Long messageId, Long directMessageId) {
+        // Broadcast immediately via WebSocket for real-time updates
+        broadcastDirectMessageDeleteImmediately(messageId, directMessageId);
+        
+        // Also save to outbox for multi-pod consistency
         DirectMessageDeleteEvent event = new DirectMessageDeleteEvent(messageId, directMessageId);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_DELETED,
@@ -538,6 +560,113 @@ public class DirectMessageService {
         if (cache != null) {
             cache.evict("user:" + user1Id);
             cache.evict("user:" + user2Id);
+        }
+    }
+    
+    // ============ Immediate WebSocket Broadcasting Methods ============
+    // These provide instant real-time updates while the outbox pattern ensures multi-pod consistency
+    
+    /**
+     * Broadcasts a new direct message immediately via WebSocket.
+     */
+    private void broadcastDirectMessageImmediately(Long messageId, Long directMessageId, 
+                                                   Long senderId, Long recipientId, String content) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "type", "new_message",
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "senderId", senderId,
+                "content", content
+            );
+            
+            // Send to both participants of the DM conversation
+            messagingTemplate.convertAndSend("/topic/dm/" + senderId, payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + recipientId, payload);
+            log.debug("Broadcasted DM immediately to users {} and {}", senderId, recipientId);
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a direct message edit immediately via WebSocket.
+     */
+    private void broadcastDirectMessageEditImmediately(Long messageId, Long directMessageId, 
+                                                       String content, Boolean edited) {
+        try {
+            DirectMessage dm = directMessageRepository.findById(directMessageId).orElse(null);
+            if (dm == null) {
+                log.warn("Could not broadcast DM edit - DM not found: {}", directMessageId);
+                return;
+            }
+            
+            Map<String, Object> payload = Map.of(
+                "type", "message_updated",
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "content", content,
+                "edited", edited != null ? edited : false
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            log.debug("Broadcasted DM edit immediately to users {} and {}", 
+                    dm.getUser1().getId(), dm.getUser2().getId());
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message edit immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a direct message delete immediately via WebSocket.
+     */
+    private void broadcastDirectMessageDeleteImmediately(Long messageId, Long directMessageId) {
+        try {
+            DirectMessage dm = directMessageRepository.findById(directMessageId).orElse(null);
+            if (dm == null) {
+                log.warn("Could not broadcast DM delete - DM not found: {}", directMessageId);
+                return;
+            }
+            
+            Map<String, Object> payload = Map.of(
+                "type", "message_deleted",
+                "messageId", messageId,
+                "directMessageId", directMessageId
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            log.debug("Broadcasted DM delete immediately to users {} and {}", 
+                    dm.getUser1().getId(), dm.getUser2().getId());
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message delete immediately: {}", e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Broadcasts a reaction update immediately via WebSocket.
+     */
+    private void broadcastDirectMessageReactionImmediately(Long reactionId, Long messageId, 
+                                                           Long directMessageId, String action,
+                                                           String emoji, Long userId, String username,
+                                                           Long user1Id, Long user2Id) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "type", "add".equals(action) ? "reaction_added" : "reaction_removed",
+                "reactionId", reactionId != null ? reactionId : 0,
+                "messageId", messageId,
+                "directMessageId", directMessageId,
+                "emoji", emoji,
+                "userId", userId,
+                "username", username
+            );
+            
+            messagingTemplate.convertAndSend("/topic/dm/" + user1Id, payload);
+            messagingTemplate.convertAndSend("/topic/dm/" + user2Id, payload);
+            log.debug("Broadcasted DM reaction immediately to users {} and {}", user1Id, user2Id);
+        } catch (Exception e) {
+            log.error("Error broadcasting direct message reaction immediately: {}", e.getMessage(), e);
         }
     }
 }
