@@ -29,6 +29,21 @@ data:
     
     # Disable CLI
     no-cli
+        
+    # Disable RFC5780 NAT behavior discovery (reduces attack surface)
+    no-rfc5780
+    
+    # Disable old STUN backward compatibility (prevents RFC3489 CHANGE-REQUEST abuse)
+    no-stun-backward-compatibility
+    
+    # Only include RESPONSE-ORIGIN when RFC5780 is enabled
+    response-origin-only-with-rfc5780
+    
+    # Don't include SOFTWARE attribute in responses (reduces packet size from 150 to ~100 bytes)
+    no-software-attribute
+    
+    # Require authentication for all STUN binding requests (optional, may break some clients)
+    # secure-stun
     
     # Allow peers on the same machine (important for single-node clusters)
     no-multicast-peers
@@ -204,5 +219,11 @@ spec:
       endPort: 65535
       protocol: UDP
   egress:
-  # Allow all egress for relay functionality
-  - {}
+  # Allow egress only to external IPs (not internal cluster pods)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16

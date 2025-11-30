@@ -138,7 +138,7 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
             icon="i-lucide-lock"
             size="xl"
             :disabled="loading"
-            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full"
+            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full mt-4"
           />
         </UFormGroup>
 
@@ -155,7 +155,7 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
           block
           :loading="loading"
           :disabled="!state.password || !state.confirmPassword"
-          class="font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+          class="font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] mt-4"
         >
           Reset Password
         </UButton>

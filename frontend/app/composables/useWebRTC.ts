@@ -165,11 +165,19 @@ export const useWebRTC = () => {
 
     const turnUrls = turnUrlsRaw.split(',').map(u => u.trim()).filter(Boolean)
 
-    const iceServers: RTCIceServer[] = turnUrls.map(url => ({
-      urls: url,
-      username: turnUsername,
-      credential: turnCredential
-    }))
+    const iceServers: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+
+    // Add TURN servers as fallback for restrictive NATs/firewalls
+    if (turnUrls.length > 0 && turnUsername && turnCredential) {
+      iceServers.push(...turnUrls.map(url => ({
+        urls: url,
+        username: turnUsername,
+        credential: turnCredential
+      })))
+    }
 
     const cfg: RTCConfiguration = { iceServers }
     if (policy === 'relay') cfg.iceTransportPolicy = 'relay'
@@ -413,6 +421,16 @@ export const useWebRTC = () => {
               toUserId: fromUserId
             })
 
+            if (store.isScreenSharing) {
+              logger.info(`Notifying new user ${fromUserId} about our active screen share`)
+              sendSignal({
+                channelId: currentChannelId.value,
+                type: 'SCREEN_SHARE_START' as WebRTCSignalType,
+                fromUserId: myId,
+                toUserId: fromUserId
+              })
+            }
+
             const existingPeer = peers.value.get(fromUserId)
             if (shouldInitiateOffer(fromUserId) && !existingPeer) {
               // Small delay to ensure the new peer has their subscriptions ready
@@ -459,11 +477,14 @@ export const useWebRTC = () => {
         case 'SCREEN_SHARE_START':
           if (fromUserId !== myId) {
             logger.info(`User ${signal.fromUsername || fromUserId} started screen sharing`)
-            store.addActiveScreenShare({
-              sharerId: fromUserId,
-              sharerUsername: signal.fromUsername || fromUserId
-            })
-            // The screen share stream will come through a separate offer
+            const existingShare = store.activeScreenShares.find(s => s.sharerId === fromUserId)
+            if (!existingShare) {
+              store.addActiveScreenShare({
+                sharerId: fromUserId,
+                sharerUsername: signal.fromUsername || fromUserId
+              })
+            }
+            store.updateParticipantScreenSharing(fromUserId, true)
           }
           break
 
@@ -472,6 +493,7 @@ export const useWebRTC = () => {
             logger.info(`User ${signal.fromUsername || fromUserId} stopped screen sharing`)
             store.removeActiveScreenShare(fromUserId)
             store.removeScreenSharePeer(fromUserId)
+            store.updateParticipantScreenSharing(fromUserId, false)
           }
           break
       }
@@ -850,10 +872,6 @@ export const useWebRTC = () => {
     logger.info(`Deafen toggled: ${store.isDeafened}`)
   }
 
-  /**
-   * Start screen sharing with Discord-like screen picker
-   * Supports capturing entire screens, windows, or browser tabs
-   */
   const startScreenShare = async () => {
     if (!user.value || !currentChannelId.value) {
       logger.warn('Cannot start screen share - not in a voice channel')
@@ -866,14 +884,12 @@ export const useWebRTC = () => {
     }
 
     try {
-      // Get screen share constraints from store based on quality setting
       const displayMediaOptions = store.currentScreenShareConstraints
       const qualitySettings = store.currentScreenShareSettings
 
       logger.info(`Requesting screen capture with quality: ${qualitySettings.label} (${qualitySettings.width}x${qualitySettings.height}@${qualitySettings.frameRate}fps, max ${qualitySettings.maxBitrate}kbps)`)
       const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
 
-      // Set up track ended listener to handle browser's native stop sharing button
       const videoTrack = screenStream.getVideoTracks()[0]
       if (videoTrack) {
         videoTrack.onended = () => {
@@ -881,7 +897,6 @@ export const useWebRTC = () => {
           stopScreenShare()
         }
 
-        // Log actual track settings
         const settings = videoTrack.getSettings()
         logger.info(`Screen share actual settings: ${settings.width}x${settings.height}@${settings.frameRate}fps`)
       }
@@ -896,23 +911,26 @@ export const useWebRTC = () => {
         fromUserId: user.value.userId.toString()
       })
 
-      // Add our own screen share to active shares so we can see it locally
       store.addActiveScreenShare({
         sharerId: user.value.userId.toString(),
         sharerUsername: user.value.username,
         stream: screenStream
       })
 
-      // Add screen tracks to all existing peer connections
       for (const [peerId, peer] of store.peers.entries()) {
         try {
           const videoTrack = screenStream.getVideoTracks()[0]
           const audioTracks = screenStream.getAudioTracks()
 
           if (videoTrack) {
+            if (qualitySettings.frameRate >= 60) {
+              videoTrack.contentHint = 'motion'
+            } else {
+              videoTrack.contentHint = 'detail'
+            }
+
             const sender = peer.connection.addTrack(videoTrack, screenStream)
 
-            // Set encoding parameters for video bitrate
             const params = sender.getParameters()
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}]
@@ -920,22 +938,29 @@ export const useWebRTC = () => {
             if (params.encodings[0]) {
               params.encodings[0].maxBitrate = qualitySettings.maxBitrate * 1000 // Convert kbps to bps
               params.encodings[0].maxFramerate = qualitySettings.frameRate
+              params.encodings[0].scaleResolutionDownBy = 1.0
+              params.encodings[0].priority = 'high'
+              params.encodings[0].networkPriority = 'high'
             }
+
+            if (params.degradationPreference !== undefined || 'degradationPreference' in params) {
+              const degradationPref = qualitySettings.frameRate >= 60 ? 'maintain-framerate' : 'maintain-resolution';
+              (params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference = degradationPref
+            }
+
             await sender.setParameters(params).catch((err: Error) => {
               logger.warn('Failed to set video encoding params', err)
             })
 
-            logger.debug(`Added screen video track to peer ${peerId}`)
+            logger.debug(`Added screen video track to peer ${peerId} with contentHint=${videoTrack.contentHint}`)
           }
 
-          // Add system audio if available
           const audioTrack = audioTracks[0]
           if (audioTrack) {
             peer.connection.addTrack(audioTrack, screenStream)
             logger.debug(`Added screen audio track to peer ${peerId}`)
           }
 
-          // Renegotiate connection
           const offer = await peer.connection.createOffer()
           await peer.connection.setLocalDescription(offer)
 

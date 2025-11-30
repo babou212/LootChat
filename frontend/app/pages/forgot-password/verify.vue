@@ -143,7 +143,7 @@ const resendCode = async () => {
           block
           :loading="loading"
           :disabled="state.otp.length !== 6"
-          class="font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02]"
+          class="font-semibold shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-[1.02] mt-4"
         >
           Verify Code
         </UButton>
