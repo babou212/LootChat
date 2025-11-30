@@ -105,7 +105,7 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
         v-else
         :state="state"
         :schema="schema"
-        class="space-y-6"
+        class="space-y-8"
         @submit="onSubmit"
       >
         <UFormGroup
@@ -138,7 +138,7 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
             icon="i-lucide-lock"
             size="xl"
             :disabled="loading"
-            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full mt-4"
+            class="focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 transition-all duration-200 w-full"
           />
         </UFormGroup>
 
