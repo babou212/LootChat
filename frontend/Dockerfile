@@ -23,7 +23,7 @@ RUN pnpm add -D tailwindcss@next
 COPY . .
 
 # Build the application with increased memory limit and optimizations
-ENV NODE_OPTIONS="--max-old-space-size=2048"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN pnpm run build
 
 # Production stage
