@@ -77,4 +77,37 @@ public class EmailService {
                 The %s Team
                 """, username, appName, appName);
     }
+
+    public void sendPasswordResetOtp(String toEmail, String username, String otp) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(toEmail);
+            message.setSubject("Password Reset Code - " + appName);
+            message.setText(buildPasswordResetOtpEmailBody(username, otp));
+
+            mailSender.send(message);
+            log.info("Password reset OTP email sent to: {}", toEmail);
+        } catch (Exception e) {
+            log.error("Failed to send password reset OTP email to: {}", toEmail, e);
+            throw new RuntimeException("Failed to send password reset email", e);
+        }
+    }
+
+    private String buildPasswordResetOtpEmailBody(String username, String otp) {
+        return String.format("""
+                Hello %s,
+                
+                You have requested to reset your password for %s.
+                
+                Your verification code is: %s
+                
+                This code will expire in 15 minutes.
+                
+                If you did not request a password reset, please ignore this email or contact support if you have concerns.
+                
+                Best regards,
+                The %s Team
+                """, username, appName, otp, appName);
+    }
 }
