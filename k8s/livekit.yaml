@@ -180,6 +180,8 @@ metadata:
   namespace: lootchat
   labels:
     app: livekit
+  annotations:
+    load-balancer.hetzner.cloud/location: fsn1
 spec:
   type: LoadBalancer
   ports:
