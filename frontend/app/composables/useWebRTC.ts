@@ -158,32 +158,18 @@ export const useWebRTC = () => {
   }
 
   const getRTCConfiguration = (): RTCConfiguration => {
-    const baseStun = [
-      'stun:stun.l.google.com:19302',
-      'stun:stun1.l.google.com:19302'
-    ]
-
-    const iceServers: RTCIceServer[] = baseStun.map(url => ({ urls: url }))
-
     const turnUrlsRaw = (publicRuntime.webrtcTurnUrls as string | undefined) || ''
-    const turnUsername = (publicRuntime.webrtcTurnUsername as string | undefined) || undefined
-    const turnCredential = (publicRuntime.webrtcTurnCredential as string | undefined) || undefined
+    const turnUsername = (publicRuntime.webrtcTurnUsername as string | undefined) || ''
+    const turnCredential = (publicRuntime.webrtcTurnCredential as string | undefined) || ''
     const policy = (publicRuntime.webrtcIceTransportPolicy as 'all' | 'relay' | undefined) || 'all'
 
-    if (turnUrlsRaw.trim().length > 0) {
-      const turnUrls = turnUrlsRaw
-        .split(',')
-        .map(u => u.trim())
-        .filter(Boolean)
+    const turnUrls = turnUrlsRaw.split(',').map(u => u.trim()).filter(Boolean)
 
-      turnUrls.forEach((url) => {
-        iceServers.push({
-          urls: url,
-          username: turnUsername,
-          credential: turnCredential
-        })
-      })
-    }
+    const iceServers: RTCIceServer[] = turnUrls.map(url => ({
+      urls: url,
+      username: turnUsername,
+      credential: turnCredential
+    }))
 
     const cfg: RTCConfiguration = { iceServers }
     if (policy === 'relay') cfg.iceTransportPolicy = 'relay'

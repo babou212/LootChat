@@ -24,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,6 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,6 +51,7 @@ public class MessageService {
     private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -155,10 +158,18 @@ public class MessageService {
     }
 
     /**
-     * Store event in outbox table (transactional) instead of direct Kafka publish
-     * Guarantees event delivery after transaction commits
+     * Broadcast message immediately via WebSocket for real-time updates on this pod,
+     * then store in outbox for Kafka to sync across other pods.
+     * 
+     * This hybrid approach ensures:
+     * 1. Immediate feedback for users on the same pod (low latency)
+     * 2. Eventual consistency across all pods via Kafka inbox/outbox pattern
      */
     private void publishMessageToKafka(Long messageId, String content, Long channelId, Long userId) {
+        // Immediate WebSocket broadcast for real-time experience
+        broadcastMessageImmediately(messageId, channelId);
+        
+        // Store in outbox for cross-pod consistency via Kafka
         ChatMessageEvent event = new ChatMessageEvent(messageId, content, channelId, userId);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_CREATED,
@@ -168,8 +179,38 @@ public class MessageService {
         );
         log.debug("Stored message event in outbox: messageId={}, channelId={}, userId={}", messageId, channelId, userId);
     }
+    
+    /**
+     * Broadcast message immediately via WebSocket without waiting for Kafka round-trip.
+     */
+    private void broadcastMessageImmediately(Long messageId, Long channelId) {
+        try {
+            Message message = messageRepository.findByIdWithUserAndChannel(messageId).orElse(null);
+            if (message == null) {
+                log.warn("Cannot broadcast - message not found: {}", messageId);
+                return;
+            }
+            
+            MessageResponse response = mapToMessageResponse(message);
+            
+            // Broadcast to channel-specific topic
+            if (channelId != null) {
+                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+            }
+            // Broadcast to global messages topic
+            messagingTemplate.convertAndSend("/topic/messages", response);
+            
+            log.debug("Immediately broadcast message: messageId={}, channelId={}", messageId, channelId);
+        } catch (Exception e) {
+            // Don't fail the transaction if broadcast fails - Kafka will handle it
+            log.warn("Failed to immediately broadcast message {}: {}", messageId, e.getMessage());
+        }
+    }
 
     private void publishMessageUpdateToKafka(Long messageId, String content, Long channelId) {
+        // Immediate WebSocket broadcast for real-time experience
+        broadcastMessageUpdateImmediately(messageId, channelId);
+        
         MessageUpdateEvent event = new MessageUpdateEvent(messageId, content, channelId);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_EDITED,
@@ -179,8 +220,35 @@ public class MessageService {
         );
         log.debug("Stored message update event in outbox: messageId={}, channelId={}", messageId, channelId);
     }
+    
+    /**
+     * Broadcast message update immediately via WebSocket.
+     */
+    private void broadcastMessageUpdateImmediately(Long messageId, Long channelId) {
+        try {
+            Message message = messageRepository.findByIdWithUserAndChannel(messageId).orElse(null);
+            if (message == null) {
+                log.warn("Cannot broadcast update - message not found: {}", messageId);
+                return;
+            }
+            
+            MessageResponse response = mapToMessageResponse(message);
+            
+            if (channelId != null) {
+                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+            }
+            messagingTemplate.convertAndSend("/topic/messages", response);
+            
+            log.debug("Immediately broadcast message update: messageId={}, channelId={}", messageId, channelId);
+        } catch (Exception e) {
+            log.warn("Failed to immediately broadcast message update {}: {}", messageId, e.getMessage());
+        }
+    }
 
     private void publishMessageDeleteToKafka(Long messageId, Long channelId) {
+        // Immediate WebSocket broadcast for real-time experience
+        broadcastMessageDeleteImmediately(messageId, channelId);
+        
         MessageDeleteEvent event = new MessageDeleteEvent(messageId, channelId);
         outboxService.saveEvent(
                 OutboxService.EVENT_MESSAGE_DELETED,
@@ -190,9 +258,33 @@ public class MessageService {
         );
         log.debug("Stored message delete event in outbox: messageId={}, channelId={}", messageId, channelId);
     }
+    
+    /**
+     * Broadcast message deletion immediately via WebSocket.
+     */
+    private void broadcastMessageDeleteImmediately(Long messageId, Long channelId) {
+        try {
+            var deletionPayload = Map.of(
+                    "id", messageId,
+                    "channelId", channelId != null ? channelId : 0L
+            );
+            
+            messagingTemplate.convertAndSend("/topic/messages/delete", deletionPayload);
+            if (channelId != null) {
+                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages/delete", deletionPayload);
+            }
+            
+            log.debug("Immediately broadcast message delete: messageId={}, channelId={}", messageId, channelId);
+        } catch (Exception e) {
+            log.warn("Failed to immediately broadcast message delete {}: {}", messageId, e.getMessage());
+        }
+    }
 
     private void publishReactionToKafka(Long reactionId, Long messageId, Long channelId, String action, 
                                        String emoji, Long userId, String username) {
+        // Immediate WebSocket broadcast for real-time experience
+        broadcastReactionImmediately(reactionId, messageId, channelId, action, emoji, userId, username);
+        
         ReactionEvent event = new ReactionEvent(reactionId, messageId, channelId, action, emoji, userId, username);
         String eventType = "add".equals(action) ? OutboxService.EVENT_REACTION_ADDED : OutboxService.EVENT_REACTION_REMOVED;
         outboxService.saveEvent(
@@ -203,6 +295,37 @@ public class MessageService {
         );
         log.debug("Stored reaction {} event in outbox: reactionId={}, messageId={}, channelId={}", 
             action, reactionId, messageId, channelId);
+    }
+    
+    /**
+     * Broadcast reaction immediately via WebSocket.
+     */
+    private void broadcastReactionImmediately(Long reactionId, Long messageId, Long channelId, 
+                                              String action, String emoji, Long userId, String username) {
+        try {
+            ReactionResponse response = ReactionResponse.builder()
+                    .id(reactionId)
+                    .emoji(emoji)
+                    .userId(userId)
+                    .username(username)
+                    .messageId(messageId)
+                    .createdAt(java.time.LocalDateTime.now())
+                    .build();
+            
+            String topic = "add".equals(action) ? "/topic/reactions" : "/topic/reactions/remove";
+            String channelTopic = "add".equals(action) 
+                    ? "/topic/channels/" + channelId + "/reactions" 
+                    : "/topic/channels/" + channelId + "/reactions/remove";
+            
+            if (channelId != null) {
+                messagingTemplate.convertAndSend(channelTopic, response);
+            }
+            messagingTemplate.convertAndSend(topic, response);
+            
+            log.debug("Immediately broadcast reaction {}: reactionId={}, messageId={}", action, reactionId, messageId);
+        } catch (Exception e) {
+            log.warn("Failed to immediately broadcast reaction {}: {}", reactionId, e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
