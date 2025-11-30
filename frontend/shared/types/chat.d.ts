@@ -46,7 +46,8 @@ export enum WebRTCSignalType {
   JOIN = 'JOIN',
   LEAVE = 'LEAVE',
   SCREEN_SHARE_START = 'SCREEN_SHARE_START',
-  SCREEN_SHARE_STOP = 'SCREEN_SHARE_STOP'
+  SCREEN_SHARE_STOP = 'SCREEN_SHARE_STOP',
+  SYNC = 'SYNC'
 }
 
 export interface WebRTCSignalRequest {

@@ -7,5 +7,6 @@ public enum WebRTCSignalType {
     JOIN,
     LEAVE,
     SCREEN_SHARE_START,
-    SCREEN_SHARE_STOP
+    SCREEN_SHARE_STOP,
+    SYNC
 }
