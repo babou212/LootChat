@@ -14,7 +14,7 @@ const isAllowedRedirect = (path: string): boolean => {
 export default defineNuxtRouteMiddleware(async (to: RouteLocationNormalized) => {
   const { isAuthenticated, user, restore } = useAuth()
 
-  const publicRoutes = new Set<string>(['/login'])
+  const publicRoutes = new Set<string>(['/login', '/forgot-password', '/forgot-password/verify', '/forgot-password/reset'])
   const meta = to.meta as PublicRouteMeta
   const isPublic = publicRoutes.has(to.path) || meta.public === true
 
