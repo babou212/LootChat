@@ -14,7 +14,7 @@ data:
       # Enable ICE lite for better NAT traversal
       enable_loopback_candidate: false
     redis:
-      address: redis-service:6379
+      address: lootchat-redis-0.lootchat-redis:6379
       password: $(REDIS_PASSWORD)
     keys:
       # API key/secret pair - the secret value is injected via LIVEKIT_KEYS env var
