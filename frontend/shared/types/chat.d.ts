@@ -39,36 +39,8 @@ export interface Message {
   deleted?: boolean
 }
 
-export enum WebRTCSignalType {
-  OFFER = 'OFFER',
-  ANSWER = 'ANSWER',
-  ICE_CANDIDATE = 'ICE_CANDIDATE',
-  JOIN = 'JOIN',
-  LEAVE = 'LEAVE',
-  SCREEN_SHARE_START = 'SCREEN_SHARE_START',
-  SCREEN_SHARE_STOP = 'SCREEN_SHARE_STOP',
-  SYNC = 'SYNC'
-}
-
-export interface WebRTCSignalRequest {
-  channelId: number
-  type: WebRTCSignalType
-  fromUserId: string
-  toUserId?: string
-  data?: RTCSessionDescriptionInit | RTCIceCandidateInit | Record<string, unknown>
-}
-
-export interface WebRTCSignalResponse {
-  channelId: number
-  type: WebRTCSignalType
-  fromUserId: string
-  fromUsername: string
-  toUserId?: string
-  data?: RTCSessionDescriptionInit | RTCIceCandidateInit | Record<string, unknown>
-}
-
 export interface VoiceParticipant {
-  userId: string
+  odod: string
   username: string
   avatar?: string
   isMuted: boolean
@@ -77,7 +49,7 @@ export interface VoiceParticipant {
 }
 
 export interface ScreenShareInfo {
-  sharerId: string
+  odod: string
   sharerUsername: string
-  stream?: MediaStream
+  track?: unknown
 }

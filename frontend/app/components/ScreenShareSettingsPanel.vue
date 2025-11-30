@@ -1,234 +1,181 @@
 <script setup lang="ts">
-import { useWebRTCStore, SCREEN_SHARE_PROFILES, type ScreenShareQuality } from '../../stores/webrtc'
+/**
+ * Screen Share Settings Panel for LiveKit voice channels.
+ * Allows users to configure screen sharing options.
+ */
 
-const store = useWebRTCStore()
+// Screen share quality presets
+const qualityPresets = [
+  { value: 'low', label: 'Low (720p, 30fps)', width: 1280, height: 720, frameRate: 30 },
+  { value: 'medium', label: 'Medium (720p, 60fps)', width: 1280, height: 720, frameRate: 60 },
+  { value: 'high', label: 'High (1080p, 60fps)', width: 1920, height: 1080, frameRate: 60 },
+  { value: 'ultra', label: 'Ultra (1440p, 60fps)', width: 2560, height: 1440, frameRate: 60 }
+]
 
-const selectedQuality = ref<ScreenShareQuality>(store.screenShareQuality)
+// Settings state
+const selectedQuality = ref('medium')
+const includeAudio = ref(true)
+const showCursor = ref(true)
 
-const qualityOptions = computed(() => {
-  return Object.entries(SCREEN_SHARE_PROFILES).map(([key, value]) => ({
-    value: key as ScreenShareQuality,
-    label: value.label,
-    description: value.description,
-    resolution: value.width > 0 ? `${value.width}x${value.height}` : 'Native',
-    frameRate: value.frameRate,
-    bitrate: value.maxBitrate
-  }))
-})
+// Get the LiveKit store for screen share status
+const { isScreenSharing, startScreenShare, stopScreenShare } = useLiveKit()
 
-const currentSettings = computed(() => store.currentScreenShareSettings)
-
-const handleQualityChange = () => {
-  store.setScreenShareQuality(selectedQuality.value)
-}
-
-const getQualityIcon = (quality: ScreenShareQuality): string => {
-  const icons: Record<ScreenShareQuality, string> = {
-    'source': '🖥️',
-    '1080p60': '🎬',
-    '1080p30': '📺',
-    '720p60': '🎮',
-    '720p30': '📱',
-    '480p30': '📶'
+/**
+ * Handle quality change
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const handleQualityChange = (quality: unknown) => {
+  if (typeof quality === 'string') {
+    selectedQuality.value = quality
+    console.log('[ScreenShareSettings] Quality changed to:', quality)
   }
-  return icons[quality] || '🖥️'
 }
 
-onMounted(() => {
-  selectedQuality.value = store.screenShareQuality
-})
+/**
+ * Get the current quality settings - always returns a valid preset
+ */
+const getCurrentQualitySettings = (): typeof qualityPresets[number] => {
+  const found = qualityPresets.find(p => p.value === selectedQuality.value)
+  // Always return medium as fallback - qualityPresets[1] is guaranteed to exist
+  return found ?? { value: 'medium', label: 'Medium (720p, 60fps)', width: 1280, height: 720, frameRate: 60 }
+}
+
+/**
+ * Start screen share with current settings
+ */
+const handleStartScreenShare = async () => {
+  try {
+    const quality = getCurrentQualitySettings()
+    await startScreenShare({
+      resolution: {
+        width: quality.width,
+        height: quality.height,
+        frameRate: quality.frameRate
+      },
+      audio: includeAudio.value
+    })
+  } catch (error) {
+    console.error('[ScreenShareSettings] Error starting screen share:', error)
+  }
+}
+
+/**
+ * Stop screen share
+ */
+const handleStopScreenShare = async () => {
+  try {
+    await stopScreenShare()
+  } catch (error) {
+    console.error('[ScreenShareSettings] Error stopping screen share:', error)
+  }
+}
 </script>
 
 <template>
-  <div class="screen-share-settings-panel">
-    <div class="panel-content">
-      <section class="settings-section">
-        <h5 class="section-title">
-          Screen Share Quality
-        </h5>
-        <select v-model="selectedQuality" class="compact-select" @change="handleQualityChange">
-          <option v-for="option in qualityOptions" :key="option.value" :value="option.value">
-            {{ getQualityIcon(option.value) }} {{ option.label }}
-          </option>
-        </select>
-        <p class="quality-description">
-          {{ currentSettings.description }}
+  <div class="space-y-4">
+    <!-- Screen Share Status -->
+    <div
+      class="p-3 rounded-lg"
+      :class="isScreenSharing ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-gray-700'"
+    >
+      <div class="flex items-center gap-2">
+        <UIcon
+          :name="isScreenSharing ? 'i-lucide-monitor' : 'i-lucide-monitor-off'"
+          :class="isScreenSharing ? 'text-green-600 dark:text-green-400' : 'text-gray-500'"
+        />
+        <span
+          class="text-sm font-medium"
+          :class="isScreenSharing ? 'text-green-700 dark:text-green-300' : 'text-gray-700 dark:text-gray-300'"
+        >
+          {{ isScreenSharing ? 'Screen sharing active' : 'Not sharing screen' }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Quality Settings -->
+    <div>
+      <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <UIcon name="i-lucide-settings-2" class="inline mr-1" />
+        Quality Preset
+      </label>
+      <select
+        v-model="selectedQuality"
+        class="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+      >
+        <option v-for="preset in qualityPresets" :key="preset.value" :value="preset.value">
+          {{ preset.label }}
+        </option>
+      </select>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Higher quality uses more bandwidth
+      </p>
+    </div>
+
+    <!-- Audio Toggle -->
+    <div class="flex items-center justify-between">
+      <div>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <UIcon name="i-lucide-volume-2" class="inline mr-1" />
+          Include System Audio
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          Share audio from your computer
         </p>
-      </section>
+      </div>
+      <UToggle v-model="includeAudio" />
+    </div>
 
-      <section class="settings-section">
-        <h5 class="section-title">
-          Current Settings
-        </h5>
-        <div class="settings-grid">
-          <div class="setting-item">
-            <span class="setting-label">Resolution</span>
-            <span class="setting-value">
-              {{ currentSettings.width > 0 ? `${currentSettings.width}x${currentSettings.height}` : 'Native' }}
-            </span>
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">Frame Rate</span>
-            <span class="setting-value">{{ currentSettings.frameRate }} fps</span>
-          </div>
-          <div class="setting-item">
-            <span class="setting-label">Max Bitrate</span>
-            <span class="setting-value">{{ currentSettings.maxBitrate }} kbps</span>
-          </div>
+    <!-- Cursor Toggle -->
+    <div class="flex items-center justify-between">
+      <div>
+        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <UIcon name="i-lucide-mouse-pointer-2" class="inline mr-1" />
+          Show Cursor
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          Display cursor in screen share
+        </p>
+      </div>
+      <UToggle v-model="showCursor" />
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+      <UButton
+        v-if="!isScreenSharing"
+        color="primary"
+        icon="i-lucide-monitor"
+        class="w-full"
+        @click="handleStartScreenShare"
+      >
+        Start Screen Share
+      </UButton>
+      <UButton
+        v-else
+        color="error"
+        icon="i-lucide-monitor-off"
+        class="w-full"
+        @click="handleStopScreenShare"
+      >
+        Stop Screen Share
+      </UButton>
+    </div>
+
+    <!-- Tips -->
+    <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+      <div class="flex items-start gap-2">
+        <UIcon name="i-lucide-info" class="text-blue-600 dark:text-blue-400 mt-0.5" />
+        <div class="text-xs text-blue-700 dark:text-blue-300">
+          <p class="font-medium mb-1">
+            Tips:
+          </p>
+          <ul class="list-disc list-inside space-y-0.5">
+            <li>You can share your entire screen or a specific window</li>
+            <li>System audio sharing may not be available on all browsers</li>
+            <li>Lower quality settings work better on slower connections</li>
+          </ul>
         </div>
-      </section>
-
-      <section class="settings-section tips">
-        <h5 class="section-title">
-          Tips
-        </h5>
-        <ul class="tips-list">
-          <li><strong>Gaming:</strong> Use 720p60 or 1080p60 for smooth gameplay</li>
-          <li><strong>Presentations:</strong> 1080p30 provides clear text</li>
-          <li><strong>Low bandwidth:</strong> Use 480p30 for stability</li>
-        </ul>
-      </section>
+      </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.screen-share-settings-panel {
-  background: transparent;
-  width: 100%;
-  font-size: 0.875rem;
-}
-
-.panel-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.section-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0;
-}
-
-.compact-select {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.8125rem;
-  background: white;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.compact-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.quality-description {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin: 0;
-  font-style: italic;
-}
-
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-}
-
-.setting-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  background: #f3f4f6;
-  border-radius: 6px;
-  text-align: center;
-}
-
-.setting-label {
-  font-size: 0.625rem;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.setting-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.tips {
-  margin-top: 0.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.tips-list {
-  margin: 0;
-  padding-left: 1rem;
-  font-size: 0.75rem;
-  color: #6b7280;
-  line-height: 1.6;
-}
-
-.tips-list li {
-  margin-bottom: 0.25rem;
-}
-
-.tips-list strong {
-  color: #374151;
-}
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  .compact-select {
-    background: #374151;
-    border-color: #4b5563;
-    color: #f3f4f6;
-  }
-
-  .section-title {
-    color: #9ca3af;
-  }
-
-  .quality-description {
-    color: #9ca3af;
-  }
-
-  .setting-item {
-    background: #374151;
-  }
-
-  .setting-value {
-    color: #f3f4f6;
-  }
-
-  .tips {
-    border-top-color: #4b5563;
-  }
-
-  .tips-list {
-    color: #9ca3af;
-  }
-
-  .tips-list strong {
-    color: #d1d5db;
-  }
-}
-</style>

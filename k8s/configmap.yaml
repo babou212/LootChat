@@ -24,6 +24,10 @@ data:
   # App Configuration
   APP_NAME: "LootChat"
   
+  # LiveKit Configuration
+  LIVEKIT_URL: "wss://livekit.lootchat.dylancree.com"
+  LIVEKIT_PUBLIC_URL: "wss://livekit.lootchat.dylancree.com"
+  
   # Admin Configuration
   ADMIN_USERNAME: "admin"
   ADMIN_EMAIL: "admin@lootchat.local"

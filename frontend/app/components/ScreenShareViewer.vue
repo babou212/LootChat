@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ScreenShareInfo } from '../../shared/types/chat'
+import type { RemoteVideoTrack } from 'livekit-client'
 
 interface Props {
   screenShare: ScreenShareInfo | null
@@ -63,21 +64,38 @@ const findNearestSnapPosition = (x: number, y: number) => {
   return nearest
 }
 
-// Watch for stream changes to update video element
-watch(() => props.screenShare?.stream, (stream) => {
-  if (videoRef.value && stream) {
-    videoRef.value.srcObject = stream
+// Attach LiveKit track to video element
+const attachTrack = () => {
+  const track = props.screenShare?.track as RemoteVideoTrack | undefined
+  if (videoRef.value && track && typeof track.attach === 'function') {
+    console.log('[ScreenShareViewer] Attaching track to video element')
+    // Detach any existing attachments first
+    if (typeof track.detach === 'function') {
+      track.detach()
+    }
+    // Attach to our video element
+    track.attach(videoRef.value)
     videoRef.value.play().catch(console.error)
   }
+}
+
+// Watch for track changes to update video element
+watch(() => props.screenShare?.track, () => {
+  attachTrack()
 }, { immediate: true })
 
 // Also watch when video ref becomes available
-watch(videoRef, (video) => {
-  if (video && props.screenShare?.stream) {
-    video.srcObject = props.screenShare.stream
-    video.play().catch(console.error)
-  }
+watch(videoRef, () => {
+  attachTrack()
 }, { immediate: true })
+
+// Cleanup when component unmounts
+onUnmounted(() => {
+  const track = props.screenShare?.track as RemoteVideoTrack | undefined
+  if (track && typeof track.detach === 'function') {
+    track.detach()
+  }
+})
 
 const initializePosition = () => {
   position.value = {
@@ -294,7 +312,7 @@ const minimizedStyle = computed(() => {
 
           <!-- Loading overlay -->
           <div
-            v-if="!screenShare.stream"
+            v-if="!screenShare.track"
             class="absolute inset-0 flex items-center justify-center bg-gray-900/80"
           >
             <div class="text-center text-gray-400">
@@ -306,7 +324,7 @@ const minimizedStyle = computed(() => {
           </div>
 
           <div
-            v-if="!isMinimized && screenShare.stream"
+            v-if="!isMinimized && screenShare.track"
             class="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/80 to-transparent opacity-0 hover:opacity-100 transition-opacity"
           >
             <div class="flex items-center justify-center gap-4">

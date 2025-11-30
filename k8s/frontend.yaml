@@ -66,21 +66,28 @@ spec:
             secretKeyRef:
               name: lootchat-secrets
               key: NUXT_PUBLIC_TENOR_API_KEY
-        # WebRTC TURN server configuration for NAT traversal in production
-        # Required for voice channels to work between users behind NAT/firewalls
-        # Using worker-1 node IP directly since coturn uses hostNetwork
-        - name: NUXT_PUBLIC_WEBRTC_TURN_URLS
-          value: "turn:46.224.56.167:3478,turn:46.224.56.167:3478?transport=tcp"
-        - name: NUXT_PUBLIC_WEBRTC_TURN_USERNAME
+        # LiveKit Configuration for voice channels
+        - name: NUXT_LIVEKIT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: LIVEKIT_URL
+        - name: NUXT_LIVEKIT_API_KEY
           valueFrom:
             secretKeyRef:
               name: lootchat-secrets
-              key: TURN_USERNAME
-        - name: NUXT_PUBLIC_WEBRTC_TURN_CREDENTIAL
+              key: LIVEKIT_API_KEY
+        - name: NUXT_LIVEKIT_API_SECRET
           valueFrom:
             secretKeyRef:
               name: lootchat-secrets
-              key: TURN_PASSWORD
+              key: LIVEKIT_API_SECRET
+        # Public LiveKit URL for client connection
+        - name: NUXT_PUBLIC_LIVEKIT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: lootchat-config
+              key: LIVEKIT_PUBLIC_URL
         resources:
           requests:
             cpu: 200m
