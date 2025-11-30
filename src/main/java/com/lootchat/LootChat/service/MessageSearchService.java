@@ -1,5 +1,6 @@
 package com.lootchat.LootChat.service;
 
+import com.lootchat.LootChat.dto.MessageSearchRequest;
 import com.lootchat.LootChat.entity.Message;
 import com.lootchat.LootChat.entity.MessageDocument;
 import com.lootchat.LootChat.repository.MessageSearchRepository;
@@ -58,21 +59,18 @@ public class MessageSearchService {
         }
     }
 
-    public List<MessageDocument> searchAllMessages(String query, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "createdAt");
-        Page<MessageDocument> results = messageSearchRepository.findByContentContaining(query, pageable);
-        return results.getContent();
-    }
+    public List<MessageDocument> searchMessages(MessageSearchRequest request) {
+        Pageable pageable = PageRequest.of(request.page(), request.size(), Sort.by(Sort.Direction.DESC, "createdAt"));
 
-    public List<MessageDocument> searchMessagesInChannel(String  channelName, String query, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "createdAt");
-        Page<MessageDocument> results = messageSearchRepository.findByChannelNameAndContentContaining(channelName, query, pageable);
-        return results.getContent();
-    }
+        Page<MessageDocument> results;
 
-    public List<MessageDocument> searchMessagesByUser(String username, String query, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.Direction.DESC, "createdAt");
-        Page<MessageDocument> results = messageSearchRepository.findByUsernameAndContentContaining(username, query, pageable);
+        if (request.channelName() != null) {
+            results = messageSearchRepository.findByChannelNameAndContentContaining(request.channelName(), request.query(), pageable);
+        } else if (request.username() != null) {
+            results = messageSearchRepository.findByUsernameAndContentContaining(request.username(), request.query(), pageable);
+        } else {
+            results = messageSearchRepository.findByContentContaining(request.query(), pageable);
+        }
         return results.getContent();
     }
 
