@@ -22,6 +22,8 @@
     "@tanstack/vue-virtual": "^3.13.12",
     "@types/sockjs-client": "^1.5.4",
     "date-fns": "^4.1.0",
+    "livekit-client": "^2.16.0",
+    "livekit-server-sdk": "^2.14.2",
     "nuxt": "^4.2.0",
     "nuxt-auth-utils": "^0.5.25",
     "nuxt-charts": "0.2.4",

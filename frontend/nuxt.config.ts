@@ -60,16 +60,15 @@ export default defineNuxtConfig({
     },
     // Server-side API URL (internal Docker network)
     apiUrl: process.env.NUXT_API_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
+    // LiveKit server-side secrets (never exposed to client)
+    livekitApiKey: process.env.NUXT_LIVEKIT_API_KEY || 'devkey',
+    livekitApiSecret: process.env.NUXT_LIVEKIT_API_SECRET || 'secret',
     public: {
       tenorApiKey: process.env.NUXT_PUBLIC_TENOR_API_KEY,
       // Client-side API URL (external/public)
       apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:8080',
-      // WebRTC ICE/TURN configuration (comma-separated TURN URLs, e.g. "turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349")
-      webrtcTurnUrls: process.env.NUXT_PUBLIC_WEBRTC_TURN_URLS || '',
-      webrtcTurnUsername: process.env.NUXT_PUBLIC_WEBRTC_TURN_USERNAME || '',
-      webrtcTurnCredential: process.env.NUXT_PUBLIC_WEBRTC_TURN_CREDENTIAL || '',
-      // Set to 'relay' to force TURN-only; default 'all'
-      webrtcIceTransportPolicy: (process.env.NUXT_PUBLIC_WEBRTC_ICE_TRANSPORT_POLICY || 'all') as 'all' | 'relay'
+      // LiveKit server URL (client needs this to connect)
+      livekitUrl: process.env.NUXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880'
     }
   },
 
@@ -92,8 +91,10 @@ export default defineNuxtConfig({
             'style-src \'self\' \'unsafe-inline\'',
             'img-src \'self\' data: https: blob:',
             'font-src \'self\' data:',
-            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 ws: wss: https://tenor.googleapis.com',
-            'media-src \'self\' https:',
+            // LiveKit WebSocket signaling goes through localhost (Docker port forward)
+            // WebRTC media uses LAN IP but that's handled by ICE, not CSP
+            'connect-src \'self\' http://localhost:8080 ws://localhost:8080 http://localhost:7880 ws://localhost:7880 ws: wss: https://tenor.googleapis.com',
+            'media-src \'self\' https: blob:',
             'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
             'worker-src \'self\' blob:',
             'object-src \'none\'',

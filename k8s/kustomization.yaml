@@ -12,7 +12,7 @@ resources:
   - redis.yaml
   - kafka.yaml
   - minio.yaml
-  - coturn.yaml
+  - livekit.yaml
   - backend.yaml
   - frontend.yaml
   - ingress.yaml

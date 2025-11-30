@@ -1,0 +1,19 @@
+# LiveKit local development configuration
+# Generated based on livekit/generate --local
+port: 7880
+
+rtc:
+  # Use single UDP port (mux) instead of port range - simpler for Docker
+  udp_port: 7882
+  tcp_port: 7881
+  use_external_ip: false
+  enable_loopback_candidate: false
+
+# API keys for local development
+keys:
+  devkey: thisissecretkeythatisatleast32chars
+
+logging:
+  json: false
+  level: info
+

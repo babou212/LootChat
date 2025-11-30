@@ -76,6 +76,24 @@ services:
     networks:
       - lootchat-network
 
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: livekit
+    # Note: For local dev on macOS, we need to use the host's actual LAN IP
+    # Run: ipconfig getifaddr en0  to get your IP and update below
+    command: --config /etc/livekit.yaml --node-ip 192.168.1.73
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "7880:7880"       # HTTP/WebSocket
+      - "7881:7881"       # RTC TCP
+      - "7882:7882/udp"   # RTC UDP (single mux port)
+    volumes:
+      - ./livekit-local.yaml:/etc/livekit.yaml:ro
+    restart: unless-stopped
+    networks:
+      - lootchat-network
+
   # Local backend (if added later) should use:
   # environment:
   #   - SPRING_DATA_REDIS_HOST=localhost

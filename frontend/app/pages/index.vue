@@ -34,7 +34,7 @@ const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
 const { getClient, isConnected, subscribeToUserDirectMessages, subscribeToPresenceSync } = useWebSocket()
-const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useWebRTC()
+const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useLiveKit()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
 const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscriptions()
@@ -51,10 +51,11 @@ const isScreenShareMinimized = ref(false)
 
 const selectedScreenShare = computed(() => {
   if (!selectedScreenShareId.value) return null
-  return activeScreenShares.value.find(s => s.sharerId === selectedScreenShareId.value) || null
+  return activeScreenShares.value.find(s => s.odod === selectedScreenShareId.value) || null
 })
 
 const handleViewScreenShare = (sharerId: string) => {
+  console.log('[Index] handleViewScreenShare called', { sharerId, activeScreenShares: activeScreenShares.value })
   selectedScreenShareId.value = sharerId
   isScreenShareMinimized.value = false
 }
@@ -70,7 +71,7 @@ const handleToggleMinimizeScreenShare = () => {
 
 // Auto-close viewer when screen share ends
 watch(activeScreenShares, (shares) => {
-  if (selectedScreenShareId.value && !shares.find(s => s.sharerId === selectedScreenShareId.value)) {
+  if (selectedScreenShareId.value && !shares.find(s => s.odod === selectedScreenShareId.value)) {
     selectedScreenShareId.value = null
   }
 }, { deep: true })
