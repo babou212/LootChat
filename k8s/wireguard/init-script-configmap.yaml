@@ -36,7 +36,7 @@ data:
     [Peer]
     PublicKey = $(cat /run/secrets/wireguard/server-public-key)
     PresharedKey = $(cat /run/secrets/wireguard/peer1-preshared-key)
-    Endpoint = 91.98.13.137:51820
+    Endpoint = 49.13.46.207:31820
     AllowedIPs = 10.8.0.0/24,10.96.0.0/12,10.244.0.0/16
     PersistentKeepalive = 25
     EOF

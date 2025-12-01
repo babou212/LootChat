@@ -124,14 +124,12 @@ metadata:
   namespace: wireguard
   labels:
     app: wireguard
-  annotations:
-    load-balancer.hetzner.cloud/location: fsn1
 spec:
-  type: LoadBalancer
-  externalTrafficPolicy: Local
+  type: NodePort
   ports:
   - port: 51820
     targetPort: 51820
+    nodePort: 31820
     protocol: UDP
     name: wireguard
   selector:
