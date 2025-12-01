@@ -1,5 +1,0 @@
-# Keep the template and example files
-!secrets.yaml.example
-!secrets.env.example
-!secrets.template.yaml
-!.sops.yaml

@@ -74,20 +74,24 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 
 ---
 
-### Kubernetes + FluxCD (Production)
+## 🚀 Self-Hosting
 
-For production GitOps deployment with automatic updates:
+Want to host your own LootChat instance? Check out our self-hosting repository:
 
-1. **Quick Start**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Deploy in 30 minutes
-2. **Full Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Comprehensive deployment documentation
-3. **Configuration**: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - All configurable values reference
-4. **FluxCD Setup**: [flux/SETUP.md](flux/SETUP.md) - GitOps automated deployments
+**[LootChat Self-Hosting Guide](https://github.com/babou212/loot-chat-self-host)**
 
-With Flux:
+Includes:
 
-- Push code → GitHub Actions builds images → Flux auto-deploys
-- No manual `kubectl` commands needed
-- Git as the source of truth
+- **Kubernetes deployment** with Terraform (Hetzner Cloud)
+- Complete infrastructure-as-code
+- Comprehensive documentation
+- Automated SSL certificates
+- Production-ready configurations
+
+**Deployment Options:**
+
+- Kubernetes on Hetzner Cloud (~€35/month)
+- Highly configurable for any environment
 
 ---
 

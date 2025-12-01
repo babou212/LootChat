@@ -2,13 +2,13 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: lootchat
+  name: lootchat-infrastructure
   namespace: flux-system
 spec:
   interval: 1m
-  url: https://github.com/babou212/LootChat
+  url: https://github.com/babou212/loot-chat-self-host
   ref:
-    branch: master
+    branch: main
   secretRef:
     name: lootchat-git-auth
   ignore: |
@@ -16,3 +16,6 @@ spec:
     /*
     # include k8s directory
     !/k8s/
+    # exclude template and example files
+    /k8s/*.example
+    /k8s/secrets.yaml
