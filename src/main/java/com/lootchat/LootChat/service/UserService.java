@@ -57,8 +57,21 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password and confirm password do not match");
         }
 
-        if (request.getNewPassword().length() < 12) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password must be at least 8 characters long");
+        String password = request.getNewPassword();
+        if (password.length() < 12) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must be at least 12 characters long");
+        }
+        if (!password.matches(".*[a-z].*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must contain at least one lowercase letter");
+        }
+        if (!password.matches(".*[A-Z].*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must contain at least one uppercase letter");
+        }
+        if (!password.matches(".*\\d.*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must contain at least one number");
+        }
+        if (!password.matches(".*[@$!%*?&].*")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must contain at least one special character (@$!%*?&)");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));

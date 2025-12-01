@@ -2,6 +2,7 @@ package com.lootchat.LootChat.config;
 
 import com.lootchat.LootChat.security.WebSocketAuthInterceptor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -15,6 +16,9 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
+    
+    @Value("${cors.allowed.origins}")
+    private String allowedOrigins;
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
@@ -25,8 +29,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // Use explicit allowed origins from configuration instead of wildcard
+        String[] origins = allowedOrigins != null ? allowedOrigins.split(",") : new String[0];
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOrigins(origins)
                 .withSockJS();
     }
 

@@ -93,6 +93,8 @@ export const useDirectMessagesStore = defineStore('directMessages', {
         isRead: apiMessage.isRead,
         timestamp: new Date(apiMessage.createdAt),
         updatedAt: apiMessage.updatedAt ? new Date(apiMessage.updatedAt) : undefined,
+        edited: apiMessage.edited || false,
+        deleted: apiMessage.deleted || false,
         reactions: apiMessage.reactions?.map(r => ({
           id: r.id,
           emoji: r.emoji,
@@ -167,6 +169,23 @@ export const useDirectMessagesStore = defineStore('directMessages', {
       if (cache) {
         const exists = cache.messages.find(m => m.id === message.id)
         if (!exists) {
+          // Check if this is a real message that matches a pending optimistic message
+          // This prevents duplicates when WebSocket delivers the message before confirmOptimisticMessage is called
+          const pendingOptimisticIndex = cache.messages.findIndex(m =>
+            m.id < 0
+            && m.content === message.content
+            && m.senderId === message.senderId
+            && m.directMessageId === message.directMessageId
+            && Math.abs(m.timestamp.getTime() - message.timestamp.getTime()) < 30000
+          )
+
+          if (pendingOptimisticIndex !== -1) {
+            // Replace the optimistic message with the real one
+            cache.messages[pendingOptimisticIndex] = message
+            cache.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+            return
+          }
+
           cache.messages.push(message)
           cache.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
         } else {

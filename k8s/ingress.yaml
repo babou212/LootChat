@@ -5,7 +5,7 @@ metadata:
   namespace: lootchat
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/websocket-services: "lootchat-backend"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
@@ -16,6 +16,13 @@ metadata:
     nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
     # Use upstream-hash-by for WebSocket session affinity
     nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    # CORS configuration - restrict to same origin
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://dylancree.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, Accept, Origin, X-Requested-With, Cache-Control"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "3600"
 spec:
   ingressClassName: nginx
   tls:
@@ -79,6 +86,13 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/upstream-vhost: "$host"
+    # CORS configuration for MinIO - allow main domain to access assets
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://dylancree.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, HEAD, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, Accept, Origin, Range"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
 spec:
   ingressClassName: nginx
   tls:

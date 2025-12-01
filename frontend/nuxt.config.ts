@@ -4,11 +4,10 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
-    '@nuxtjs/mdc',
     '@pinia/nuxt',
     'nuxt-auth-utils',
-    'nuxt-charts',
-    '@nuxt/image'
+    '@nuxt/image',
+    'nuxt-security'
   ],
   devtools: {
     enabled: true
@@ -33,23 +32,13 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  mdc: {
-    headings: {
-      anchorLinks: false
-    },
-    highlight: {
-      // noApiRoute: true
-      shikiEngine: 'javascript'
-    }
-  },
-
   runtimeConfig: {
     session: {
       name: 'lootchat-session',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       password: process.env.NUXT_SESSION_PASSWORD || '',
       cookie: {
-        sameSite: 'lax',
+        sameSite: 'strict',
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
         path: '/'
@@ -81,47 +70,8 @@ export default defineNuxtConfig({
   nitro: {
     experimental: {
       openAPI: true
-    },
-    routeRules: {
-      '/**': {
-        headers: {
-          'Content-Security-Policy': [
-            'default-src \'self\'',
-            'script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'',
-            'style-src \'self\' \'unsafe-inline\'',
-            'img-src \'self\' data: https: blob:',
-            'font-src \'self\' data:',
-            // LiveKit uses HTTPS for validation and WSS for signaling
-            // WebRTC media uses ICE, not CSP
-            'connect-src \'self\' https: ws: wss:',
-            'media-src \'self\' https: blob:',
-            'frame-src \'self\' https://www.youtube.com https://www.youtube-nocookie.com',
-            'worker-src \'self\' blob:',
-            'object-src \'none\'',
-            'base-uri \'self\'',
-            'form-action \'self\'',
-            'frame-ancestors \'none\'',
-            'upgrade-insecure-requests'
-          ].join('; '),
-          'Permissions-Policy': [
-            'microphone=(self)',
-            'camera=(self)',
-            'geolocation=(self)',
-            'payment=()',
-            'usb=()',
-            'magnetometer=()',
-            'gyroscope=()',
-            'accelerometer=()',
-            'ambient-light-sensor=()',
-            'autoplay=()',
-            'encrypted-media=()',
-            'fullscreen=(self)',
-            'picture-in-picture=(self)'
-          ].join(', '),
-          'Referrer-Policy': 'strict-origin-when-cross-origin'
-        }
-      }
     }
+    // Security headers are now managed by nuxt-security module
   },
 
   eslint: {
@@ -136,5 +86,115 @@ export default defineNuxtConfig({
   image: {
     provider: 'none',
     domains: ['minio.dylancree.com', 'localhost']
+  },
+
+  // nuxt-security module configuration
+  security: {
+    // Enable nonce-based CSP for Strict CSP
+    nonce: true,
+
+    // SSG configuration for static generation
+    ssg: {
+      meta: true,
+      hashScripts: true,
+      hashStyles: false, // Styles use 'unsafe-inline' which is acceptable
+      nitroHeaders: true,
+      exportToPresets: true
+    },
+
+    // Enable Subresource Integrity
+    sri: true,
+
+    // Rate limiting - disabled as backend handles rate limiting
+    // The backend has proper rate limiting on sensitive endpoints (login, password reset)
+    rateLimiter: false,
+
+    // Request size limiting
+    requestSizeLimiter: {
+      maxRequestSizeInBytes: 2000000, // 2MB
+      maxUploadFileRequestInBytes: 52428800, // 50MB for file uploads
+      throwError: true
+    },
+
+    // XSS validation
+    xssValidator: {
+      throwError: true
+    },
+
+    // CORS handler (handled by backend, disable here)
+    corsHandler: false,
+
+    // Restrict HTTP methods
+    allowedMethodsRestricter: {
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      throwError: true
+    },
+
+    // Hide X-Powered-By header
+    hidePoweredBy: true,
+
+    // Remove console.log statements in production
+    removeLoggers: true,
+
+    // Security headers
+    headers: {
+      // Cross-Origin policies
+      crossOriginResourcePolicy: 'same-origin',
+      crossOriginOpenerPolicy: 'same-origin',
+      crossOriginEmbedderPolicy: 'credentialless',
+
+      // Strict CSP with nonces and strict-dynamic
+      contentSecurityPolicy: {
+        'base-uri': ['\'none\''],
+        'font-src': ['\'self\'', 'data:'],
+        'form-action': ['\'self\''],
+        'frame-ancestors': ['\'none\''],
+        'frame-src': ['\'self\'', 'https://www.youtube.com', 'https://www.youtube-nocookie.com'],
+        'img-src': ['\'self\'', 'data:', 'https:', 'blob:'],
+        'media-src': ['\'self\'', 'https:', 'blob:'],
+        'object-src': ['\'none\''],
+        'script-src-attr': ['\'none\''],
+        'style-src': ['\'self\'', '\'unsafe-inline\''], // Styles need unsafe-inline for Vue/Nuxt
+        'script-src': [
+          '\'self\'',
+          '\'strict-dynamic\'', // Allows scripts loaded by trusted scripts
+          '\'nonce-{{nonce}}\'', // Nonce-based CSP for inline scripts
+          '\'unsafe-eval\'' // Required for Vue's runtime template compiler and some libraries
+        ],
+        'connect-src': ['\'self\'', 'https:', 'wss:', 'ws:'],
+        'worker-src': ['\'self\'', 'blob:'],
+        'upgrade-insecure-requests': true
+      },
+
+      // Other security headers
+      originAgentCluster: '?1',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+      strictTransportSecurity: {
+        maxAge: 31536000,
+        includeSubdomains: true,
+        preload: true
+      },
+      xContentTypeOptions: 'nosniff',
+      xDNSPrefetchControl: 'off',
+      xDownloadOptions: 'noopen',
+      xFrameOptions: 'DENY',
+      xPermittedCrossDomainPolicies: 'none',
+      xXSSProtection: '0', // Disabled as recommended for modern browsers
+
+      // Permissions Policy
+      permissionsPolicy: {
+        'camera': ['self'],
+        'microphone': ['self'],
+        'geolocation': ['self'],
+        'fullscreen': ['self'],
+        'picture-in-picture': ['self'],
+        'display-capture': [],
+        'payment': [],
+        'usb': [],
+        'magnetometer': [],
+        'gyroscope': [],
+        'accelerometer': []
+      }
+    }
   }
 })

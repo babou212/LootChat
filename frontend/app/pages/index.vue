@@ -110,6 +110,8 @@ const validationError = ref<string | null>(null)
 const stompClient = computed(() => getClient())
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
+const emojiPickerContainerRef = ref<HTMLElement | null>(null)
+const gifPickerContainerRef = ref<HTMLElement | null>(null)
 let dmSubscription: ReturnType<typeof subscribeToUserDirectMessages> = null
 
 // Composer helper functions
@@ -165,7 +167,10 @@ useClickAway(
   () => {
     composerStore.closePickers()
   },
-  { active: computed(() => composerStore.isPickerOpen) }
+  {
+    active: computed(() => composerStore.isPickerOpen),
+    ignore: [emojiPickerContainerRef, gifPickerContainerRef]
+  }
 )
 
 const selectChannel = async (channel: typeof channels.value[0]) => {
@@ -611,12 +616,6 @@ watch(usersWithFullData, () => {
                   aria-label="Insert emoji"
                   @click="composerStore.toggleEmojiPicker()"
                 />
-                <div
-                  v-if="composerStore.showEmojiPicker"
-                  class="absolute bottom-full mb-2 left-0 z-20"
-                >
-                  <EmojiPicker @select="addEmoji" />
-                </div>
 
                 <UButton
                   color="neutral"
@@ -625,13 +624,25 @@ watch(usersWithFullData, () => {
                   aria-label="Insert GIF"
                   @click="composerStore.toggleGifPicker()"
                 />
+              </div>
+
+              <!-- Pickers positioned outside the form to avoid overflow clipping -->
+              <Teleport to="body">
+                <div
+                  v-if="composerStore.showEmojiPicker"
+                  ref="emojiPickerContainerRef"
+                  class="fixed z-50 bottom-20 left-[340px]"
+                >
+                  <EmojiPicker @select="addEmoji" />
+                </div>
                 <div
                   v-if="composerStore.showGifPicker"
-                  class="absolute bottom-full mb-2 left-0 z-20"
+                  ref="gifPickerContainerRef"
+                  class="fixed z-50 bottom-20 left-[340px]"
                 >
                   <GifPicker ref="gifPickerRef" @select="addGif" />
                 </div>
-              </div>
+              </Teleport>
 
               <UTextarea
                 v-model="composerStore.newMessage"

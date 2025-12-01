@@ -16,6 +16,7 @@ export interface MessageResponse {
   replyToMessageId?: number
   replyToUsername?: string
   replyToContent?: string
+  deleted?: boolean
 }
 
 export interface ReactionResponse {
