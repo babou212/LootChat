@@ -64,7 +64,7 @@ spec:
               key: POSTGRES_DB
       containers:
       - name: backend
-        image: babou212/lootchat-backend:master-c8e211c-1764613822 # {"$imagepolicy": "flux-system:lootchat-backend"}
+        image: babou212/lootchat-backend:master-3f4d53f-1764623911 # {"$imagepolicy": "flux-system:lootchat-backend"}
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
