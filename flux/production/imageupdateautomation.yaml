@@ -2,17 +2,17 @@
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
-  name: lootchat
+  name: lootchat-infrastructure
   namespace: flux-system
 spec:
   interval: 5m
   sourceRef:
     kind: GitRepository
-    name: lootchat
+    name: lootchat-infrastructure
   git:
     checkout:
       ref:
-        branch: master
+        branch: main
     commit:
       author:
         email: fluxcdbot@users.noreply.github.com
@@ -22,7 +22,7 @@ spec:
         
         Automation: {{range .Changed.Changes}}{{println .}}{{end}}
     push:
-      branch: master
+      branch: main
   update:
     path: ./k8s
     strategy: Setters
