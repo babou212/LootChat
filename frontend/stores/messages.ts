@@ -210,10 +210,10 @@ export const useMessagesStore = defineStore('messages', {
         // Check if this message matches an optimistic message (negative ID with same content/user/time)
         // This handles the race condition where WebSocket delivers the message before confirmOptimisticMessage is called
         const optimisticMatch = cache.messages.find(m =>
-          m.id < 0 &&
-          m.userId === message.userId &&
-          m.content === message.content &&
-          Math.abs(m.timestamp.getTime() - message.timestamp.getTime()) < 5000 // Within 5 seconds
+          m.id < 0
+          && m.userId === message.userId
+          && m.content === message.content
+          && Math.abs(m.timestamp.getTime() - message.timestamp.getTime()) < 5000 // Within 5 seconds
         )
 
         if (optimisticMatch) {
