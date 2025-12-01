@@ -124,6 +124,8 @@ metadata:
   namespace: wireguard
   labels:
     app: wireguard
+  annotations:
+    load-balancer.hetzner.cloud/location: fsn1
 spec:
   type: LoadBalancer
   externalTrafficPolicy: Local
