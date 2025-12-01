@@ -17,7 +17,7 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 - **Admin Invite System**
 - **Modern UI** with Nuxt UI
 - **Kubernetes** for reliable performant deployments
-- **FluxCD** for GitOPS 
+- **FluxCD** for GitOPS
 - **Docker Compose** for full stack orchestration
 
 ---
@@ -78,10 +78,13 @@ A modern, real-time chat application built with Java 25 (Spring Boot) and Nuxt 4
 
 For production GitOps deployment with automatic updates:
 
-1. See [Kubernetes Deployment Guide](DEPLOYMENT.md) for cluster setup
-2. See [Flux GitOps Setup](flux/SETUP.md) for automated deployments
+1. **Quick Start**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Deploy in 30 minutes
+2. **Full Guide**: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Comprehensive deployment documentation
+3. **Configuration**: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) - All configurable values reference
+4. **FluxCD Setup**: [flux/SETUP.md](flux/SETUP.md) - GitOps automated deployments
 
 With Flux:
+
 - Push code → GitHub Actions builds images → Flux auto-deploys
 - No manual `kubectl` commands needed
 - Git as the source of truth

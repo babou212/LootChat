@@ -52,6 +52,8 @@ let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> | null 
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gifPickerRef = ref<InstanceType<typeof GifPicker> | null>(null)
 const pickerWrapperRef = ref<HTMLElement | null>(null)
+const emojiPickerContainerRef = ref<HTMLElement | null>(null)
+const gifPickerContainerRef = ref<HTMLElement | null>(null)
 const loadingMoreMessages = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
 
@@ -99,7 +101,10 @@ useClickAway(
   () => {
     composerStore.closePickers()
   },
-  { active: computed(() => composerStore.isPickerOpen) }
+  {
+    active: computed(() => composerStore.isPickerOpen),
+    ignore: [emojiPickerContainerRef, gifPickerContainerRef]
+  }
 )
 
 const handleImageSelect = (event: Event) => {
@@ -695,13 +700,6 @@ const isUserOnline = (userId: number): boolean => {
               aria-label="Insert emoji"
               @click="toggleEmojiPicker"
             />
-            <div
-              v-if="composerStore.showEmojiPicker"
-              class="absolute left-0 z-100"
-              :class="composerStore.openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
-            >
-              <EmojiPicker @select="addEmoji" />
-            </div>
 
             <UButton
               color="neutral"
@@ -710,14 +708,25 @@ const isUserOnline = (userId: number): boolean => {
               aria-label="Insert GIF"
               @click="toggleGifPicker"
             />
+          </div>
+
+          <!-- Pickers positioned outside the form to avoid overflow clipping -->
+          <Teleport to="body">
+            <div
+              v-if="composerStore.showEmojiPicker"
+              ref="emojiPickerContainerRef"
+              class="fixed z-50 bottom-20 left-[340px]"
+            >
+              <EmojiPicker @select="addEmoji" />
+            </div>
             <div
               v-if="composerStore.showGifPicker"
-              class="absolute left-0 z-100"
-              :class="composerStore.openPickerUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
+              ref="gifPickerContainerRef"
+              class="fixed z-50 bottom-20 left-[340px]"
             >
               <GifPicker ref="gifPickerRef" @select="addGif" />
             </div>
-          </div>
+          </Teleport>
 
           <UTextarea
             v-model="composerStore.newMessage"

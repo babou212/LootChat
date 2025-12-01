@@ -98,6 +98,9 @@ const easeInOutQuint = (t: number) => {
 
 const scrollingRef = ref<number>()
 
+// Filter out deleted messages for display, but keep original list for reply lookups
+const visibleMessages = computed(() => props.messages.filter(m => !m.deleted))
+
 const scrollToFn: VirtualizerOptions<HTMLElement, Element>['scrollToFn'] = (
   offset,
   options,
@@ -131,12 +134,12 @@ const scrollToFn: VirtualizerOptions<HTMLElement, Element>['scrollToFn'] = (
 
 const virtualizer = useVirtualizer({
   get count() {
-    return props.messages.length
+    return visibleMessages.value.length
   },
   getScrollElement: () => messagesContainer.value,
   estimateSize: () => 150, // Increased estimate for messages with media
   overscan: 5,
-  getItemKey: index => props.messages[index]?.id || index,
+  getItemKey: index => visibleMessages.value[index]?.id || index,
   scrollToFn,
   measureElement: (element) => {
     // Measure actual element height for dynamic sizing
@@ -152,8 +155,8 @@ const isNearBottom = () => {
 }
 
 const scrollToBottom = (smooth = false) => {
-  if (props.messages.length === 0) return
-  virtualizer.value.scrollToIndex(props.messages.length - 1, {
+  if (visibleMessages.value.length === 0) return
+  virtualizer.value.scrollToIndex(visibleMessages.value.length - 1, {
     align: 'end',
     behavior: smooth ? 'smooth' : 'auto'
   })
@@ -184,7 +187,9 @@ const activeEmojiPicker = ref<number | null>(null)
 const emojiPickerRef = ref<HTMLElement | null>(null)
 const openEmojiUpwards = ref(false)
 const emojiAnchorEl = ref<HTMLElement | null>(null)
-const PICKER_HEIGHT_ESTIMATE = 320
+const emojiPickerPosition = ref({ top: 0, left: 0 })
+const PICKER_HEIGHT_ESTIMATE = 260
+const PICKER_WIDTH_ESTIMATE = 300
 const inFlightReactions = new Set<string>()
 
 const editingMessageId = ref<number | null>(null)
@@ -220,17 +225,37 @@ const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
   emojiAnchorEl.value = (event?.currentTarget as HTMLElement) || null
 
   nextTick(() => {
-    const container = messagesContainer.value
     const anchor = emojiAnchorEl.value
-    if (!container || !anchor) return
+    if (!anchor) return
 
-    const containerRect = container.getBoundingClientRect()
     const anchorRect = anchor.getBoundingClientRect()
+    const viewportHeight = window.innerHeight
+    const viewportWidth = window.innerWidth
 
-    const spaceBelow = containerRect.bottom - anchorRect.bottom
-    const spaceAbove = anchorRect.top - containerRect.top
-
+    // Calculate vertical position
+    const spaceBelow = viewportHeight - anchorRect.bottom
+    const spaceAbove = anchorRect.top
     openEmojiUpwards.value = spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow
+
+    // Calculate left position, ensuring picker stays within viewport
+    let left = anchorRect.left
+    if (left + PICKER_WIDTH_ESTIMATE > viewportWidth) {
+      left = viewportWidth - PICKER_WIDTH_ESTIMATE - 16 // 16px padding from edge
+    }
+    if (left < 16) left = 16
+
+    // Calculate top position
+    let top: number
+    if (openEmojiUpwards.value) {
+      // Position picker above the button with a small gap
+      top = anchorRect.top - PICKER_HEIGHT_ESTIMATE - 4
+      if (top < 8) top = 8 // Don't go above viewport
+    } else {
+      // Position picker below the button
+      top = anchorRect.bottom + 4
+    }
+
+    emojiPickerPosition.value = { top, left }
   })
 }
 
@@ -249,7 +274,7 @@ const scrollAnchorDistance = ref(0)
 const virtualRows = computed(() => virtualizer.value.getVirtualItems())
 
 const getMessage = (virtualIndex: number) => {
-  return props.messages[virtualIndex]
+  return visibleMessages.value[virtualIndex]
 }
 
 const hasInitiallyScrolled = ref(false)
@@ -607,7 +632,7 @@ watch(() => props.messages[0]?.channelId, (newChannelId, oldChannelId) => {
   }
 }, { flush: 'sync' })
 
-watch(() => props.messages.length, (newLength, oldLength) => {
+watch(() => visibleMessages.value.length, (newLength, oldLength) => {
   if (newLength === 0 && oldLength > 0) {
     hasInitiallyScrolled.value = false
     previousScrollHeight.value = 0
@@ -646,7 +671,7 @@ watch(() => props.messages.length, (newLength, oldLength) => {
 })
 
 watch(() => props.loading, (isLoading, wasLoading) => {
-  if (!isLoading && wasLoading && props.messages.length > 0) {
+  if (!isLoading && wasLoading && visibleMessages.value.length > 0) {
     scrollToBottomWhenReady()
     hasInitiallyScrolled.value = true
   }
@@ -725,19 +750,14 @@ watch(() => props.messages, async (newMessages) => {
               :data-message-id="getMessage(virtualRow.index)!.id"
               class="flex gap-4 group relative p-2 -m-2 rounded-lg mb-4"
               :class="{
-                'opacity-60': isOptimistic(getMessage(virtualRow.index)!),
-                'opacity-50 bg-gray-50 dark:bg-gray-800/50': getMessage(virtualRow.index)!.deleted
+                'opacity-60': isOptimistic(getMessage(virtualRow.index)!)
               }"
             >
               <UAvatar
-                v-if="!getMessage(virtualRow.index)!.deleted"
                 :src="getLoadedAvatarUrl(getMessage(virtualRow.index)!.userId)"
                 :alt="getMessage(virtualRow.index)!.username"
                 size="md"
               />
-              <div v-else class="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
-                <UIcon name="i-lucide-trash-2" class="text-gray-500 dark:text-gray-400" />
-              </div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-2 mb-1">
                   <UPopover
@@ -771,17 +791,12 @@ watch(() => props.messages, async (newMessages) => {
                 </div>
 
                 <MessageEditor
-                  v-if="editingMessageId === getMessage(virtualRow.index)!.id && !getMessage(virtualRow.index)!.deleted"
+                  v-if="editingMessageId === getMessage(virtualRow.index)!.id"
                   :message-id="getMessage(virtualRow.index)!.id"
                   :initial-content="contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content"
                   @save="saveEdit"
                   @cancel="cancelEdit"
                 />
-
-                <!-- Deleted message placeholder -->
-                <p v-else-if="getMessage(virtualRow.index)!.deleted" class="text-gray-500 dark:text-gray-400 italic">
-                  [Message deleted]
-                </p>
 
                 <template v-else>
                   <div
@@ -803,36 +818,34 @@ watch(() => props.messages, async (newMessages) => {
                   </p>
                 </template>
 
-                <!-- Only show media for non-deleted messages -->
-                <template v-if="!getMessage(virtualRow.index)!.deleted">
-                  <NuxtImg
-                    v-if="getMessage(virtualRow.index)!.imageUrl && getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
-                    :src="getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
-                    :alt="getMessage(virtualRow.index)!.imageFilename || 'Uploaded image'"
-                    class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
-                    loading="lazy"
-                    width="448"
-                    height="auto"
-                    @click="openImageModal(getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!), getMessage(virtualRow.index)!.imageFilename || 'Uploaded image')"
-                  />
+                <!-- Media content -->
+                <NuxtImg
+                  v-if="getMessage(virtualRow.index)!.imageUrl && getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                  :src="getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!)"
+                  :alt="getMessage(virtualRow.index)!.imageFilename || 'Uploaded image'"
+                  class="mt-2 rounded-lg max-w-md shadow-sm cursor-pointer hover:opacity-90 transition-opacity hover:ring-2 hover:ring-blue-500"
+                  loading="lazy"
+                  width="448"
+                  height="auto"
+                  @click="openImageModal(getLoadedImageUrl(getMessage(virtualRow.index)!.imageUrl!), getMessage(virtualRow.index)!.imageFilename || 'Uploaded image')"
+                />
 
-                  <YouTubePlayer
-                    v-if="firstYouTubeFrom(getMessage(virtualRow.index)!.content)"
-                    :url="firstYouTubeFrom(getMessage(virtualRow.index)!.content) as string"
-                  />
-                  <NuxtImg
-                    v-if="firstGifFrom(getMessage(virtualRow.index)!.content)"
-                    :src="firstGifFrom(getMessage(virtualRow.index)!.content) as string"
-                    alt="gif"
-                    class="mt-2 rounded max-w-xs"
-                    loading="lazy"
-                    width="320"
-                    height="auto"
-                  />
-                </template>
+                <YouTubePlayer
+                  v-if="firstYouTubeFrom(getMessage(virtualRow.index)!.content)"
+                  :url="firstYouTubeFrom(getMessage(virtualRow.index)!.content) as string"
+                />
+                <NuxtImg
+                  v-if="firstGifFrom(getMessage(virtualRow.index)!.content)"
+                  :src="firstGifFrom(getMessage(virtualRow.index)!.content) as string"
+                  alt="gif"
+                  class="mt-2 rounded max-w-xs"
+                  loading="lazy"
+                  width="320"
+                  height="auto"
+                />
 
-                <!-- Only show reactions and actions for non-deleted messages -->
-                <div v-if="!getMessage(virtualRow.index)!.deleted" class="flex items-center gap-2 mt-2 flex-wrap">
+                <!-- Reactions and actions -->
+                <div class="flex items-center gap-2 mt-2 flex-wrap">
                   <button
                     v-for="reactionGroup in groupReactions(getMessage(virtualRow.index)!.reactions)"
                     :key="reactionGroup.emoji"
@@ -858,15 +871,6 @@ watch(() => props.messages, async (newMessages) => {
                     >
                       <span class="text-lg">+</span>
                     </button>
-
-                    <div
-                      v-if="activeEmojiPicker === getMessage(virtualRow.index)!.id"
-                      ref="emojiPickerRef"
-                      class="absolute left-0 z-10"
-                      :class="openEmojiUpwards ? 'bottom-full mb-2' : 'top-full mt-2'"
-                    >
-                      <EmojiPicker @select="(emoji: string) => handleEmojiSelect(getMessage(virtualRow.index)!.id, emoji)" />
-                    </div>
                   </div>
 
                   <button
@@ -907,6 +911,21 @@ watch(() => props.messages, async (newMessages) => {
     </template>
 
     <div ref="bottomAnchor" class="h-0" />
+
+    <!-- Teleported emoji picker for reactions -->
+    <Teleport to="body">
+      <div
+        v-if="activeEmojiPicker !== null"
+        ref="emojiPickerRef"
+        class="fixed z-50"
+        :style="{
+          top: `${emojiPickerPosition.top}px`,
+          left: `${emojiPickerPosition.left}px`
+        }"
+      >
+        <EmojiPicker @select="(emoji: string) => handleEmojiSelect(activeEmojiPicker!, emoji)" />
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div

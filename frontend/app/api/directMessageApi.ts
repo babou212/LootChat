@@ -23,6 +23,7 @@ export interface DirectMessageMessageResponse {
   replyToContent?: string
   isRead: boolean
   edited?: boolean
+  deleted?: boolean
   createdAt: string
   updatedAt?: string
   reactions?: Array<{

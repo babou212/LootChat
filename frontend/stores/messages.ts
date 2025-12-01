@@ -118,7 +118,8 @@ export const useMessagesStore = defineStore('messages', {
         edited: apiMessage.updatedAt ? new Date(apiMessage.updatedAt).getTime() !== new Date(apiMessage.createdAt).getTime() : false,
         replyToMessageId: apiMessage.replyToMessageId,
         replyToUsername: apiMessage.replyToUsername,
-        replyToContent: apiMessage.replyToContent
+        replyToContent: apiMessage.replyToContent,
+        deleted: apiMessage.deleted || false
       }
 
       return converted
@@ -195,16 +196,39 @@ export const useMessagesStore = defineStore('messages', {
       const cache = this.channelCaches.get(channelId)
 
       if (cache) {
-        const exists = cache.messages.find(m => m.id === message.id)
-        if (!exists) {
-          cache.messages.push(message)
-          cache.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-        } else {
+        // Check if message with same ID already exists
+        const existsById = cache.messages.find(m => m.id === message.id)
+        if (existsById) {
+          // Update existing message
           const index = cache.messages.findIndex(m => m.id === message.id)
           if (index !== -1) {
             cache.messages[index] = message
           }
+          return
         }
+
+        // Check if this message matches an optimistic message (negative ID with same content/user/time)
+        // This handles the race condition where WebSocket delivers the message before confirmOptimisticMessage is called
+        const optimisticMatch = cache.messages.find(m =>
+          m.id < 0
+          && m.userId === message.userId
+          && m.content === message.content
+          && Math.abs(m.timestamp.getTime() - message.timestamp.getTime()) < 5000 // Within 5 seconds
+        )
+
+        if (optimisticMatch) {
+          // Replace the optimistic message with the real one
+          const index = cache.messages.findIndex(m => m.id === optimisticMatch.id)
+          if (index !== -1) {
+            cache.messages[index] = message
+            cache.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+          }
+          return
+        }
+
+        // Add new message
+        cache.messages.push(message)
+        cache.messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
       } else {
         this.channelCaches.set(channelId, {
           messages: [message],

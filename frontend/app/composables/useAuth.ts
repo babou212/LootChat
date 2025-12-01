@@ -8,17 +8,26 @@ import { useUserPresenceStore } from '../../stores/userPresence'
 import { useAvatarStore } from '../../stores/avatars'
 import { useComposerStore } from '../../stores/composer'
 import { useWebSocketStore } from '../../stores/websocket'
+import { useLiveKitStore } from '../../stores/livekit'
 
 /**
  * Authentication composable using nuxt-auth-utils
  * Provides a clean interface for login, logout, and session management
  * All authentication state is managed server-side in secure HTTP-only cookies
+ *
+ * Session/JWT Architecture:
+ * - Session cookies are managed by nuxt-auth-utils (7 day expiry)
+ * - JWT tokens are stored in the session and used for backend API calls
+ * - JWT tokens are short-lived (15 minutes) for security
+ * - Tokens are automatically refreshed by the auth-init plugin every 10 minutes
+ * - Server middleware (auth-refresh.ts) validates JWT on each request
  */
 export const useAuth = () => {
   const { loggedIn, user, session, clear, fetch: refreshSession } = useUserSession()
   const authStore = useAuthStore()
   const loading = useState<boolean>('auth-loading', () => false)
   const error = useState<string | null>('auth-error', () => null)
+  const isRefreshing = useState<boolean>('auth-refreshing', () => false)
 
   const login = async (credentials: LoginRequest) => {
     loading.value = true
@@ -92,6 +101,7 @@ export const useAuth = () => {
     const avatarStore = useAvatarStore()
     const composerStore = useComposerStore()
     const websocketStore = useWebSocketStore()
+    const livekitStore = useLiveKitStore()
 
     // Clear auth store
     authStore.clear()
@@ -121,16 +131,76 @@ export const useAuth = () => {
     // Disconnect and reset WebSocket
     websocketStore.disconnect()
     websocketStore.reset()
+
+    // Disconnect and reset LiveKit
+    livekitStore.reset()
+
+    // Clear browser storage (client-side only)
+    if (import.meta.client) {
+      clearBrowserStorage()
+    }
   }
 
-  const restore = async () => {
+  /**
+   * Clear all browser storage (localStorage, sessionStorage, cookies)
+   * This ensures no cached data remains after logout
+   */
+  const clearBrowserStorage = () => {
     try {
-      if (!user.value) {
-        await refreshSession()
+      // Clear sessionStorage completely
+      sessionStorage.clear()
+
+      // Clear localStorage items related to this app
+      // We preserve some items like color-mode preference
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && !key.includes('color-mode')) {
+          keysToRemove.push(key)
+        }
       }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+
+      // Clear any app-related cookies from the client side
+      // Note: HttpOnly cookies can only be cleared server-side
+      const cookies = document.cookie.split(';')
+      cookies.forEach((cookie) => {
+        const cookieParts = cookie.split('=')
+        const name = cookieParts[0]?.trim()
+        // Don't clear color-mode cookie
+        if (name && !name.includes('color-mode')) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+        }
+      })
+    } catch (e) {
+      console.warn('[Auth] Failed to clear browser storage:', e)
+    }
+  }
+
+  /**
+   * Refresh the JWT token
+   * Called when the token is about to expire
+   */
+  const refreshToken = async (): Promise<boolean> => {
+    if (isRefreshing.value) return false
+    isRefreshing.value = true
+
+    try {
+      await $fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include'
+      })
+
+      // Refresh the session to get updated user data
+      await refreshSession()
+      return true
     } catch {
+      // Token refresh failed - session is invalid
       await clear()
-      authStore.clear()
+      clearAllStores()
+      return false
+    } finally {
+      isRefreshing.value = false
     }
   }
 
@@ -142,7 +212,7 @@ export const useAuth = () => {
     session: computed(() => session.value),
     login,
     logout,
-    restore,
-    refreshSession
+    refreshSession,
+    refreshToken
   }
 }
