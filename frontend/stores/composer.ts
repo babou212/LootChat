@@ -2,6 +2,12 @@ import { defineStore } from 'pinia'
 import type { Message } from '../shared/types/chat'
 import type { DirectMessageMessage } from '../shared/types/directMessage'
 
+export interface MentionSuggestion {
+  name: string
+  type: 'user' | 'special'
+  description?: string
+}
+
 export const useComposerStore = defineStore('composer', {
   state: () => ({
     newMessage: '',
@@ -18,7 +24,14 @@ export const useComposerStore = defineStore('composer', {
     // Picker state
     showEmojiPicker: false,
     showGifPicker: false,
-    openPickerUpwards: false
+    openPickerUpwards: false,
+
+    // Mention autocomplete state
+    showMentionAutocomplete: false,
+    mentionSuggestions: [] as MentionSuggestion[],
+    mentionQuery: '',
+    mentionLoading: false,
+    cursorPosition: 0
   }),
 
   getters: {
@@ -110,11 +123,52 @@ export const useComposerStore = defineStore('composer', {
       this.showGifPicker = false
     },
 
+    // Mention autocomplete actions
+    setMentionSuggestions(suggestions: MentionSuggestion[]) {
+      this.mentionSuggestions = suggestions
+    },
+
+    setMentionQuery(query: string) {
+      this.mentionQuery = query
+    },
+
+    setMentionLoading(loading: boolean) {
+      this.mentionLoading = loading
+    },
+
+    setCursorPosition(position: number) {
+      this.cursorPosition = position
+    },
+
+    showMentions() {
+      this.showMentionAutocomplete = true
+      this.closePickers()
+    },
+
+    hideMentions() {
+      this.showMentionAutocomplete = false
+      this.mentionSuggestions = []
+      this.mentionQuery = ''
+    },
+
+    insertMention(mention: string) {
+      const beforeCursor = this.newMessage.slice(0, this.cursorPosition)
+      const afterCursor = this.newMessage.slice(this.cursorPosition)
+
+      // Find where the @ starts
+      const atIndex = beforeCursor.lastIndexOf('@')
+      if (atIndex === -1) return
+
+      this.newMessage = beforeCursor.slice(0, atIndex) + '@' + mention + ' ' + afterCursor
+      this.hideMentions()
+    },
+
     reset() {
       this.clearMessage()
       this.cancelReply()
       this.removeImage()
       this.closePickers()
+      this.hideMentions()
       this.setError(null)
       this.setLoading(false)
     },

@@ -52,6 +52,7 @@ public class MessageService {
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
     private final SimpMessagingTemplate messagingTemplate;
+    private final MentionService mentionService;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -168,6 +169,15 @@ public class MessageService {
     private void publishMessageToKafka(Long messageId, String content, Long channelId, Long userId) {
         // Immediate WebSocket broadcast for real-time experience
         broadcastMessageImmediately(messageId, channelId);
+        
+        try {
+            Message message = messageRepository.findByIdWithUserAndChannel(messageId).orElse(null);
+            if (message != null) {
+                mentionService.processMentions(message);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to process mentions for message {}: {}", messageId, e.getMessage());
+        }
         
         // Store in outbox for cross-pod consistency via Kafka
         ChatMessageEvent event = new ChatMessageEvent(messageId, content, channelId, userId);
