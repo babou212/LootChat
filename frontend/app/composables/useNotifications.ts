@@ -55,7 +55,7 @@ export const useNotifications = () => {
     console.log('[Notifications] showNotification called:', { title, options })
     console.log('[Notifications] isSupported:', isSupported.value)
     console.log('[Notifications] permission:', permission.value)
-    
+
     if (!isSupported.value) {
       console.warn('[Notifications] Browser notifications not supported')
       return null

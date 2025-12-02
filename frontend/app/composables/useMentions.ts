@@ -172,7 +172,7 @@ export const useMentions = () => {
     console.log('[Mentions] Received notification:', notification)
     console.log('[Mentions] Current user:', user.value)
     console.log('[Mentions] Permission:', permission.value)
-    
+
     if (!user.value) {
       console.log('[Mentions] No user, skipping')
       return
