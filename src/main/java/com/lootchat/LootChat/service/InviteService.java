@@ -9,6 +9,7 @@ import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import com.lootchat.LootChat.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.CacheManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,6 +29,7 @@ public class InviteService {
     private final JwtService jwtService;
     private final CurrentUserService currentUserService;
     private final EmailService emailService;
+    private final CacheManager cacheManager;
 
     public InviteTokenCreateResponse createInvite(CreateInviteTokenRequest request, String publicBaseUrl) {
         User creator = currentUserService.getCurrentUserOrThrow();
@@ -128,6 +130,11 @@ public class InviteService {
                 .isCredentialsNonExpired(true)
                 .build();
         userRepository.save(newUser);
+
+        var usersCache = cacheManager.getCache("users");
+        if (usersCache != null) {
+            usersCache.evict("all");
+        }
 
         invite.setUsedAt(LocalDateTime.now());
         invite.setUsedBy(newUser);
