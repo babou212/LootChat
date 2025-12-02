@@ -43,13 +43,24 @@ public class WebSocketBroadcastService {
             );
             
             String json = objectMapper.writeValueAsString(message);
-            kafkaTemplate.send(TOPIC, destination, json);
+            
+            if (kafkaTemplate.isTransactional()) {
+                kafkaTemplate.executeInTransaction(ops -> {
+                    ops.send(TOPIC, destination, json);
+                    return null;
+                });
+            } else {
+                kafkaTemplate.send(TOPIC, destination, json);
+            }
             
             log.debug("Published WebSocket broadcast to Kafka: destination={}", destination);
             
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize broadcast message: destination={}", destination, e);
-            // Fallback to local-only broadcast
+
+            messagingTemplate.convertAndSend(destination, payload);
+        } catch (Exception e) {
+            log.error("Failed to publish broadcast to Kafka: destination={}", destination, e);
             messagingTemplate.convertAndSend(destination, payload);
         }
     }
