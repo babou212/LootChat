@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +35,7 @@ import java.util.UUID;
  * - Exponential backoff retry for failed events
  * - Dead letter handling for exhausted events
  * - Automatic cleanup of old processed events
+ * - Cross-pod WebSocket broadcasting via Redis Pub/Sub
  */
 @Service
 @RequiredArgsConstructor
@@ -47,7 +47,7 @@ public class InboxEventProcessor {
     private final ObjectMapper objectMapper;
     private final MessageRepository messageRepository;
     private final DirectMessageMessageRepository directMessageMessageRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketBroadcastService broadcastService;
     private final RedisTemplate<String, String> redisTemplate;
     
     // Configuration
@@ -199,9 +199,9 @@ public class InboxEventProcessor {
         MessageResponse response = buildMessageResponse(message);
         
         if (message.getChannel() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + message.getChannel().getId() + "/messages", response);
+            broadcastService.broadcastToChannel(message.getChannel().getId(), "/messages", response);
         }
-        messagingTemplate.convertAndSend("/topic/messages", response);
+        broadcastService.broadcast("/topic/messages", response);
         
         log.info("Broadcasted message from inbox: messageId={}, channelId={}", 
                 response.getId(), message.getChannel() != null ? message.getChannel().getId() : null);
@@ -225,9 +225,9 @@ public class InboxEventProcessor {
         MessageResponse response = buildMessageResponse(message);
         
         if (event.getChannelId() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + event.getChannelId() + "/messages", response);
+            broadcastService.broadcastToChannel(event.getChannelId(), "/messages", response);
         }
-        messagingTemplate.convertAndSend("/topic/messages", response);
+        broadcastService.broadcast("/topic/messages", response);
         
         log.info("Broadcasted message update from inbox: messageId={}", event.getMessageId());
     }
@@ -244,9 +244,9 @@ public class InboxEventProcessor {
                 "channelId", event.getChannelId() != null ? event.getChannelId() : 0
         );
         
-        messagingTemplate.convertAndSend("/topic/messages/delete", deletionPayload);
+        broadcastService.broadcast("/topic/messages/delete", deletionPayload);
         if (event.getChannelId() != null) {
-            messagingTemplate.convertAndSend("/topic/channels/" + event.getChannelId() + "/messages/delete", deletionPayload);
+            broadcastService.broadcastToChannel(event.getChannelId(), "/messages/delete", deletionPayload);
         }
         
         log.info("Broadcasted message delete from inbox: messageId={}", event.getMessageId());
@@ -269,14 +269,12 @@ public class InboxEventProcessor {
                 .build();
         
         String topic = "add".equals(event.getAction()) ? "/topic/reactions" : "/topic/reactions/remove";
-        String channelTopic = "add".equals(event.getAction()) ? 
-                "/topic/channels/" + event.getChannelId() + "/reactions" : 
-                "/topic/channels/" + event.getChannelId() + "/reactions/remove";
+        String channelSuffix = "add".equals(event.getAction()) ? "/reactions" : "/reactions/remove";
         
         if (event.getChannelId() != null) {
-            messagingTemplate.convertAndSend(channelTopic, response);
+            broadcastService.broadcastToChannel(event.getChannelId(), channelSuffix, response);
         }
-        messagingTemplate.convertAndSend(topic, response);
+        broadcastService.broadcast(topic, response);
         
         log.info("Broadcasted reaction {} from inbox: reactionId={}", event.getAction(), event.getReactionId());
     }
@@ -294,7 +292,7 @@ public class InboxEventProcessor {
                 .status(event.getStatus())
                 .build();
         
-        messagingTemplate.convertAndSend("/topic/user-presence", update);
+        broadcastService.broadcast("/topic/user-presence", update);
         
         log.info("Broadcasted presence from inbox: userId={}, status={}", 
                 event.getUserId(), event.getStatus());
@@ -323,8 +321,8 @@ public class InboxEventProcessor {
         
         DirectMessageMessageResponse response = buildDirectMessageResponse(message);
         
-        messagingTemplate.convertAndSend("/topic/user/" + dmEvent.getSenderId() + "/direct-messages", response);
-        messagingTemplate.convertAndSend("/topic/user/" + dmEvent.getRecipientId() + "/direct-messages", response);
+        broadcastService.broadcastToUser(dmEvent.getSenderId(), "/direct-messages", response);
+        broadcastService.broadcastToUser(dmEvent.getRecipientId(), "/direct-messages", response);
         
         log.info("Broadcasted DM from inbox: messageId={}", response.getId());
     }
@@ -347,11 +345,10 @@ public class InboxEventProcessor {
                 .build();
         
         if (reactionEvent.getUser1Id() != null && reactionEvent.getUser2Id() != null) {
-            String topic = "add".equals(reactionEvent.getAction()) ? "/reactions" : "/reactions/remove";
-            messagingTemplate.convertAndSend("/topic/user/" + reactionEvent.getUser1Id() + 
-                    "/direct-messages/" + reactionEvent.getDirectMessageId() + topic, response);
-            messagingTemplate.convertAndSend("/topic/user/" + reactionEvent.getUser2Id() + 
-                    "/direct-messages/" + reactionEvent.getDirectMessageId() + topic, response);
+            String suffix = "add".equals(reactionEvent.getAction()) ? "/reactions" : "/reactions/remove";
+            String dmSuffix = "/direct-messages/" + reactionEvent.getDirectMessageId() + suffix;
+            broadcastService.broadcastToUser(reactionEvent.getUser1Id(), dmSuffix, response);
+            broadcastService.broadcastToUser(reactionEvent.getUser2Id(), dmSuffix, response);
         }
         
         log.info("Broadcasted DM reaction from inbox: reactionId={}", reactionEvent.getReactionId());
@@ -378,11 +375,10 @@ public class InboxEventProcessor {
         
         Long user1Id = message.getDirectMessage().getUser1().getId();
         Long user2Id = message.getDirectMessage().getUser2().getId();
+        String editSuffix = "/direct-messages/" + editEvent.getDirectMessageId() + "/edits";
         
-        messagingTemplate.convertAndSend("/topic/user/" + user1Id + 
-                "/direct-messages/" + editEvent.getDirectMessageId() + "/edits", response);
-        messagingTemplate.convertAndSend("/topic/user/" + user2Id + 
-                "/direct-messages/" + editEvent.getDirectMessageId() + "/edits", response);
+        broadcastService.broadcastToUser(user1Id, editSuffix, response);
+        broadcastService.broadcastToUser(user2Id, editSuffix, response);
         
         log.info("Broadcasted DM edit from inbox: messageId={}", editEvent.getMessageId());
     }
@@ -400,7 +396,7 @@ public class InboxEventProcessor {
                 "directMessageId", deleteEvent.getDirectMessageId()
         );
         
-        messagingTemplate.convertAndSend("/topic/direct-messages/" + 
+        broadcastService.broadcast("/topic/direct-messages/" + 
                 deleteEvent.getDirectMessageId() + "/delete", deletionPayload);
         
         log.info("Broadcasted DM delete from inbox: messageId={}", deleteEvent.getMessageId());
