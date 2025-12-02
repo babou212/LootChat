@@ -140,8 +140,8 @@ export default defineNuxtConfig({
     headers: {
       // Cross-Origin policies
       crossOriginResourcePolicy: 'same-origin',
-      crossOriginOpenerPolicy: 'same-origin',
-      crossOriginEmbedderPolicy: 'credentialless',
+      crossOriginOpenerPolicy: 'same-origin-allow-popups',
+      crossOriginEmbedderPolicy: false, // Disabled to allow YouTube embeds
 
       // Strict CSP with nonces and strict-dynamic
       contentSecurityPolicy: {
