@@ -61,8 +61,22 @@ export default defineNuxtConfig({
     }
   },
 
+  routeRules: {
+    '/login': { prerender: true },
+    '/forgot-password': { prerender: true },
+    '/forgot-password/reset': { prerender: true },
+    '/forgot-password/verify': { prerender: true },
+    '/invite/**': { ssr: true },
+    '/': { ssr: false },
+    '/messages': { ssr: false },
+    '/profile': { ssr: false },
+    '/api/**': { ssr: false }
+  },
+
   experimental: {
-    viewTransition: true
+    viewTransition: true,
+    componentIslands: true,
+    payloadExtraction: true
   },
 
   compatibilityDate: '2024-07-11',
@@ -70,8 +84,31 @@ export default defineNuxtConfig({
   nitro: {
     experimental: {
       openAPI: true
+    },
+    compressPublicAssets: true,
+    prerender: {
+      crawlLinks: false
     }
     // Security headers are now managed by nuxt-security module
+  },
+
+  vite: {
+    build: {
+      cssCodeSplit: true,
+      minify: 'esbuild',
+      target: 'esnext',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-vue': ['vue', 'vue-router'],
+            'vendor-pinia': ['pinia']
+          }
+        }
+      }
+    },
+    optimizeDeps: {
+      include: ['vue', 'vue-router', 'pinia']
+    }
   },
 
   eslint: {

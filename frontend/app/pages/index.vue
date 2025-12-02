@@ -21,8 +21,7 @@ const messageSchema = z.object({
 })
 
 definePageMeta({
-  middleware: 'auth',
-  ssr: false
+  middleware: 'auth'
 })
 
 const { user } = useAuth()
