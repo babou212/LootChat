@@ -24,6 +24,7 @@ public class UserPresenceService {
     
     private static final Logger log = LoggerFactory.getLogger(UserPresenceService.class);
     private static final String PRESENCE_KEY_PREFIX = "user:presence:";
+    private static final String CONNECTIONS_KEY_PREFIX = "user:connections:";
     private static final long PRESENCE_TTL_MINUTES = 5; // Auto-expire after 5 minutes
     
     private final UserRepository userRepository;
@@ -32,16 +33,47 @@ public class UserPresenceService {
     
     @Transactional
     public void userConnected(String username, Long userId) {
-        String key = PRESENCE_KEY_PREFIX + username;
-        redisTemplate.opsForValue().set(key, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
-        broadcastPresenceUpdate(userId, username, "online");
+        String presenceKey = PRESENCE_KEY_PREFIX + username;
+        String connectionsKey = CONNECTIONS_KEY_PREFIX + username;
+
+        Long connectionCount = redisTemplate.opsForValue().increment(connectionsKey);
+        redisTemplate.expire(connectionsKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+        
+        String previousStatus = redisTemplate.opsForValue().get(presenceKey);
+        boolean wasOffline = !"online".equals(previousStatus);
+
+        redisTemplate.opsForValue().set(presenceKey, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+        
+        log.info("User connected: {} (connections: {}, wasOffline: {})", username, connectionCount, wasOffline);
+        
+        if (wasOffline) {
+            broadcastPresenceUpdate(userId, username, "online");
+        }
     }
     
     @Transactional
     public void userDisconnected(String username, Long userId) {
-        String key = PRESENCE_KEY_PREFIX + username;
-        redisTemplate.delete(key);
-        broadcastPresenceUpdate(userId, username, "offline");
+        String presenceKey = PRESENCE_KEY_PREFIX + username;
+        String connectionsKey = CONNECTIONS_KEY_PREFIX + username;
+        
+        Long connectionCount = redisTemplate.opsForValue().decrement(connectionsKey);
+        
+        if (connectionCount == null || connectionCount < 0) {
+            connectionCount = 0L;
+            redisTemplate.delete(connectionsKey);
+        }
+        
+        log.info("User disconnected: {} (remaining connections: {})", username, connectionCount);
+        
+        if (connectionCount <= 0) {
+            redisTemplate.delete(presenceKey);
+            redisTemplate.delete(connectionsKey);
+            broadcastPresenceUpdate(userId, username, "offline");
+            log.info("User fully offline: {}", username);
+        } else {
+            redisTemplate.expire(connectionsKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+            redisTemplate.expire(presenceKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+        }
     }
     
     public boolean isUserOnline(String username) {
@@ -53,8 +85,6 @@ public class UserPresenceService {
     /**
      * Refresh the current user's presence TTL without broadcasting.
      * Called by heartbeat endpoint to keep presence alive.
-     * This method does NOT broadcast through the outbox - it just updates Redis directly.
-     * The PresenceSyncService will periodically broadcast the presence state to all clients.
      */
     public void refreshCurrentUserPresence() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -62,20 +92,27 @@ public class UserPresenceService {
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             String username = userDetails.getUsername();
             
-            String key = PRESENCE_KEY_PREFIX + username;
-            String currentStatus = redisTemplate.opsForValue().get(key);
+            String presenceKey = PRESENCE_KEY_PREFIX + username;
+            String connectionsKey = CONNECTIONS_KEY_PREFIX + username;
+            String currentStatus = redisTemplate.opsForValue().get(presenceKey);
             
             if ("online".equals(currentStatus)) {
-                // Just refresh the TTL, don't broadcast
-                redisTemplate.expire(key, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.expire(presenceKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.expire(connectionsKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
                 log.debug("Refreshed presence TTL for user: {}", username);
             } else {
-                // User wasn't marked online, re-establish presence in Redis directly
-                // No broadcasting - the PresenceSyncService will handle that
-                redisTemplate.opsForValue().set(key, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.opsForValue().set(presenceKey, "online", PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.opsForValue().increment(connectionsKey);
+                redisTemplate.expire(connectionsKey, PRESENCE_TTL_MINUTES, TimeUnit.MINUTES);
                 log.info("Re-established presence in Redis for user: {}", username);
             }
         }
+    }
+    
+    public long getConnectionCount(String username) {
+        String connectionsKey = CONNECTIONS_KEY_PREFIX + username;
+        String count = redisTemplate.opsForValue().get(connectionsKey);
+        return count != null ? Long.parseLong(count) : 0L;
     }
     
     public Set<String> getOnlineUsers() {

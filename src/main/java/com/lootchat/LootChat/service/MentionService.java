@@ -6,7 +6,6 @@ import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +29,7 @@ public class MentionService {
     
     private final UserRepository userRepository;
     private final UserPresenceService userPresenceService;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketBroadcastService broadcastService;
     private final OutboxService outboxService;
     
     // Pattern to match @mentions: @everyone, @here, or @username (alphanumeric + underscore)
@@ -133,7 +132,7 @@ public class MentionService {
         
         for (Long userId : mentionedUserIds) {
             try {
-                messagingTemplate.convertAndSend("/topic/user/" + userId + "/mentions", event);
+                broadcastService.broadcastToUser(userId, "/mentions", event);
                 log.debug("Sent mention notification to user {}", userId);
             } catch (Exception e) {
                 log.warn("Failed to send mention notification to user {}: {}", userId, e.getMessage());

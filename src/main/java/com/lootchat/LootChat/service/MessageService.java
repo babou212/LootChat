@@ -24,7 +24,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -51,7 +50,7 @@ public class MessageService {
     private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
     private final CacheManager cacheManager;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketBroadcastService broadcastService;
     private final MentionService mentionService;
 
     @Transactional
@@ -203,12 +202,12 @@ public class MessageService {
             
             MessageResponse response = mapToMessageResponse(message);
             
-            // Broadcast to channel-specific topic
+            // Broadcast to channel-specific topic via Redis for cross-pod sync
             if (channelId != null) {
-                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+                broadcastService.broadcastToChannel(channelId, "/messages", response);
             }
             // Broadcast to global messages topic
-            messagingTemplate.convertAndSend("/topic/messages", response);
+            broadcastService.broadcast("/topic/messages", response);
             
             log.debug("Immediately broadcast message: messageId={}, channelId={}", messageId, channelId);
         } catch (Exception e) {
@@ -245,9 +244,9 @@ public class MessageService {
             MessageResponse response = mapToMessageResponse(message);
             
             if (channelId != null) {
-                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages", response);
+                broadcastService.broadcastToChannel(channelId, "/messages", response);
             }
-            messagingTemplate.convertAndSend("/topic/messages", response);
+            broadcastService.broadcast("/topic/messages", response);
             
             log.debug("Immediately broadcast message update: messageId={}, channelId={}", messageId, channelId);
         } catch (Exception e) {
@@ -279,9 +278,9 @@ public class MessageService {
                     "channelId", channelId != null ? channelId : 0L
             );
             
-            messagingTemplate.convertAndSend("/topic/messages/delete", deletionPayload);
+            broadcastService.broadcast("/topic/messages/delete", deletionPayload);
             if (channelId != null) {
-                messagingTemplate.convertAndSend("/topic/channels/" + channelId + "/messages/delete", deletionPayload);
+                broadcastService.broadcastToChannel(channelId, "/messages/delete", deletionPayload);
             }
             
             log.debug("Immediately broadcast message delete: messageId={}, channelId={}", messageId, channelId);
@@ -323,14 +322,12 @@ public class MessageService {
                     .build();
             
             String topic = "add".equals(action) ? "/topic/reactions" : "/topic/reactions/remove";
-            String channelTopic = "add".equals(action) 
-                    ? "/topic/channels/" + channelId + "/reactions" 
-                    : "/topic/channels/" + channelId + "/reactions/remove";
+            String channelSuffix = "add".equals(action) ? "/reactions" : "/reactions/remove";
             
             if (channelId != null) {
-                messagingTemplate.convertAndSend(channelTopic, response);
+                broadcastService.broadcastToChannel(channelId, channelSuffix, response);
             }
-            messagingTemplate.convertAndSend(topic, response);
+            broadcastService.broadcast(topic, response);
             
             log.debug("Immediately broadcast reaction {}: reactionId={}, messageId={}", action, reactionId, messageId);
         } catch (Exception e) {

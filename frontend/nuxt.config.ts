@@ -94,20 +94,12 @@ export default defineNuxtConfig({
 
   vite: {
     build: {
+      // CSS code splitting for smaller bundles per route
       cssCodeSplit: true,
+      // Fast minification with esbuild
       minify: 'esbuild',
-      target: 'esnext',
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vendor-vue': ['vue', 'vue-router'],
-            'vendor-pinia': ['pinia']
-          }
-        }
-      }
-    },
-    optimizeDeps: {
-      include: ['vue', 'vue-router', 'pinia']
+      // Target modern browsers for smaller bundles
+      target: 'esnext'
     }
   },
 

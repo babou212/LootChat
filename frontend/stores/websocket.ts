@@ -12,6 +12,8 @@ import SockJS from 'sockjs-client'
  * - Message queue for offline resilience
  * - Comprehensive error handling
  * - Connection state history
+ * - Visibility-based reconnection
+ * - Network status monitoring
  */
 
 export type ConnectionState
@@ -68,13 +70,14 @@ export const useWebSocketStore = defineStore('websocket', {
       messagesReceived: 0
     } as ConnectionMetrics,
 
-    // Reconnection strategy
+    // Reconnection strategy - more aggressive settings
     reconnectConfig: {
       enabled: true,
       baseDelay: 1000, // 1 second
       maxDelay: 30000, // 30 seconds
-      maxAttempts: 10,
-      backoffMultiplier: 1.5
+      maxAttempts: 50, // Increased from 10 - keep trying longer
+      backoffMultiplier: 1.3, // Slower backoff for more frequent retries
+      jitterFactor: 0.3 // Add randomness to prevent thundering herd
     },
 
     // Subscriptions management
@@ -85,7 +88,15 @@ export const useWebSocketStore = defineStore('websocket', {
     maxQueueSize: 100,
 
     // Connection promise for deduplication
-    connectionPromise: null as Promise<void> | null
+    connectionPromise: null as Promise<void> | null,
+
+    // Timers and intervals
+    heartbeatCheckInterval: null as ReturnType<typeof setInterval> | null,
+    reconnectTimeout: null as ReturnType<typeof setTimeout> | null,
+
+    // Network and visibility state
+    isOnline: true,
+    isVisible: true
   }),
 
   getters: {
@@ -97,16 +108,19 @@ export const useWebSocketStore = defineStore('websocket', {
 
     canReconnect: state =>
       state.reconnectConfig.enabled
-      && state.metrics.reconnectAttempts < state.reconnectConfig.maxAttempts,
+      && state.metrics.reconnectAttempts < state.reconnectConfig.maxAttempts
+      && state.isOnline,
 
     nextReconnectDelay: (state) => {
-      const { baseDelay, maxDelay, backoffMultiplier } = state.reconnectConfig
+      const { baseDelay, maxDelay, backoffMultiplier, jitterFactor } = state.reconnectConfig
       const attempts = state.metrics.reconnectAttempts
-      const delay = Math.min(
+      const baseCalculatedDelay = Math.min(
         baseDelay * Math.pow(backoffMultiplier, attempts),
         maxDelay
       )
-      return delay
+      // Add jitter to prevent all clients reconnecting at once
+      const jitter = baseCalculatedDelay * jitterFactor * Math.random()
+      return Math.floor(baseCalculatedDelay + jitter)
     },
 
     connectionQuality: (state) => {
@@ -149,13 +163,26 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionState = 'connecting'
       this.connectionError = null
 
+      // Setup browser event listeners on first connect
+      this._setupBrowserEventListeners()
+
       this.connectionPromise = new Promise((resolve, reject) => {
         try {
           // Clean up existing client
           this._cleanupClient()
 
           const wsUrl = this._getWebSocketUrl()
-          const socket = new SockJS(`${wsUrl}/ws`)
+
+          // SockJS with optimized options
+          const socket = new SockJS(`${wsUrl}/ws`, null, {
+            // Transports to try, in order of preference
+            // WebSocket is most efficient, xhr-streaming is reliable fallback
+            transports: ['websocket', 'xhr-streaming', 'xhr-polling'],
+            // Session ID length for server-side session management
+            sessionId: 8,
+            // Timeout for transport connections (dynamically calculated by default)
+            timeout: 10000
+          })
 
           this.client = new Client({
             webSocketFactory: () => socket as WebSocket,
@@ -163,12 +190,20 @@ export const useWebSocketStore = defineStore('websocket', {
               Authorization: `Bearer ${token}`
             },
 
-            // Heartbeat configuration
+            // Heartbeat configuration - must match server settings
+            // Client sends heartbeat every 10s, expects server heartbeat every 10s
             heartbeatIncoming: 10000,
             heartbeatOutgoing: 10000,
 
-            // Disable built-in reconnection (we handle it ourselves)
+            // Disable built-in reconnection (we handle it ourselves with better logic)
             reconnectDelay: 0,
+
+            // Debug logging in development
+            debug: (msg) => {
+              if (import.meta.dev) {
+                console.debug('[STOMP]', msg)
+              }
+            },
 
             // Connection lifecycle callbacks
             onConnect: () => {
@@ -177,22 +212,32 @@ export const useWebSocketStore = defineStore('websocket', {
             },
 
             onStompError: (frame) => {
-              this._handleError('STOMP error', frame.headers['message'])
-              reject(new Error(frame.headers['message'] || 'STOMP connection failed'))
+              const errorMessage = frame.headers['message'] || 'STOMP connection failed'
+              this._handleError('STOMP error', errorMessage)
+              reject(new Error(errorMessage))
             },
 
-            onWebSocketError: () => {
+            onWebSocketError: (event) => {
+              console.error('[WebSocket] WebSocket error:', event)
               this._handleError('WebSocket error', 'Connection failed')
               reject(new Error('WebSocket connection failed'))
             },
 
-            onDisconnect: () => {
+            onDisconnect: (frame) => {
+              console.log('[WebSocket] Disconnected:', frame)
               this._handleDisconnect()
             },
 
-            // Track heartbeats for latency
-            onWebSocketClose: () => {
-              this._handleDisconnect()
+            onWebSocketClose: (event) => {
+              console.log('[WebSocket] WebSocket closed:', {
+                code: event.code,
+                reason: event.reason,
+                wasClean: event.wasClean
+              })
+              // Only handle if not already handled by onDisconnect
+              if (this.connectionState === 'connected') {
+                this._handleDisconnect()
+              }
             }
           })
 
@@ -211,6 +256,9 @@ export const useWebSocketStore = defineStore('websocket', {
      * Gracefully disconnect from WebSocket
      */
     async disconnect(): Promise<void> {
+      // Clear any pending reconnection
+      this._clearReconnectTimeout()
+
       // Temporarily disable reconnection during intentional disconnect
       const wasEnabled = this.reconnectConfig.enabled
       this.reconnectConfig.enabled = false
@@ -220,6 +268,7 @@ export const useWebSocketStore = defineStore('websocket', {
       }
 
       this._cleanupClient()
+      this._stopHeartbeatCheck()
       this.connectionState = 'disconnected'
       this.connectionPromise = null
 
@@ -260,7 +309,11 @@ export const useWebSocketStore = defineStore('websocket', {
     unsubscribe(id: string): void {
       const config = this.subscriptions.get(id)
       if (config?.subscription) {
-        config.subscription.unsubscribe()
+        try {
+          config.subscription.unsubscribe()
+        } catch (error) {
+          console.warn('[WebSocket] Error unsubscribing:', error)
+        }
       }
       this.subscriptions.delete(id)
     },
@@ -271,7 +324,11 @@ export const useWebSocketStore = defineStore('websocket', {
     unsubscribeAll(): void {
       this.subscriptions.forEach((config) => {
         if (config.subscription) {
-          config.subscription.unsubscribe()
+          try {
+            config.subscription.unsubscribe()
+          } catch (error) {
+            console.warn('[WebSocket] Error unsubscribing:', error)
+          }
         }
       })
       this.subscriptions.clear()
@@ -299,33 +356,57 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     /**
-     * Attempt to reconnect with exponential backoff
+     * Attempt to reconnect with exponential backoff and jitter
      */
     async reconnect(): Promise<void> {
       if (!this.canReconnect || !this.token) {
-        throw new Error('Cannot reconnect - max attempts reached or no token')
+        console.warn('[WebSocket] Cannot reconnect - max attempts reached, no token, or offline')
+        return
       }
+
+      // Clear any existing reconnect timeout
+      this._clearReconnectTimeout()
 
       this.connectionState = 'reconnecting'
       this.metrics.reconnectAttempts++
 
       const delay = this.nextReconnectDelay
+      console.log(`[WebSocket] Reconnecting in ${delay}ms (attempt ${this.metrics.reconnectAttempts}/${this.reconnectConfig.maxAttempts})...`)
 
       // Wait before reconnecting
       await new Promise(resolve => setTimeout(resolve, delay))
+
+      // Check if we should still reconnect (might have been disabled or connected elsewhere)
+      if (!this.reconnectConfig.enabled || this.isConnected) {
+        return
+      }
 
       try {
         await this.connect(this.token)
         // Reset attempts on successful connection
         this.metrics.reconnectAttempts = 0
+        console.log('[WebSocket] Reconnected successfully')
       } catch (error) {
+        console.error('[WebSocket] Reconnection attempt failed:', error)
         // If reconnection failed and we can still retry, schedule another attempt
         if (this.canReconnect) {
-          setTimeout(() => this.reconnect(), this.nextReconnectDelay)
+          this.reconnectTimeout = setTimeout(() => {
+            this.reconnect()
+          }, this.nextReconnectDelay)
         } else {
           this._handleError('Max reconnection attempts reached', error)
         }
-        throw error
+      }
+    },
+
+    /**
+     * Force reconnection (resets attempt counter)
+     */
+    async forceReconnect(): Promise<void> {
+      this.metrics.reconnectAttempts = 0
+      await this.disconnect()
+      if (this.token) {
+        await this.connect(this.token)
       }
     },
 
@@ -359,6 +440,9 @@ export const useWebSocketStore = defineStore('websocket', {
     reset(): void {
       this.unsubscribeAll()
       this._cleanupClient()
+      this._clearReconnectTimeout()
+      this._stopHeartbeatCheck()
+      this._removeBrowserEventListeners()
 
       this.connectionState = 'disconnected'
       this.connectionError = null
@@ -404,8 +488,12 @@ export const useWebSocketStore = defineStore('websocket', {
       this.connectionPromise = null
 
       this.metrics.connectedAt = new Date()
+      this.metrics.lastHeartbeat = new Date()
       this.metrics.reconnectAttempts = 0
-      this.reconnectConfig.enabled = true // Ensure reconnection is enabled after successful connection
+      this.reconnectConfig.enabled = true
+
+      // Start heartbeat monitoring
+      this._startHeartbeatCheck()
 
       // Resubscribe to all topics
       this._resubscribeAll()
@@ -421,20 +509,20 @@ export const useWebSocketStore = defineStore('websocket', {
       this.metrics.totalDisconnects++
       this.connectionPromise = null
 
+      // Stop heartbeat monitoring
+      this._stopHeartbeatCheck()
+
       // Clear subscriptions but keep configurations
       this.subscriptions.forEach((config) => {
         config.subscription = undefined
       })
 
       // Attempt reconnection if enabled and we were previously connected
-      // (avoids reconnection loops on initial connection failures)
-      if (this.reconnectConfig.enabled && this.token && wasConnected) {
+      if (this.reconnectConfig.enabled && this.token && wasConnected && this.isOnline) {
         console.log(`[WebSocket] Connection lost, attempting reconnect in ${this.nextReconnectDelay}ms...`)
-        setTimeout(() => {
-          if (this.connectionState === 'disconnected' && this.token) {
-            this.reconnect().catch((err) => {
-              console.error('[WebSocket] Reconnection failed:', err)
-            })
+        this.reconnectTimeout = setTimeout(() => {
+          if (this.connectionState === 'disconnected' && this.token && this.isOnline) {
+            this.reconnect()
           }
         }, this.nextReconnectDelay)
       }
@@ -459,6 +547,13 @@ export const useWebSocketStore = defineStore('websocket', {
           console.warn('[WebSocket] Error during cleanup:', error)
         }
         this.client = null
+      }
+    },
+
+    _clearReconnectTimeout(): void {
+      if (this.reconnectTimeout) {
+        clearTimeout(this.reconnectTimeout)
+        this.reconnectTimeout = null
       }
     },
 
@@ -495,6 +590,7 @@ export const useWebSocketStore = defineStore('websocket', {
     },
 
     _resubscribeAll(): void {
+      console.log(`[WebSocket] Resubscribing to ${this.subscriptions.size} topics...`)
       this.subscriptions.forEach((config) => {
         if (config.subscribeOnConnect) {
           this._subscribeToDestination(
@@ -524,6 +620,7 @@ export const useWebSocketStore = defineStore('websocket', {
     _processMessageQueue(): void {
       if (!this.isConnected || this.messageQueue.length === 0) return
 
+      console.log(`[WebSocket] Processing ${this.messageQueue.length} queued messages...`)
       const maxAttempts = 3
       const messagesToProcess = [...this.messageQueue]
       this.messageQueue = []
@@ -538,6 +635,92 @@ export const useWebSocketStore = defineStore('websocket', {
           console.error(`[WebSocket] Message dropped after ${maxAttempts} attempts:`, msg)
         }
       })
+    },
+
+    /**
+     * Start monitoring heartbeats to detect stale connections
+     */
+    _startHeartbeatCheck(): void {
+      this._stopHeartbeatCheck()
+
+      this.heartbeatCheckInterval = setInterval(() => {
+        if (!this.metrics.lastHeartbeat) return
+
+        const timeSinceLastHeartbeat = Date.now() - this.metrics.lastHeartbeat.getTime()
+        if (timeSinceLastHeartbeat > 45000) {
+          console.warn('[WebSocket] Connection appears stale, forcing reconnection...')
+          this.forceReconnect()
+        }
+      }, 30000)
+    },
+
+    _stopHeartbeatCheck(): void {
+      if (this.heartbeatCheckInterval) {
+        clearInterval(this.heartbeatCheckInterval)
+        this.heartbeatCheckInterval = null
+      }
+    },
+
+    _setupBrowserEventListeners(): void {
+      if (!import.meta.client) return
+
+      document.addEventListener('visibilitychange', this._handleVisibilityChange)
+
+      window.addEventListener('online', this._handleOnline)
+      window.addEventListener('offline', this._handleOffline)
+
+      window.addEventListener('beforeunload', this._handleBeforeUnload)
+
+      this.isOnline = navigator.onLine
+      this.isVisible = document.visibilityState === 'visible'
+    },
+
+    _removeBrowserEventListeners(): void {
+      if (!import.meta.client) return
+
+      document.removeEventListener('visibilitychange', this._handleVisibilityChange)
+      window.removeEventListener('online', this._handleOnline)
+      window.removeEventListener('offline', this._handleOffline)
+      window.removeEventListener('beforeunload', this._handleBeforeUnload)
+    },
+
+    _handleVisibilityChange(): void {
+      const store = useWebSocketStore()
+      store.isVisible = document.visibilityState === 'visible'
+
+      if (store.isVisible && store.token) {
+        if (!store.isConnected && store.isOnline) {
+          console.log('[WebSocket] Tab visible, checking connection...')
+          store.forceReconnect()
+        }
+      }
+    },
+
+    _handleOnline(): void {
+      const store = useWebSocketStore()
+      console.log('[WebSocket] Network online')
+      store.isOnline = true
+
+      if (!store.isConnected && store.token) {
+        store.metrics.reconnectAttempts = 0
+        store.reconnect()
+      }
+    },
+
+    _handleOffline(): void {
+      const store = useWebSocketStore()
+      console.log('[WebSocket] Network offline')
+      store.isOnline = false
+
+      store._clearReconnectTimeout()
+    },
+
+    _handleBeforeUnload(): void {
+      const store = useWebSocketStore()
+      store.reconnectConfig.enabled = false
+      if (store.client?.connected) {
+        store.client.deactivate()
+      }
     }
   }
 })

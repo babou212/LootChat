@@ -6,8 +6,6 @@ import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -36,30 +34,25 @@ public class PresenceSyncService {
     
     private final RedisTemplate<String, String> redisTemplate;
     private final UserRepository userRepository;
-    private final SimpMessagingTemplate messagingTemplate;
-    private final SimpUserRegistry userRegistry;
+    private final WebSocketBroadcastService broadcastService;
     
     /**
      * Broadcast presence sync to all connected clients every 30 seconds.
      * This ensures all clients have accurate presence information even
      * if they missed individual presence update events.
+     * 
+     * Note: We always broadcast via Kafka regardless of local user count,
+     * since other pods may have connected users.
      */
     @Scheduled(fixedDelay = 30000) // 30 seconds
     public void syncPresence() {
-        // Only sync if there are connected users
-        if (userRegistry.getUserCount() == 0) {
-            log.trace("No connected users, skipping presence sync");
-            return;
-        }
-        
         try {
             List<UserPresenceUpdate> presenceList = getPresenceList();
             
             if (!presenceList.isEmpty()) {
-                // Broadcast to all users subscribed to presence topic
-                messagingTemplate.convertAndSend("/topic/user-presence/sync", presenceList);
-                log.debug("Broadcasted presence sync with {} online users to {} connected clients", 
-                        presenceList.size(), userRegistry.getUserCount());
+                // Broadcast to all pods via Kafka, each pod delivers to its local clients
+                broadcastService.broadcast("/topic/user-presence/sync", presenceList);
+                log.debug("Broadcasted presence sync with {} online users", presenceList.size());
             }
         } catch (Exception e) {
             log.error("Failed to sync presence", e);

@@ -21,7 +21,6 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -47,7 +46,7 @@ public class DirectMessageService {
     private final ObjectMapper objectMapper;
     private final S3FileStorageService s3FileStorageService;
     private final CacheManager cacheManager;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final WebSocketBroadcastService broadcastService;
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
@@ -580,9 +579,9 @@ public class DirectMessageService {
                 "content", content
             );
             
-            // Send to both participants of the DM conversation
-            messagingTemplate.convertAndSend("/topic/dm/" + senderId, payload);
-            messagingTemplate.convertAndSend("/topic/dm/" + recipientId, payload);
+            // Send to both participants of the DM conversation via Redis for cross-pod sync
+            broadcastService.broadcast("/topic/dm/" + senderId, payload);
+            broadcastService.broadcast("/topic/dm/" + recipientId, payload);
             log.debug("Broadcasted DM immediately to users {} and {}", senderId, recipientId);
         } catch (Exception e) {
             log.error("Error broadcasting direct message immediately: {}", e.getMessage(), e);
@@ -609,8 +608,8 @@ public class DirectMessageService {
                 "edited", edited != null ? edited : false
             );
             
-            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
-            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            broadcastService.broadcast("/topic/dm/" + dm.getUser1().getId(), payload);
+            broadcastService.broadcast("/topic/dm/" + dm.getUser2().getId(), payload);
             log.debug("Broadcasted DM edit immediately to users {} and {}", 
                     dm.getUser1().getId(), dm.getUser2().getId());
         } catch (Exception e) {
@@ -635,8 +634,8 @@ public class DirectMessageService {
                 "directMessageId", directMessageId
             );
             
-            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser1().getId(), payload);
-            messagingTemplate.convertAndSend("/topic/dm/" + dm.getUser2().getId(), payload);
+            broadcastService.broadcast("/topic/dm/" + dm.getUser1().getId(), payload);
+            broadcastService.broadcast("/topic/dm/" + dm.getUser2().getId(), payload);
             log.debug("Broadcasted DM delete immediately to users {} and {}", 
                     dm.getUser1().getId(), dm.getUser2().getId());
         } catch (Exception e) {
@@ -662,8 +661,8 @@ public class DirectMessageService {
                 "username", username
             );
             
-            messagingTemplate.convertAndSend("/topic/dm/" + user1Id, payload);
-            messagingTemplate.convertAndSend("/topic/dm/" + user2Id, payload);
+            broadcastService.broadcast("/topic/dm/" + user1Id, payload);
+            broadcastService.broadcast("/topic/dm/" + user2Id, payload);
             log.debug("Broadcasted DM reaction immediately to users {} and {}", user1Id, user2Id);
         } catch (Exception e) {
             log.error("Error broadcasting direct message reaction immediately: {}", e.getMessage(), e);

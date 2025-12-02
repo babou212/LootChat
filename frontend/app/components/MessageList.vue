@@ -589,17 +589,8 @@ const hasUserReacted = (userIds: number[]) => {
   return authStore.user?.userId ? userIds.includes(Number(authStore.user.userId)) : false
 }
 
-const formatTime = (date: Date) => {
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  return date.toLocaleDateString()
-}
+// Use shared time formatting composable
+const { formatRelativeTime: formatTime } = useTimeFormat()
 
 const gifRegex = /(https?:\/\/\S+?\.gif)(?=\s|$)/i
 const firstGifFrom = (text: string): string | null => {
