@@ -4,6 +4,7 @@ import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import EmojiPicker from '~/components/EmojiPicker.vue'
 import MessageEditor from '~/components/MessageEditor.vue'
 import UserProfileCard from '~/components/UserProfileCard.vue'
+import MentionText from '~/components/MentionText.vue'
 import type { ReactionResponse } from '~/api/messageApi'
 import type { UserPresence } from '~/components/UserPanel.vue'
 import { useAuthStore } from '../../stores/auth'
@@ -814,7 +815,7 @@ watch(() => props.messages, async (newMessages) => {
                   </div>
 
                   <p class="text-gray-700 dark:text-gray-300 wrap-break-word whitespace-pre-wrap max-w-full">
-                    {{ contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content }}
+                    <MentionText :content="contentWithoutMedia(getMessage(virtualRow.index)!.content) || getMessage(virtualRow.index)!.content" />
                   </p>
                 </template>
 

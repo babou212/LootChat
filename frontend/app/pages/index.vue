@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from 'zod'
 import type GifPicker from '~/components/GifPicker.vue'
+import MentionAutocomplete from '~/components/MentionAutocomplete.vue'
 import type { Message } from '../../shared/types/chat'
 import type { DirectMessageMessage } from '../../shared/types/directMessage'
 import { useMessagesStore } from '../../stores/messages'
@@ -33,7 +34,7 @@ const usersStore = useUsersStore()
 const composerStore = useComposerStore()
 const websocketStore = useWebSocketStore()
 
-const { getClient, isConnected, subscribeToUserDirectMessages, subscribeToPresenceSync } = useWebSocket()
+const { getClient, isConnected, subscribeToUserDirectMessages, subscribeToPresenceSync, subscribeToMentions } = useWebSocket()
 const { joinVoiceChannel, leaveVoiceChannel, activeScreenShares } = useLiveKit()
 const { sendMessage: sendMessageToServer } = useMessageSender()
 const { subscribeToChannelUpdates, unsubscribeAll: unsubscribeChannel } = useChannelSubscriptions()
@@ -42,8 +43,13 @@ const { subscribeToGlobal, unsubscribeAll: unsubscribeGlobal } = useGlobalSubscr
 // Initialize presence heartbeat
 usePresenceHeartbeat()
 
+// Initialize notifications and mentions
+const { requestPermission } = useNotifications()
+const { handleMentionNotification } = useMentions()
+
 // Presence sync subscription ref
 let presenceSyncSubscription: ReturnType<typeof subscribeToPresenceSync> = null
+let mentionSubscription: ReturnType<typeof subscribeToMentions> = null
 
 // Screen share viewer state
 const selectedScreenShareId = ref<string | null>(null)
@@ -148,6 +154,67 @@ const addEmoji = (emoji: string) => {
 
 const addGif = (gifUrl: string) => {
   composerStore.addGif(gifUrl)
+}
+
+// Mention autocomplete
+const specialMentions = [
+  { name: 'everyone', type: 'special' as const, description: 'Notify all users' },
+  { name: 'here', type: 'special' as const, description: 'Notify online users' }
+]
+
+const handleMessageInput = async (event: Event) => {
+  const textarea = event.target as HTMLTextAreaElement
+  const cursorPos = textarea.selectionStart || 0
+  composerStore.setCursorPosition(cursorPos)
+
+  const beforeCursor = composerStore.newMessage.slice(0, cursorPos)
+  const mentionMatch = beforeCursor.match(/@(\w*)$/)
+
+  if (mentionMatch) {
+    const query = mentionMatch[1] || ''
+    composerStore.setMentionQuery(query)
+    composerStore.showMentions()
+    composerStore.setMentionLoading(true)
+
+    try {
+      const response = await $fetch<string[]>('/api/mentions/users/search', {
+        params: { prefix: query }
+      })
+
+      // Filter out current user and combine with special mentions
+      const userSuggestions = response
+        .filter(username => username !== user.value?.username)
+        .map(username => ({
+          name: username,
+          type: 'user' as const
+        }))
+
+      // Filter special mentions by query
+      const filteredSpecial = query
+        ? specialMentions.filter(m => m.name.startsWith(query.toLowerCase()))
+        : specialMentions
+
+      composerStore.setMentionSuggestions([...filteredSpecial, ...userSuggestions].slice(0, 10))
+    } catch (err) {
+      console.error('Failed to fetch mention suggestions:', err)
+      composerStore.setMentionSuggestions(specialMentions)
+    } finally {
+      composerStore.setMentionLoading(false)
+    }
+  } else {
+    composerStore.hideMentions()
+  }
+}
+
+const handleMentionSelect = (mention: string) => {
+  composerStore.insertMention(mention)
+  // Focus back on textarea after selection
+  nextTick(() => {
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement
+    if (textarea) {
+      textarea.focus()
+    }
+  })
 }
 
 const setReplyingTo = (message: Message | DirectMessageMessage) => {
@@ -436,6 +503,16 @@ onMounted(async () => {
           }
         })
       })
+
+      // Subscribe to mention notifications
+      if (user.value?.userId) {
+        // Request notification permission on first load
+        requestPermission()
+
+        mentionSubscription = subscribeToMentions(user.value.userId, (notification) => {
+          handleMentionNotification(notification)
+        })
+      }
     } catch (err) {
       console.error('Failed to connect to WebSocket:', err)
     }
@@ -455,6 +532,9 @@ onUnmounted(() => {
   }
   if (presenceSyncSubscription) {
     presenceSyncSubscription.unsubscribe()
+  }
+  if (mentionSubscription) {
+    mentionSubscription.unsubscribe()
   }
   // Don't disconnect WebSocket - keep it alive for the session
   // The WebSocket plugin handles connection lifecycle
@@ -644,15 +724,27 @@ watch(usersWithFullData, () => {
                 </div>
               </Teleport>
 
-              <UTextarea
-                v-model="composerStore.newMessage"
-                placeholder="Type a message..."
-                :rows="1"
-                :maxrows="6"
-                autoresize
-                class="flex-1"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
+              <!-- Mention Autocomplete -->
+              <div class="relative flex-1">
+                <MentionAutocomplete
+                  :suggestions="composerStore.mentionSuggestions"
+                  :loading="composerStore.mentionLoading"
+                  :visible="composerStore.showMentionAutocomplete"
+                  @select="handleMentionSelect"
+                  @close="composerStore.hideMentions()"
+                />
+                <UTextarea
+                  v-model="composerStore.newMessage"
+                  placeholder="Type a message... (use @ to mention)"
+                  :rows="1"
+                  :maxrows="6"
+                  autoresize
+                  class="w-full"
+                  @input="handleMessageInput"
+                  @keydown.enter.exact.prevent="sendMessage"
+                  @keydown.escape="composerStore.hideMentions()"
+                />
+              </div>
 
               <UButton
                 type="submit"

@@ -22,6 +22,18 @@ interface MessageDeletionPayload {
   channelId?: number | null
 }
 
+interface MentionNotificationPayload {
+  messageId: number
+  channelId: number | null
+  channelName: string | null
+  senderId: number
+  senderUsername: string
+  senderAvatar: string | null
+  messagePreview: string
+  mentionType: 'user' | 'everyone' | 'here'
+  targetUserIds: number[]
+}
+
 export const useWebSocket = () => {
   const store = useWebSocketStore()
   const { connectionError } = storeToRefs(store)
@@ -234,6 +246,20 @@ export const useWebSocket = () => {
   }
 
   /**
+   * Subscribe to mention notifications for a user
+   */
+  const subscribeToMentions = (
+    userId: number,
+    callback: (notification: MentionNotificationPayload) => void
+  ) => {
+    return store.subscribe<MentionNotificationPayload>(
+      `user-${userId}-mentions`,
+      `/topic/user/${userId}/mentions`,
+      callback
+    )
+  }
+
+  /**
    * Unsubscribe from a specific subscription by ID
    */
   const unsubscribe = (subscriptionId: string) => {
@@ -279,6 +305,7 @@ export const useWebSocket = () => {
     subscribeToDirectMessageReactionRemovals,
     subscribeToDirectMessageEdits,
     subscribeToDirectMessageDeletions,
+    subscribeToMentions,
 
     // Messaging
     sendMessage: store.sendMessage,

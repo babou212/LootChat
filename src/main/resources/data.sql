@@ -1,5 +1,5 @@
 -- Dummy data for LootChat application (Development only)
--- Note: Passwords are BCrypt encoded version of 'password123'
+-- Note: Passwords are BCrypt encoded version of 'Password123!'
 
 -- Delete in correct order due to foreign key constraints
 DELETE FROM user_channel_read_states WHERE 1=1;
