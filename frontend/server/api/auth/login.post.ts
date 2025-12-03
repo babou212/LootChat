@@ -59,11 +59,8 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Calculate token expiration (assuming 7 days like session)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7)
-
     // Store user data and JWT token in secure session
+    // Session expiration is handled by the cookie maxAge (7 days in nuxt.config)
     await setUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -73,8 +70,7 @@ export default defineEventHandler(async (event) => {
         avatar: response.avatar
       },
       token: response.token,
-      loggedInAt: new Date(),
-      expiresAt
+      loggedInAt: new Date()
     })
 
     // Return only user data to client (never expose token)

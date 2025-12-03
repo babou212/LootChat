@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { ChannelResponse } from '~/api/channelApi'
 import type { Channel } from '../../shared/types/chat'
-import ChannelCreate from '~/components/ChannelCreate.vue'
-import ChannelDeleteConfirm from '~/components/ChannelDeleteConfirm.vue'
-import PasswordChange from '~/components/PasswordChange.vue'
-import AvatarUpload from '~/components/AvatarUpload.vue'
+import ChannelCreate from '~/components/channel/ChannelCreate.vue'
+import ChannelDeleteConfirm from '~/components/channel/ChannelDeleteConfirm.vue'
+import PasswordChange from '~/components/user/PasswordChange.vue'
+import AvatarUpload from '~/components/user/AvatarUpload.vue'
 import { useAvatarStore } from '../../stores/avatars'
 
 definePageMeta({ layout: false, middleware: 'auth' })
@@ -82,11 +82,18 @@ const handleDeleted = async () => {
   closeDeleteConfirm()
 }
 
-const handleAvatarUploaded = async () => {
+const handleAvatarUploaded = async (avatarPath: string) => {
   success.value = 'Avatar updated successfully'
   error.value = null
 
+  // Refresh session to get updated user data
   await refreshSession()
+
+  // Force reload the avatar in the store with the new path
+  if (user.value?.userId) {
+    await avatarStore.reloadAvatar(user.value.userId, avatarPath)
+  }
+
   setTimeout(() => {
     success.value = null
   }, 3000)

@@ -1,5 +1,5 @@
 export default defineEventHandler(async (event) => {
-  const authFetch = await createAuthenticatedFetch(event)
+  const authFetch = await createValidatedFetch(event)
 
   try {
     const unreadCounts = await authFetch<Record<number, number>>('/api/channels/unread')

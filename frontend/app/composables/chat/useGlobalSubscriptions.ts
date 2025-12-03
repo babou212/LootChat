@@ -1,6 +1,6 @@
 import type { StompSubscription } from '@stomp/stompjs'
-import type { UserPresenceUpdate } from '~/composables/useWebSocket'
-import { useMessagesStore } from '../../stores/messages'
+import type { UserPresenceUpdate } from '~/composables/chat/useWebSocket'
+import { useMessagesStore } from '../../../stores/messages'
 
 export const useGlobalSubscriptions = () => {
   const messagesStore = useMessagesStore()

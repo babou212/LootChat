@@ -1,4 +1,4 @@
-import { useWebSocketStore } from '../../stores/websocket'
+import { useWebSocketStore } from '../../../stores/websocket'
 import { storeToRefs } from 'pinia'
 import type { MessageResponse } from '~/api/messageApi'
 import type { DirectMessageMessageResponse } from '~/api/directMessageApi'
@@ -280,7 +280,7 @@ export const useWebSocket = () => {
     // Connection management
     connect: store.connect,
     disconnect: store.disconnect,
-    reconnect: store.reconnect,
+    reconnect: store.forceReconnect,
     refreshToken: store.refreshToken,
 
     // Subscription methods

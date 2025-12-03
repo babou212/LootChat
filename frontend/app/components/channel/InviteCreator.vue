@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CreateInviteRequest, InviteCreateResponse } from '~/api/inviteApi'
-import { useAuth } from '~/composables/useAuth'
+import { useAuth } from '~/composables/auth/useAuth'
 
 const { user } = useAuth()
 const loading = ref(false)

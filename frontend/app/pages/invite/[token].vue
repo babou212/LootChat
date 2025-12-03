@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { inviteApi } from '~/api/inviteApi'
 import { userApi } from '~/api/userApi'
 import type { RegisterWithInviteRequest } from '~/api/inviteApi'
-import { useAuth } from '~/composables/useAuth'
+import { useAuth } from '~/composables/auth/useAuth'
 
 definePageMeta({ layout: false })
 

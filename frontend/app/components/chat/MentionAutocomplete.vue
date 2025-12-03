@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MentionSuggestion } from '../../stores/composer'
+import type { MentionSuggestion } from '../../../stores/composer'
 
 interface Props {
   suggestions: MentionSuggestion[]

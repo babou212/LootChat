@@ -9,7 +9,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const body = await validateBody(event, createDirectMessageSchema)
 
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch('/api/direct-messages', {
       method: 'POST',
       body

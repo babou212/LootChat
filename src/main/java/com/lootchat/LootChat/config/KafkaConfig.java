@@ -20,6 +20,7 @@ import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Configuration
 @EnableConfigurationProperties(AppKafkaProperties.class)
@@ -28,6 +29,8 @@ public class KafkaConfig {
 
     private final AppKafkaProperties appKafkaProperties;
     private final KafkaProperties bootKafkaProperties;
+    
+    private final String instanceId = UUID.randomUUID().toString().substring(0, 8);
 
     public KafkaConfig(AppKafkaProperties appKafkaProperties,
                        KafkaProperties bootKafkaProperties) {
@@ -65,7 +68,7 @@ public class KafkaConfig {
         
         String transactionIdPrefix = bootKafkaProperties.getProducer().getTransactionIdPrefix();
         if (transactionIdPrefix != null && !transactionIdPrefix.isEmpty()) {
-            factory.setTransactionIdPrefix(transactionIdPrefix);
+            factory.setTransactionIdPrefix(transactionIdPrefix + "-" + instanceId + "-");
         }
         
         return factory;

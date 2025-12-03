@@ -1,4 +1,4 @@
-import type { Channel } from '../../shared/types/chat'
+import type { Channel } from '../../../shared/types/chat'
 import type { ChannelResponse } from '~/api/channelApi'
 
 export const useChannels = () => {

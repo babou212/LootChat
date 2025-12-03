@@ -2,7 +2,7 @@ import type { H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch('/api/channels')
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 401) {

@@ -1,6 +1,6 @@
 export default defineEventHandler(async (event): Promise<unknown> => {
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch('/api/direct-messages') as unknown
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 401) {

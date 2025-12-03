@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import type { User } from '../../shared/types/user'
-import UserProfileCard from '~/components/UserProfileCard.vue'
-import { useAvatarStore } from '../../stores/avatars'
-
-export interface UserPresence extends User {
-  status: 'online' | 'offline'
-  avatar?: string
-}
+import type { UserPresence } from '../../../shared/types/user'
+import UserProfileCard from '~/components/user/UserProfileCard.vue'
+import { useAvatarStore } from '../../../stores/avatars'
 
 interface Props {
   users: UserPresence[]

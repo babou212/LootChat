@@ -4,7 +4,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const body = await validateBody(event, createMessageSchema)
 
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch('/api/messages', {
       method: 'POST',
       body

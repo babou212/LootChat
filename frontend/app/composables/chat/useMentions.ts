@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import { useNotifications } from './useNotifications'
+import { useNotifications } from '../utils/useNotifications'
 
 export interface MentionNotification {
   messageId: number

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type GifPicker from '~/components/GifPicker.vue'
+import type GifPicker from '~/components/chat/GifPicker.vue'
 import type { DirectMessageMessage } from '../../shared/types/directMessage.d'
+import type { Message } from '../../shared/types/chat'
 import { useDirectMessagesStore } from '../../stores/directMessages'
-import { useUserPresenceStore } from '../../stores/userPresence'
+import { useUsersStore } from '../../stores/users'
 import { useAvatarStore } from '../../stores/avatars'
 import { useComposerStore } from '../../stores/composer'
 import type { DirectMessageMessageResponse } from '../../app/api/directMessageApi'
+import type { UserPresence } from '../../shared/types/user'
 
 const messageSchema = z.object({
   content: z.string()
@@ -20,7 +22,7 @@ definePageMeta({
 })
 
 const directMessagesStore = useDirectMessagesStore()
-const userPresenceStore = useUserPresenceStore()
+const usersStore = useUsersStore()
 const avatarStore = useAvatarStore()
 const composerStore = useComposerStore()
 const { user } = useAuth()
@@ -155,8 +157,8 @@ watch(() => directMessagesStore.directMessages, (dms) => {
     }
 
     // Initialize DM user presence as offline, will be updated by presence subscription
-    if (userPresenceStore.getUserStatus(dm.otherUserId) === undefined) {
-      userPresenceStore.setUserPresence(dm.otherUserId, 'offline')
+    if (usersStore.getUserStatus(dm.otherUserId) === undefined) {
+      usersStore.setUserPresence(dm.otherUserId, 'offline')
     }
   })
 }, { deep: true, immediate: true })
@@ -197,9 +199,9 @@ onMounted(async () => {
 
   // Initialize presence for DM users from the global users list
   directMessagesStore.directMessages.forEach((dm) => {
-    const user = users.value.find(u => u.userId === dm.otherUserId)
-    if (user) {
-      userPresenceStore.setUserPresence(dm.otherUserId, user.status)
+    const foundUser = users.value.find((u: UserPresence) => u.userId === dm.otherUserId)
+    if (foundUser) {
+      usersStore.setUserPresence(dm.otherUserId, foundUser.status)
     }
   })
 
@@ -208,7 +210,6 @@ onMounted(async () => {
   }
 
   if (user.value?.userId) {
-    // Wait for WebSocket connection (plugin handles auto-connect)
     let attempts = 0
     while (!isConnected.value && attempts < 20) {
       await new Promise(resolve => setTimeout(resolve, 250))
@@ -223,23 +224,23 @@ onMounted(async () => {
     presenceSubscription = subscribeToUserPresence((update: { userId: number, status: 'online' | 'offline' }) => {
       updateUserPresence(update.userId, update.status)
       // Also update presence store
-      userPresenceStore.updateUserPresence(update)
+      usersStore.setUserPresence(update.userId, update.status)
     })
 
     // Subscribe to presence sync for bulk presence updates
     presenceSyncSubscription = subscribeToPresenceSync((updates) => {
       // Mark all users offline first (except ourselves)
-      users.value.forEach((u) => {
+      users.value.forEach((u: UserPresence) => {
         if (u.userId !== user.value?.userId) {
           updateUserPresence(u.userId, 'offline')
-          userPresenceStore.setUserPresence(u.userId, 'offline')
+          usersStore.setUserPresence(u.userId, 'offline')
         }
       })
 
       // Then mark online users from the sync
-      updates.forEach((update) => {
+      updates.forEach((update: { userId: number, username: string }) => {
         updateUserPresence(update.userId, 'online')
-        userPresenceStore.setUserPresence(update.userId, 'online')
+        usersStore.setUserPresence(update.userId, 'online')
       })
     })
 
@@ -282,6 +283,9 @@ const subscribeToRealtimeUpdates = (userId: number, dmId: number) => {
 
   // Subscribe to reactions
   reactionSubscription = subscribeToDirectMessageReactions(userId, dmId, (reaction: { id: number, emoji: string, userId: number, username: string, messageId: number, createdAt: string }) => {
+    if (reaction.userId === Number(user.value?.userId)) {
+      return
+    }
     directMessagesStore.addReaction(dmId, reaction.messageId, {
       id: reaction.id,
       emoji: reaction.emoji,
@@ -466,8 +470,8 @@ const sendMessage = async () => {
   }
 }
 
-const setReplyingTo = (message: DirectMessageMessage) => {
-  composerStore.setReplyingTo(message)
+const setReplyingTo = (message: DirectMessageMessage | Message) => {
+  composerStore.setReplyingTo(message as DirectMessageMessage)
 }
 
 const cancelReply = () => {
@@ -498,13 +502,13 @@ const loadMoreMessages = async () => {
 
 const isUserOnline = (userId: number): boolean => {
   // First check presence store
-  const status = userPresenceStore.getUserStatus(userId)
+  const status = usersStore.getUserStatus(userId)
   if (status !== undefined) {
     return status === 'online'
   }
 
   // Fallback to global users list
-  const foundUser = users.value.find(u => u.userId === userId)
+  const foundUser = users.value.find((u: UserPresence) => u.userId === userId)
   return foundUser?.status === 'online'
 }
 </script>
@@ -624,12 +628,13 @@ const isUserOnline = (userId: number): boolean => {
         </div>
       </div>
 
-      <DirectMessageList
+      <MessageList
         :messages="directMessagesStore.getMessages(directMessagesStore.selectedDirectMessageId)"
         :loading="false"
         :error="null"
         :has-more="hasMoreMessages"
         :loading-more="loadingMoreMessages"
+        mode="direct"
         @message-deleted="removeMessageById"
         @reply-to-message="setReplyingTo"
         @load-more="loadMoreMessages"

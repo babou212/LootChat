@@ -11,7 +11,8 @@ export const useUsersStore = defineStore('users', {
   state: () => ({
     users: [] as User[],
     loading: false,
-    error: null as string | null
+    error: null as string | null,
+    presence: new Map<number, 'online' | 'offline'>()
   }),
 
   getters: {
@@ -30,6 +31,24 @@ export const useUsersStore = defineStore('users', {
     getUserByUsername: (state) => {
       return (username: string): User | undefined => {
         return state.users.find(u => u.username === username)
+      }
+    },
+
+    isUserOnline: (state) => {
+      return (userId: number): boolean => {
+        const presenceStatus = state.presence.get(userId)
+        if (presenceStatus !== undefined) return presenceStatus === 'online'
+        const user = state.users.find(u => u.userId === userId)
+        return user?.status === 'online'
+      }
+    },
+
+    getUserStatus: (state) => {
+      return (userId: number): 'online' | 'offline' | undefined => {
+        const presenceStatus = state.presence.get(userId)
+        if (presenceStatus !== undefined) return presenceStatus
+        const user = state.users.find(u => u.userId === userId)
+        return user?.status
       }
     }
   },
@@ -55,11 +74,26 @@ export const useUsersStore = defineStore('users', {
       }
     },
 
-    updateUserPresence(userId: number, status: 'online' | 'offline') {
+    setUserPresence(userId: number, status: 'online' | 'offline') {
+      this.presence.set(userId, status)
       const user = this.users.find(u => u.userId === userId)
       if (user) {
         user.status = status
       }
+    },
+
+    updateUserPresence(userId: number, status: 'online' | 'offline') {
+      this.setUserPresence(userId, status)
+    },
+
+    batchUpdatePresence(users: Array<{ userId: number, status: 'online' | 'offline' }>) {
+      users.forEach((u) => {
+        this.setUserPresence(u.userId, u.status)
+      })
+    },
+
+    clearPresence() {
+      this.presence.clear()
     },
 
     addUser(userId: number, username: string, status: 'online' | 'offline' = 'offline', avatar?: string) {
@@ -81,10 +115,12 @@ export const useUsersStore = defineStore('users', {
       if (index !== -1) {
         this.users.splice(index, 1)
       }
+      this.presence.delete(userId)
     },
 
     clearUsers() {
       this.users = []
+      this.presence.clear()
     },
 
     setError(error: string | null) {

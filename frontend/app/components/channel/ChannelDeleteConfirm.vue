@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Channel } from '../../shared/types/chat'
+import type { Channel } from '../../../shared/types/chat'
 
 const props = defineProps<{
   open: boolean

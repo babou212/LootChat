@@ -4,7 +4,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const id = getRouterParam(event, 'id')
 
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch(`/api/direct-messages/${id}/mark-read`, {
       method: 'POST'
     })

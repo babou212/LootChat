@@ -14,12 +14,12 @@ DELETE FROM users WHERE 1=1;
 
 INSERT INTO users (id, username, email, password, first_name, last_name, avatar, role, created_at, updated_at, is_enabled, is_account_non_expired, is_account_non_locked, is_credentials_non_expired) 
 VALUES 
-    (1, 'admin', 'admin@lootchat.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Admin', 'User', 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
-    (2, 'john_doe', 'john@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'John', 'Doe', 'https://api.dicebear.com/7.x/avataaars/svg?seed=john', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
-    (3, 'jane_smith', 'jane@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Jane', 'Smith', 'https://api.dicebear.com/7.x/avataaars/svg?seed=jane', 'MODERATOR', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
-    (4, 'bob_wilson', 'bob@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Bob', 'Wilson', 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
-    (5, 'alice_johnson', 'alice@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Alice', 'Johnson', 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
-    (6, 'charlie_brown', 'charlie@example.com', '$2a$10$Em2et9c7Q8RPo35/vX9TFO4xsOlv6WRWnFe6A0uOlCuh5TZZ5Rkou', 'Charlie', 'Brown', 'https://api.dicebear.com/7.x/avataaars/svg?seed=charlie', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true);
+    (1, 'admin', 'admin@lootchat.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'Admin', 'User', 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin', 'ADMIN', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
+    (2, 'john_doe', 'john@example.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'John', 'Doe', 'https://api.dicebear.com/7.x/avataaars/svg?seed=john', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
+    (3, 'jane_smith', 'jane@example.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'Jane', 'Smith', 'https://api.dicebear.com/7.x/avataaars/svg?seed=jane', 'MODERATOR', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
+    (4, 'bob_wilson', 'bob@example.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'Bob', 'Wilson', 'https://api.dicebear.com/7.x/avataaars/svg?seed=bob', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
+    (5, 'alice_johnson', 'alice@example.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'Alice', 'Johnson', 'https://api.dicebear.com/7.x/avataaars/svg?seed=alice', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true),
+    (6, 'charlie_brown', 'charlie@example.com', '$2b$10$uohmyCJhqM.12TrdPJrLiOzn2tzkUO1Z5mnzX85zdUigYEg9JoUFK', 'Charlie', 'Brown', 'https://api.dicebear.com/7.x/avataaars/svg?seed=charlie', 'USER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, true, true, true, true);
 
 -- Insert channels
 INSERT INTO channels (id, name, description, channel_type, created_at, updated_at) 

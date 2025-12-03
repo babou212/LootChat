@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useAvatarStore } from '../../stores/avatars'
+import { useAvatarStore } from '../../../stores/avatars'
 
 const { user, logout } = useAuth()
 const router = useRouter()

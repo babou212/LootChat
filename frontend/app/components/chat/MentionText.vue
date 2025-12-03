@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useMentions } from '~/composables/useMentions'
+import { useMentions } from '~/composables/chat/useMentions'
 
 interface Props {
   content: string
