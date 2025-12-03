@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type { User } from '../../shared/types/user'
-import { directMessageApi } from '../api/directMessageApi'
-import EmojiPicker from '~/components/EmojiPicker.vue'
-import { useAvatarStore } from '../../stores/avatars'
+import type { UserPresence } from '../../../shared/types/user'
+import { directMessageApi } from '../../api/directMessageApi'
+import EmojiPicker from '~/components/chat/EmojiPicker.vue'
+import { useAvatarStore } from '../../../stores/avatars'
 
 const messageSchema = z.object({
   content: z.string()
@@ -12,11 +12,6 @@ const messageSchema = z.object({
     .trim()
     .refine(val => val.length > 0, 'Message cannot be only whitespace')
 })
-
-export interface UserPresence extends User {
-  status: 'online' | 'offline'
-  avatar?: string
-}
 
 interface Props {
   user: UserPresence
@@ -80,7 +75,7 @@ const sendDirectMessage = async () => {
 
     await navigateTo('/messages')
 
-    const { useDirectMessagesStore } = await import('../../stores/directMessages')
+    const { useDirectMessagesStore } = await import('../../../stores/directMessages')
     const directMessagesStore = useDirectMessagesStore()
 
     await directMessagesStore.fetchAllDirectMessages()

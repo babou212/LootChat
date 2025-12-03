@@ -76,6 +76,20 @@ export const useAvatarStore = defineStore('avatars', {
       this.loading.delete(userId)
     },
 
+    /**
+     * Force reload an avatar by clearing the cache and fetching fresh
+     */
+    async reloadAvatar(userId: number, avatarPath: string | undefined) {
+      // Clear existing cache entry
+      this.avatarUrls.delete(userId)
+      this.loading.delete(userId)
+
+      // Load fresh
+      if (avatarPath) {
+        await this.loadAvatar(userId, avatarPath)
+      }
+    },
+
     clearAvatars() {
       this.avatarUrls.clear()
       this.loading.clear()

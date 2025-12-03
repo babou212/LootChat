@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Channel } from '../../shared/types/chat'
-import VoiceChannelSection from '~/components/VoiceChannelSection.vue'
-import { useDirectMessagesStore } from '../../stores/directMessages'
+import type { Channel } from '../../../shared/types/chat'
+import VoiceChannelSection from '~/components/voice/VoiceChannelSection.vue'
+import { useDirectMessagesStore } from '../../../stores/directMessages'
 
 interface Props {
   channels: Channel[]

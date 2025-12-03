@@ -5,7 +5,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   const prefix = query.prefix as string || ''
 
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
     return await authFetch('/api/mentions/users/search', {
       params: { prefix }
     })

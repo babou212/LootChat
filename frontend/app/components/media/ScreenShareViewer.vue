@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScreenShareInfo } from '../../shared/types/chat'
+import type { ScreenShareInfo } from '../../../stores/livekit'
 import type { RemoteVideoTrack } from 'livekit-client'
 
 interface Props {

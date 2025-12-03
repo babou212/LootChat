@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { z } from 'zod'
-import type GifPicker from '~/components/GifPicker.vue'
-import MentionAutocomplete from '~/components/MentionAutocomplete.vue'
+import type GifPicker from '~/components/chat/GifPicker.vue'
+import MentionAutocomplete from '~/components/chat/MentionAutocomplete.vue'
 import type { Message } from '../../shared/types/chat'
 import type { DirectMessageMessage } from '../../shared/types/directMessage'
 import { useMessagesStore } from '../../stores/messages'
 import { useDirectMessagesStore } from '../../stores/directMessages'
-import { useUserPresenceStore } from '../../stores/userPresence'
 import { useChannelsStore } from '../../stores/channels'
 import { useUsersStore } from '../../stores/users'
 import { useComposerStore } from '../../stores/composer'
 import { useWebSocketStore } from '../../stores/websocket'
+import type { ScreenShareInfo } from '../../stores/livekit'
+import type { UserPresence } from '../../shared/types/user'
 
 const messageSchema = z.object({
   content: z.string()
@@ -27,7 +28,6 @@ definePageMeta({
 const { user } = useAuth()
 const messagesStore = useMessagesStore()
 const directMessagesStore = useDirectMessagesStore()
-const userPresenceStore = useUserPresenceStore()
 const channelsStore = useChannelsStore()
 const usersStore = useUsersStore()
 const composerStore = useComposerStore()
@@ -54,9 +54,9 @@ let mentionSubscription: ReturnType<typeof subscribeToMentions> = null
 const selectedScreenShareId = ref<string | null>(null)
 const isScreenShareMinimized = ref(false)
 
-const selectedScreenShare = computed(() => {
+const selectedScreenShare = computed((): ScreenShareInfo | null => {
   if (!selectedScreenShareId.value) return null
-  return activeScreenShares.value.find(s => s.odod === selectedScreenShareId.value) || null
+  return activeScreenShares.value.find((s: ScreenShareInfo) => s.odod === selectedScreenShareId.value) || null
 })
 
 const handleViewScreenShare = (sharerId: string) => {
@@ -75,7 +75,7 @@ const handleToggleMinimizeScreenShare = () => {
 }
 
 // Auto-close viewer when screen share ends
-watch(activeScreenShares, (shares) => {
+watch(() => activeScreenShares.value, (shares) => {
   if (selectedScreenShareId.value && !shares.find(s => s.odod === selectedScreenShareId.value)) {
     selectedScreenShareId.value = null
   }
@@ -449,7 +449,7 @@ onMounted(async () => {
     try {
       if (user.value && user.value.userId) {
         updateUserPresence(user.value.userId, 'online')
-        userPresenceStore.setUserPresence(user.value.userId, 'online')
+        usersStore.setUserPresence(user.value.userId, 'online')
       }
 
       const selectedChannelId = computed(() => selectedChannel.value?.id ?? null)
@@ -458,8 +458,8 @@ onMounted(async () => {
         (channelId: number) => channelsStore.incrementUnreadCount(channelId),
         (update: { userId: number, username: string, status: 'online' | 'offline' }) => {
           updateUserPresence(update.userId, update.status)
-          userPresenceStore.updateUserPresence({ userId: update.userId, status: update.status })
-          if (!usersWithFullData.value.some((u: typeof usersWithFullData.value[0]) => u.userId === update.userId)) {
+          usersStore.setUserPresence(update.userId, update.status)
+          if (!usersWithFullData.value.some((u: UserPresence) => u.userId === update.userId)) {
             addUser(update.userId, update.username, update.status)
           }
         },
@@ -486,18 +486,18 @@ onMounted(async () => {
       // This ensures we have accurate presence info even if individual updates were missed
       presenceSyncSubscription = subscribeToPresenceSync((updates) => {
         // First, mark all users as offline
-        usersWithFullData.value.forEach((u: typeof usersWithFullData.value[0]) => {
+        usersWithFullData.value.forEach((u: UserPresence) => {
           if (u.userId !== user.value?.userId) { // Don't mark ourselves offline
             updateUserPresence(u.userId, 'offline')
-            userPresenceStore.setUserPresence(u.userId, 'offline')
+            usersStore.setUserPresence(u.userId, 'offline')
           }
         })
 
         // Then, mark online users from the sync
-        updates.forEach((update) => {
+        updates.forEach((update: { userId: number, username: string }) => {
           updateUserPresence(update.userId, 'online')
-          userPresenceStore.setUserPresence(update.userId, 'online')
-          if (!usersWithFullData.value.some((u: typeof usersWithFullData.value[0]) => u.userId === update.userId)) {
+          usersStore.setUserPresence(update.userId, 'online')
+          if (!usersWithFullData.value.some((u: UserPresence) => u.userId === update.userId)) {
             addUser(update.userId, update.username, 'online')
           }
         })
@@ -565,17 +565,17 @@ watch(() => composerStore.showGifPicker, (open) => {
 
 watch(usersWithFullData, () => {
   if (user.value && user.value.userId) {
-    const currentUserIndex = usersWithFullData.value.findIndex((u: typeof usersWithFullData.value[0]) => u.userId === user.value!.userId)
+    const currentUserIndex = usersWithFullData.value.findIndex((u: UserPresence) => u.userId === user.value!.userId)
     if (currentUserIndex !== -1 && usersWithFullData.value[currentUserIndex]!.status !== 'online') {
       usersWithFullData.value[currentUserIndex]!.status = 'online'
       updateUserPresence(user.value.userId, 'online')
-      userPresenceStore.setUserPresence(user.value.userId, 'online')
+      usersStore.setUserPresence(user.value.userId, 'online')
     }
   }
 
   // Sync all users to presence store
-  usersWithFullData.value.forEach((u) => {
-    userPresenceStore.setUserPresence(u.userId, u.status)
+  usersWithFullData.value.forEach((u: UserPresence) => {
+    usersStore.setUserPresence(u.userId, u.status)
   })
 }, { deep: true })
 </script>
@@ -623,6 +623,7 @@ watch(usersWithFullData, () => {
             :error="error"
             :has-more="hasMoreMessages"
             :loading-more="loadingMoreMessages"
+            mode="channel"
             @message-deleted="removeMessageById"
             @load-more="loadMoreMessages"
             @reply-to-message="setReplyingTo"

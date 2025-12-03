@@ -1,9 +1,11 @@
 import type { StompSubscription } from '@stomp/stompjs'
-import type { Channel } from '../../shared/types/chat'
-import { useMessagesStore } from '../../stores/messages'
+import type { Channel } from '../../../shared/types/chat'
+import { useMessagesStore } from '../../../stores/messages'
+import { useAuthStore } from '../../../stores/auth'
 
 export const useChannelSubscriptions = () => {
   const messagesStore = useMessagesStore()
+  const authStore = useAuthStore()
   const { subscribeToChannel, subscribeToChannelReactions, subscribeToChannelReactionRemovals, subscribeToChannelMessageDeletions } = useWebSocket()
 
   let channelSubscription: StompSubscription | null = null
@@ -24,6 +26,10 @@ export const useChannelSubscriptions = () => {
     }
 
     reactionSubscription = subscribeToChannelReactions(channel.id, (reaction) => {
+      // Skip reactions from the current user - they already have the optimistic update
+      if (reaction.userId === Number(authStore.user?.userId)) {
+        return
+      }
       if (reaction.messageId) {
         messagesStore.addReaction(channel.id, reaction.messageId, {
           id: reaction.id,

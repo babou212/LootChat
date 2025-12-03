@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ConnectionQuality } from 'livekit-client'
-import { useLiveKitStore } from '../../stores/livekit'
+import { useLiveKitStore } from '../../../stores/livekit'
 
 defineEmits<{
   close: []

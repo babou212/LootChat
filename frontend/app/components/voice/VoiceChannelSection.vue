@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Channel } from '../../shared/types/chat'
-import { useAvatarStore } from '../../stores/avatars'
+import type { Channel } from '../../../shared/types/chat'
+import { useAvatarStore } from '../../../stores/avatars'
 
 interface Props {
   channels: Channel[]

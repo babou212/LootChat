@@ -1,6 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-
   modules: [
     '@nuxt/eslint',
     '@nuxt/ui',
@@ -9,6 +8,22 @@ export default defineNuxtConfig({
     '@nuxt/image',
     'nuxt-security'
   ],
+
+  // Auto-import components from subdirectories
+  components: [
+    {
+      path: '~/components',
+      pathPrefix: false
+    }
+  ],
+
+  // Auto-import composables from subdirectories
+  imports: {
+    dirs: [
+      'composables/**'
+    ]
+  },
+
   devtools: {
     enabled: true
   },
@@ -67,9 +82,10 @@ export default defineNuxtConfig({
     '/forgot-password/reset': { prerender: true },
     '/forgot-password/verify': { prerender: true },
     '/invite/**': { ssr: true },
-    '/': { ssr: false },
-    '/messages': { ssr: false },
-    '/profile': { ssr: false },
+    // Protected routes use SSR so auth middleware runs server-side first
+    '/': { ssr: true },
+    '/messages': { ssr: true },
+    '/profile': { ssr: true },
     '/api/**': { ssr: false }
   },
 

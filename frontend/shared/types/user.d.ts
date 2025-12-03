@@ -8,6 +8,10 @@ export interface User {
   avatar?: string
 }
 
+export interface UserPresence extends User {
+  status: 'online' | 'offline'
+}
+
 export interface LoginRequest {
   username: string
   password: string

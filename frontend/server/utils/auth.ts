@@ -1,133 +1,76 @@
 import type { H3Event } from 'h3'
 
-/**
- * Decode a JWT token to extract its payload (without verification)
- * This is safe because we only use it to check expiration client-side
- * The backend still validates the signature
- */
-function decodeJwtPayload(token: string): { exp?: number, iat?: number, sub?: string } | null {
+function decodeJwtPayload(token: string): { exp?: number } | null {
   try {
     const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const payloadPart = parts[1]
-    if (!payloadPart) return null
-    // Convert base64url to regular base64
-    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/')
+    if (parts.length !== 3 || !parts[1]) return null
+
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
-    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'))
-    return payload
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'))
   } catch {
     return null
   }
 }
 
 /**
- * Check if a JWT token is expired or about to expire
- * @param token - The JWT token to check
- * @param bufferSeconds - Number of seconds before expiration to consider "about to expire" (default: 2 minutes)
- */
-export function isJwtExpiredOrExpiring(token: string, bufferSeconds: number = 120): boolean {
-  const payload = decodeJwtPayload(token)
-  if (!payload || !payload.exp) return true
-
-  const nowSeconds = Math.floor(Date.now() / 1000)
-  const expiresAt = payload.exp
-
-  return expiresAt <= (nowSeconds + bufferSeconds)
-}
-
-/**
- * Check if a JWT token is completely expired (no buffer)
+ * Check if JWT is expired
  */
 export function isJwtExpired(token: string): boolean {
-  return isJwtExpiredOrExpiring(token, 0)
+  const payload = decodeJwtPayload(token)
+  if (!payload?.exp) return true
+  return payload.exp <= Math.floor(Date.now() / 1000)
 }
 
 /**
- * Get the JWT token from the user session
- * This token is used for authenticating with the backend API
+ * Check if JWT expires within buffer seconds (default 2 minutes)
  */
-export async function getSessionToken(event: H3Event): Promise<string | null> {
-  const session = await getUserSession(event)
-  return session?.token || null
+export function isJwtExpiring(token: string, bufferSeconds = 120): boolean {
+  const payload = decodeJwtPayload(token)
+  if (!payload?.exp) return true
+  return payload.exp <= Math.floor(Date.now() / 1000) + bufferSeconds
 }
 
 /**
- * Require authentication and return the JWT token
- * Throws a 401 error if not authenticated
+ * Get JWT token from session
+ * Throws 401 if missing or expired
  */
 export async function requireSessionToken(event: H3Event): Promise<string> {
-  const token = await getSessionToken(event)
+  const session = await getUserSession(event)
+  const token = session?.token
 
-  if (!token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Authentication required'
-    })
+  if (!token || typeof token !== 'string') {
+    throw createError({ statusCode: 401, message: 'Authentication required' })
+  }
+
+  if (isJwtExpired(token)) {
+    await clearUserSession(event)
+    throw createError({ statusCode: 401, message: 'Session expired' })
   }
 
   return token
 }
 
 /**
- * Create an authenticated fetch instance for backend API calls
- * Automatically includes the JWT token from the session
- * @deprecated Use createValidatedFetch instead for automatic token refresh
- */
-export async function createAuthenticatedFetch(event: H3Event) {
-  // Use the validated fetch which handles token refresh
-  return createValidatedFetch(event)
-}
-
-/**
- * Check if the current session is valid and not expired
- * Also checks if the JWT token is expired
- */
-export async function isSessionValid(event: H3Event): Promise<boolean> {
-  const session = await getUserSession(event)
-
-  if (!session || !session.user || !session.token) {
-    return false
-  }
-
-  // Check if session has expired
-  if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-    await clearUserSession(event)
-    return false
-  }
-
-  // Check if JWT token is expired
-  if (isJwtExpired(session.token)) {
-    await clearUserSession(event)
-    return false
-  }
-
-  return true
-}
-
-/**
- * Attempt to refresh the JWT token if it's about to expire
- * Returns the current or new token, or null if refresh failed
+ * Refresh JWT token if expiring soon
+ * Returns current or new token, null if refresh failed
  */
 export async function refreshTokenIfNeeded(event: H3Event): Promise<string | null> {
   const session = await getUserSession(event)
+  const token = session?.token
 
-  if (!session || !session.user || !session.token) {
-    return null
-  }
+  if (!session?.user || !token || typeof token !== 'string') return null
 
-  // If token is not expiring soon, return current token
-  if (!isJwtExpiredOrExpiring(session.token)) {
-    return session.token
-  }
+  // Token not expiring soon - return current
+  if (!isJwtExpiring(token)) return token
 
-  // If token is already completely expired, we can't refresh
-  if (isJwtExpired(session.token)) {
+  // Token already expired - can't refresh
+  if (isJwtExpired(token)) {
     await clearUserSession(event)
     return null
   }
 
-  // Try to refresh the token
+  // Attempt token refresh
   try {
     const config = useRuntimeConfig()
     const apiUrl = config.apiUrl || config.public.apiUrl
@@ -141,9 +84,7 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       avatar?: string
     }>(`${apiUrl}/api/auth/refresh`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      }
+      headers: { Authorization: `Bearer ${token}` }
     })
 
     if (!response.token) {
@@ -151,11 +92,6 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       return null
     }
 
-    // Calculate new expiration (7 days from now)
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7)
-
-    // Update the session with new token
     await replaceUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -165,48 +101,39 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
         avatar: response.avatar
       },
       token: response.token,
-      loggedInAt: session.loggedInAt,
-      expiresAt
+      loggedInAt: session.loggedInAt
     })
 
     return response.token
   } catch {
-    // Token refresh failed - clear session
     await clearUserSession(event)
     return null
   }
 }
 
 /**
- * Get a valid token, refreshing if necessary
- * Throws 401 if no valid token can be obtained
+ * Get valid token, refreshing if needed
+ * Throws 401 on failure
  */
 export async function requireValidToken(event: H3Event): Promise<string> {
   const token = await refreshTokenIfNeeded(event)
 
   if (!token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Session expired'
-    })
+    throw createError({ statusCode: 401, message: 'Session expired' })
   }
 
   return token
 }
 
 /**
- * Create an authenticated fetch instance that ensures token is valid
- * Will refresh the token if it's about to expire
+ * Create authenticated fetch for backend API calls
  */
 export async function createValidatedFetch(event: H3Event) {
   const token = await requireValidToken(event)
   const config = useRuntimeConfig()
-  const apiUrl = config.apiUrl || config.public.apiUrl
 
   return $fetch.create({
-    baseURL: apiUrl,
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
+    baseURL: config.apiUrl || config.public.apiUrl,
+    headers: { Authorization: `Bearer ${token}` }
   })
 }

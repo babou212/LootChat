@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const authFetch = await createAuthenticatedFetch(event)
+    const authFetch = await createValidatedFetch(event)
 
     const params = new URLSearchParams()
     if (pageParam) {

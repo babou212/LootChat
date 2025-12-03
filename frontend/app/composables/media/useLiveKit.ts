@@ -15,7 +15,8 @@ import type {
   TrackPublication,
   ConnectionQuality
 } from 'livekit-client'
-import { useLiveKitStore, getRoomInstance } from '../../stores/livekit'
+import { useLiveKitStore, getRoomInstance } from '../../../stores/livekit'
+import { useUsersStore } from '../../../stores/users'
 
 /**
  * Composable for LiveKit voice chat and screen sharing.
@@ -24,6 +25,7 @@ import { useLiveKitStore, getRoomInstance } from '../../stores/livekit'
 export const useLiveKit = () => {
   const { user } = useAuth()
   const store = useLiveKitStore()
+  const usersStore = useUsersStore()
 
   // Computed properties from store
   const room = computed(() => store.room)
@@ -479,10 +481,14 @@ export const useLiveKit = () => {
       }
     }
 
+    // Look up the user's avatar from the users store
+    const userId = parseInt(participant.identity, 10)
+    const userInfo = !isNaN(userId) ? usersStore.getUserById(userId) : undefined
+
     store.addParticipant({
       odod: participant.identity,
       username: participant.name || participant.identity,
-      avatar: undefined, // We'll need to fetch this separately
+      avatar: userInfo?.avatar,
       isMuted,
       isSpeaking: participant.isSpeaking,
       isScreenSharing: participant.isScreenShareEnabled

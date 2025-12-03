@@ -1,5 +1,5 @@
-import { useMessagesStore } from '../../stores/messages'
-import type { Message } from '../../shared/types/chat'
+import { useMessagesStore } from '../../../stores/messages'
+import type { Message } from '../../../shared/types/chat'
 
 export const useMessages = (channelId: Ref<number | null> | number | null = null) => {
   const store = useMessagesStore()

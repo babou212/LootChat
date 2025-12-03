@@ -1,7 +1,6 @@
 import type { UserResponse } from '~/api/userApi'
-import type { UserPresence } from '~/components/UserPanel.vue'
-import type { User } from '../../shared/types/user'
-import { useAuthStore } from '../../stores/auth'
+import type { UserPresence, User } from '../../../shared/types/user'
+import { useAuthStore } from '../../../stores/auth'
 
 export const useUsers = () => {
   const users = ref<UserPresence[]>([])

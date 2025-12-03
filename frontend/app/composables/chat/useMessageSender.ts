@@ -1,5 +1,5 @@
 import type { MessageResponse } from '~/api/messageApi'
-import { useMessagesStore } from '../../stores/messages'
+import { useMessagesStore } from '../../../stores/messages'
 
 export const useMessageSender = () => {
   const { user } = useAuth()

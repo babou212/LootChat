@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const authFetch = await createAuthenticatedFetch(event)
+  const authFetch = await createValidatedFetch(event)
 
   try {
     await authFetch(`/api/channels/${id}/read`, {
