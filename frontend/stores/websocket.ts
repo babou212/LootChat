@@ -136,8 +136,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
           })
         },
 
-        // Debug in development
-        debug: import.meta.dev ? msg => console.debug('[STOMP]', msg) : undefined
+        // Debug logging - must always be a function (stomp.js calls this.debug internally)
+        debug: import.meta.dev ? (msg: string) => console.debug('[STOMP]', msg) : () => {}
       })
 
       client.value = stompClient
