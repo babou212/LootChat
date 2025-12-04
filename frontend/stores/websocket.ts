@@ -134,10 +134,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
           subscriptions.value.forEach((config) => {
             config.subscription = undefined
           })
-        },
-
-        // Debug in development
-        debug: import.meta.dev ? msg => console.debug('[STOMP]', msg) : undefined
+        }
       })
 
       client.value = stompClient
