@@ -76,6 +76,12 @@ export const useLiveKit = () => {
           noiseSuppression: true,
           autoGainControl: true
         },
+        publishDefaults: {
+          dtx: true,
+          audioPreset: {
+            maxBitrate: 64000
+          }
+        },
         // Video settings for screen sharing
         videoCaptureDefaults: {
           resolution: { width: 1920, height: 1080, frameRate: 60 }
