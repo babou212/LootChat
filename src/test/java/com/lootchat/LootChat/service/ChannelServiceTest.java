@@ -1,8 +1,8 @@
 package com.lootchat.LootChat.service;
 
-import com.lootchat.LootChat.dto.ChannelResponse;
-import com.lootchat.LootChat.dto.CreateChannelRequest;
-import com.lootchat.LootChat.dto.UpdateChannelRequest;
+import com.lootchat.LootChat.dto.channel.ChannelResponse;
+import com.lootchat.LootChat.dto.channel.CreateChannelRequest;
+import com.lootchat.LootChat.dto.channel.UpdateChannelRequest;
 import com.lootchat.LootChat.entity.Channel;
 import com.lootchat.LootChat.entity.ChannelType;
 import com.lootchat.LootChat.entity.Role;

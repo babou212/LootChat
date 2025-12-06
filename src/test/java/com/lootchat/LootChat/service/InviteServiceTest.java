@@ -1,6 +1,7 @@
 package com.lootchat.LootChat.service;
 
-import com.lootchat.LootChat.dto.*;
+import com.lootchat.LootChat.dto.invite.*;
+import com.lootchat.LootChat.dto.auth.AuthResponse;
 import com.lootchat.LootChat.entity.InviteToken;
 import com.lootchat.LootChat.entity.Role;
 import com.lootchat.LootChat.entity.User;
@@ -8,6 +9,8 @@ import com.lootchat.LootChat.repository.InviteTokenRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import com.lootchat.LootChat.security.CurrentUserService;
 import com.lootchat.LootChat.security.JwtService;
+import com.lootchat.LootChat.service.common.EmailService;
+import com.lootchat.LootChat.service.invite.InviteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

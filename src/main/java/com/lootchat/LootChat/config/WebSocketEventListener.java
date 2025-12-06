@@ -1,7 +1,7 @@
 package com.lootchat.LootChat.config;
 
 import com.lootchat.LootChat.repository.UserRepository;
-import com.lootchat.LootChat.service.UserPresenceService;
+import com.lootchat.LootChat.service.user.UserPresenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
