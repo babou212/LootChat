@@ -65,7 +65,7 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
   if (!session?.user || !token || typeof token !== 'string') return null
 
   // Token not expiring soon - return current
-  if (!isJwtExpiring(token)) return token
+  if (!isJwtExpiring(token, 300)) return token // Increased buffer to 5 minutes
 
   // Token expired but within session grace period - attempt refresh
   // Session lasts 7 days, so we allow refresh of expired tokens
@@ -118,21 +118,32 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       })
 
       return response.token
-    } catch {
-      // If this was the last attempt, clear session
-      if (attempt === maxRetries - 1) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      // Only clear session on explicit 401/403 errors, not network errors
+      const is401or403 = error?.response?.status === 401 || error?.response?.status === 403
+
+      // If this was the last attempt and it's an auth error, clear session
+      if (attempt === maxRetries - 1 && is401or403) {
         await clearUserSession(event)
         return null
       }
 
-      // Wait before retry with exponential backoff
-      const delay = baseDelay * Math.pow(2, attempt)
-      await new Promise(resolve => setTimeout(resolve, delay))
+      // If it's a network error and not the last attempt, retry
+      if (attempt < maxRetries - 1) {
+        const delay = baseDelay * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+
+      // Network error on last attempt - keep session, return old token
+      // User can still use the app, token will refresh on next successful request
+      return token
     }
   }
 
-  await clearUserSession(event)
-  return null
+  // Should not reach here, but return token to be safe
+  return token
 }
 
 /**

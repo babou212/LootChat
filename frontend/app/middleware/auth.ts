@@ -23,8 +23,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Check if route is public (exact match or starts with /invite/)
   const isPublic = publicRoutes.has(to.path) || to.path.startsWith('/invite/')
 
-  // On client-side, ensure session is fetched
-  if (import.meta.client) {
+  // On client-side, ensure session is fetched (but don't refetch too often)
+  if (import.meta.client && !loggedIn.value) {
     await fetchSession()
   }
 
