@@ -4,7 +4,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   try {
     const query = getQuery(event)
     const filePath = query.path as string
-    
+
     if (!filePath) {
       throw createError({
         statusCode: 400,
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     }
 
     const authFetch = await createValidatedFetch(event)
-    
+
     return await authFetch(`/api/soundboard/sounds/${filePath}/url`)
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 401) {

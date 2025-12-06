@@ -37,16 +37,16 @@ const searchGifs = async (query: string, isTrending = false, loadMore = false) =
     nextPos.value = ''
     return
   }
-  
+
   if (loadMore) {
     isLoadingMore.value = true
   } else {
     gifLoading.value = true
     nextPos.value = ''
   }
-  
+
   gifError.value = null
-  
+
   try {
     const baseUrl = isTrending
       ? 'https://tenor.googleapis.com/v2/featured'
@@ -63,7 +63,7 @@ const searchGifs = async (query: string, isTrending = false, loadMore = false) =
     if (!isTrending) {
       params.q = query
     }
-    
+
     if (loadMore && nextPos.value) {
       params.pos = nextPos.value
     }
@@ -72,13 +72,13 @@ const searchGifs = async (query: string, isTrending = false, loadMore = false) =
     const urls = (res?.results || [])
       .map((r: TenorResult) => r?.media_formats?.tinygif?.url || r?.media_formats?.gif?.url)
       .filter((u): u is string => typeof u === 'string')
-    
+
     if (loadMore) {
       gifResults.value = [...gifResults.value, ...urls]
     } else {
       gifResults.value = urls
     }
-    
+
     nextPos.value = res?.next || ''
   } catch (e) {
     console.error('GIF search failed', e)
@@ -98,7 +98,7 @@ const loadTrendingGifs = async () => {
 
 const loadMoreGifs = async () => {
   if (isLoadingMore.value || !nextPos.value) return
-  
+
   if (gifSearchQuery.value?.trim()) {
     await searchGifs(gifSearchQuery.value, false, true)
   } else {
@@ -113,7 +113,7 @@ const selectGif = (gifUrl: string) => {
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement
   const scrollPercentage = (target.scrollTop + target.clientHeight) / target.scrollHeight
-  
+
   if (scrollPercentage > 0.8 && !isLoadingMore.value && nextPos.value) {
     loadMoreGifs()
   }

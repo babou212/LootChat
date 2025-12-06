@@ -12,6 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{ (e: 'select', emoji: string): void }>()
 
 const pickerContainer = ref<HTMLDivElement | null>(null)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let picker: any = null
 
 onMounted(async () => {
@@ -19,18 +20,19 @@ onMounted(async () => {
 
   // Dynamic import for client-side only (SSR safe)
   const { Picker } = await import('emoji-picker-element')
-  
+
   picker = new Picker({
     locale: 'en',
     dataSource: 'https://cdn.jsdelivr.net/npm/emoji-picker-element-data@^1/en/emojibase/data.json',
-    skinToneEmoji: '👋',
+    skinToneEmoji: '👋'
   })
 
   // Style the picker with custom height
   picker.className = 'emoji-picker-light dark:emoji-picker-dark'
   picker.style.height = `${props.maxHeight}px`
-  
+
   // Listen for emoji selection
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   picker.addEventListener('emoji-click', (event: any) => {
     emit('select', event.detail.unicode)
   })

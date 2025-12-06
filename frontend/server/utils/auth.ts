@@ -54,7 +54,7 @@ export async function requireSessionToken(event: H3Event): Promise<string> {
 /**
  * Refresh JWT token if expiring soon or expired (within grace period)
  * Returns current or new token, null if refresh failed after retries
- * 
+ *
  * Grace period allows refresh of expired tokens to keep session alive for 7 days
  * Retries up to 3 times with exponential backoff for network resilience
  */
@@ -118,7 +118,7 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       })
 
       return response.token
-    } catch (error) {
+    } catch {
       // If this was the last attempt, clear session
       if (attempt === maxRetries - 1) {
         await clearUserSession(event)

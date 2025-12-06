@@ -4,7 +4,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   try {
     const soundId = getRouterParam(event, 'soundId')
     const authFetch = await createValidatedFetch(event)
-    
+
     return await authFetch(`/api/soundboard/sounds/${soundId}`, {
       method: 'DELETE'
     })

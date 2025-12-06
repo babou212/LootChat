@@ -5,7 +5,7 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
     const channelId = getRouterParam(event, 'channelId')
     const soundId = getRouterParam(event, 'soundId')
     const authFetch = await createValidatedFetch(event)
-    
+
     return await authFetch(`/api/soundboard/channels/${channelId}/sounds/${soundId}/play`, {
       method: 'POST'
     })

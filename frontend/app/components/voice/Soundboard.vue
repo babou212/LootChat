@@ -38,6 +38,7 @@ const trimEnd = ref(0)
 const isPlaying = ref(false)
 const waveformContainer = ref<HTMLDivElement | null>(null)
 const wavesurfer = ref<WaveSurfer | null>(null)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const wsRegion = ref<any>(null)
 const searchQuery = ref('')
 
@@ -414,7 +415,7 @@ async function initWaveSurfer(file: File) {
 
       // Update trim values when region changes
       wsRegion.value.on('update', () => {
-        let start = wsRegion.value.start
+        const start = wsRegion.value.start
         let end = wsRegion.value.end
 
         // Enforce 30 second max
