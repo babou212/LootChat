@@ -1,6 +1,6 @@
 package com.lootchat.LootChat.service;
 
-import com.lootchat.LootChat.dto.UnreadCountResponse;
+import com.lootchat.LootChat.dto.channel.UnreadCountResponse;
 import com.lootchat.LootChat.entity.*;
 import com.lootchat.LootChat.repository.*;
 import com.lootchat.LootChat.security.CurrentUserService;

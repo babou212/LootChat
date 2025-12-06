@@ -1,8 +1,8 @@
 package com.lootchat.LootChat.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lootchat.LootChat.dto.MessageResponse;
-import com.lootchat.LootChat.dto.ReactionResponse;
+import com.lootchat.LootChat.dto.message.MessageResponse;
+import com.lootchat.LootChat.dto.message.ReactionResponse;
 import com.lootchat.LootChat.entity.*;
 import com.lootchat.LootChat.repository.ChannelRepository;
 import com.lootchat.LootChat.repository.MessageReactionRepository;

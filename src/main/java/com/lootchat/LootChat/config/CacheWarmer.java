@@ -1,9 +1,9 @@
 package com.lootchat.LootChat.config;
 
-import com.lootchat.LootChat.dto.ChannelResponse;
-import com.lootchat.LootChat.service.ChannelService;
-import com.lootchat.LootChat.service.MessageService;
-import com.lootchat.LootChat.service.UserService;
+import com.lootchat.LootChat.dto.channel.ChannelResponse;
+import com.lootchat.LootChat.service.channel.ChannelService;
+import com.lootchat.LootChat.service.message.MessageService;
+import com.lootchat.LootChat.service.user.UserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

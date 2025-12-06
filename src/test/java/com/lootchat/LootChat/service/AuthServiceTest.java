@@ -1,7 +1,7 @@
 package com.lootchat.LootChat.service;
 
-import com.lootchat.LootChat.dto.AuthResponse;
-import com.lootchat.LootChat.dto.LoginRequest;
+import com.lootchat.LootChat.dto.auth.AuthResponse;
+import com.lootchat.LootChat.dto.auth.LoginRequest;
 import com.lootchat.LootChat.entity.Role;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.UserRepository;
