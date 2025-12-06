@@ -21,6 +21,7 @@ interface Props {
   hasMore?: boolean
   loadingMore?: boolean
   mode: 'channel' | 'direct'
+  highlightMessageId?: number | null
 }
 
 const props = defineProps<Props>()
@@ -361,10 +362,12 @@ defineExpose({
         >
           <template v-if="getMessage(virtualRow.index)">
             <div
+              :id="`message-${getMessage(virtualRow.index)!.id}`"
               :data-message-id="getMessage(virtualRow.index)!.id"
-              class="flex gap-4 group relative p-2 -m-2 rounded-lg mb-4"
+              class="flex gap-4 group relative p-2 -m-2 rounded-lg mb-4 transition-colors duration-300"
               :class="{
-                'opacity-60': isOptimistic(getMessage(virtualRow.index)!)
+                'opacity-60': isOptimistic(getMessage(virtualRow.index)!),
+                'bg-blue-100 dark:bg-blue-900/30': props.highlightMessageId === getMessage(virtualRow.index)!.id
               }"
             >
               <UAvatar

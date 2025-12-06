@@ -60,7 +60,6 @@ const selectedScreenShare = computed((): ScreenShareInfo | null => {
 })
 
 const handleViewScreenShare = (sharerId: string) => {
-  console.log('[Index] handleViewScreenShare called', { sharerId, activeScreenShares: activeScreenShares.value })
   selectedScreenShareId.value = sharerId
   isScreenShareMinimized.value = false
 }
@@ -87,6 +86,26 @@ const usersWithFullData = usersComposable.users
 const fetchUsers = usersComposable.fetchUsers
 const updateUserPresence = usersComposable.updateUserPresence
 const addUser = usersComposable.addUser
+
+// Search modal state
+const showSearchModal = ref(false)
+
+// Highlight message state
+const route = useRoute()
+const highlightMessageId = ref<number | null>(null)
+const messageListRef = ref<{ scrollToMessage: (id: number) => void } | null>(null)
+
+// Keyboard shortcut for search (Cmd+K / Ctrl+K)
+onMounted(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      showSearchModal.value = true
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown)
+  onUnmounted(() => window.removeEventListener('keydown', handleKeyDown))
+})
 
 const channels = computed(() => channelsStore.channels)
 const selectedChannel = computed({
@@ -239,6 +258,75 @@ useClickAway(
   }
 )
 
+const handleMessageHighlight = async (channelId: number, targetMessageId: number) => {
+  try {
+    // Check if message is already loaded
+    let messages = messagesStore.getChannelMessages(channelId)
+    let messageFound = messages.some((m: Message) => m.id === targetMessageId)
+
+    // Keep loading older messages until we find the target
+    let loadAttempts = 0
+    const maxAttempts = 100
+    let previousMessageCount = messages.length
+    let noNewMessagesCount = 0
+
+    while (!messageFound && loadAttempts < maxAttempts) {
+      // Try to load more messages
+      await fetchMessages(true)
+      messages = messagesStore.getChannelMessages(channelId)
+      messageFound = messages.some((m: Message) => m.id === targetMessageId)
+
+      // If message count didn't change, we've reached the end
+      if (messages.length === previousMessageCount) {
+        noNewMessagesCount++
+
+        // Try 3 times before giving up (sometimes the first request fails)
+        if (noNewMessagesCount >= 3) {
+          break
+        }
+
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 200))
+      } else {
+        noNewMessagesCount = 0 // Reset counter if we got new messages
+      }
+
+      previousMessageCount = messages.length
+      loadAttempts++
+    }
+
+    if (messageFound) {
+      // Set highlight state
+      highlightMessageId.value = targetMessageId
+
+      // Wait for DOM update and virtualizer to render
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      // Clear query params immediately before scrolling
+      navigateTo({ query: { ...route.query, highlight: undefined, channel: undefined } }, { replace: true })
+
+      // Use MessageList's scrollToMessage method which handles virtualizer properly
+      if (messageListRef.value) {
+        messageListRef.value.scrollToMessage(targetMessageId)
+      } else {
+        // Fallback to manual scroll if ref not available
+        const messageElement = document.getElementById(`message-${targetMessageId}`)
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }
+
+      // Remove highlight after 5 seconds
+      setTimeout(() => {
+        highlightMessageId.value = null
+      }, 5000)
+    }
+  } catch (error) {
+    console.error('Failed to highlight message:', error)
+  }
+}
+
 const selectChannel = async (channel: typeof channels.value[0]) => {
   if (channel.channelType === 'VOICE') {
     return
@@ -250,6 +338,13 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
 
   if (channel.channelType === 'TEXT' || !channel.channelType) {
     await fetchMessages()
+
+    // Handle highlight parameter from search navigation
+    const highlightParam = route.query.highlight
+    if (highlightParam) {
+      const targetMessageId = Number(highlightParam)
+      await handleMessageHighlight(channel.id, targetMessageId)
+    }
 
     const token = websocketStore.token
     if (token) {
@@ -518,7 +613,19 @@ onMounted(async () => {
   }
 
   if (channels.value.length > 0) {
-    await selectChannel(channels.value[0]!)
+    // Check if there's a channel query param (from search navigation)
+    const channelIdParam = route.query.channel
+    if (channelIdParam) {
+      const channelId = Number(channelIdParam)
+      const targetChannel = channels.value.find((ch: typeof channels.value[0]) => ch.id === channelId)
+      if (targetChannel) {
+        await selectChannel(targetChannel)
+      } else {
+        await selectChannel(channels.value[0]!)
+      }
+    } else {
+      await selectChannel(channels.value[0]!)
+    }
   }
 })
 
@@ -578,6 +685,25 @@ watch(usersWithFullData, () => {
     usersStore.setUserPresence(u.userId, u.status)
   })
 }, { deep: true })
+
+// Watch for query param changes to handle highlight navigation
+watch(() => [route.query.channel, route.query.highlight], async ([channelIdParam, highlightParam]) => {
+  if (channelIdParam && highlightParam) {
+    const channelId = Number(channelIdParam)
+    const messageId = Number(highlightParam)
+    const channel = channels.value.find((ch: typeof channels.value[0]) => ch.id === channelId)
+
+    if (channel) {
+      // If we're already on this channel, just highlight the message
+      if (selectedChannel.value?.id === channelId) {
+        await handleMessageHighlight(channelId, messageId)
+      } else {
+        // Switch to the channel (selectChannel will handle highlighting)
+        await selectChannel(channel)
+      }
+    }
+  }
+}, { immediate: false })
 </script>
 
 <template>
@@ -606,6 +732,13 @@ watch(usersWithFullData, () => {
           </div>
           <div class="ml-auto flex items-center gap-3">
             <UButton
+              icon="i-lucide-search"
+              color="neutral"
+              variant="ghost"
+              aria-label="Search messages"
+              @click="showSearchModal = true"
+            />
+            <UButton
               :icon="$colorMode.value === 'dark' ? 'i-lucide-moon' : 'i-lucide-sun'"
               color="neutral"
               variant="ghost"
@@ -616,13 +749,18 @@ watch(usersWithFullData, () => {
           </div>
         </div>
 
+        <!-- Search Modal -->
+        <MessageSearch v-model="showSearchModal" />
+
         <template v-if="selectedChannel?.channelType === 'TEXT'">
           <MessageList
+            ref="messageListRef"
             :messages="messages"
             :loading="loading"
             :error="error"
             :has-more="hasMoreMessages"
             :loading-more="loadingMoreMessages"
+            :highlight-message-id="highlightMessageId"
             mode="channel"
             @message-deleted="removeMessageById"
             @load-more="loadMoreMessages"
