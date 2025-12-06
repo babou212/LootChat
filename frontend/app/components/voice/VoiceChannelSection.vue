@@ -82,6 +82,9 @@ const handleJoinVoice = async (channelId: number) => {
   if (isConnecting.value) return
   isConnecting.value = true
   try {
+    // Initialize audio element with user gesture (required for Firefox autoplay policy)
+    initializeSoundboardAudio()
+
     emit('joinVoice', channelId)
   } finally {
     setTimeout(() => {
@@ -160,7 +163,31 @@ onBeforeUnmount(() => {
     globalSoundboardSubscription.unsubscribe()
     globalSoundboardSubscription = null
   }
+
+  // Cleanup audio element
+  if (soundboardAudio) {
+    soundboardAudio.pause()
+    soundboardAudio.src = ''
+    soundboardAudio = null
+  }
 })
+
+let soundboardAudio: HTMLAudioElement | null = null
+
+function initializeSoundboardAudio() {
+  if (!soundboardAudio) {
+    soundboardAudio = new Audio()
+    soundboardAudio.volume = 0.7
+
+    soundboardAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+    soundboardAudio.play().then(() => {
+      soundboardAudio?.pause()
+      soundboardAudio!.currentTime = 0
+    }).catch(() => {
+      // Ignore errors from the unlock attempt
+    })
+  }
+}
 
 async function playSoundForChannel(soundId: number, _channelId: number) {
   try {
@@ -169,9 +196,31 @@ async function playSoundForChannel(soundId: number, _channelId: number) {
     if (!sound) return
 
     const audioUrl = await soundboardStore.getAudioUrl(sound.fileUrl)
-    const audio = new Audio(audioUrl)
-    audio.volume = 0.7
-    await audio.play()
+
+    if (!soundboardAudio) {
+      soundboardAudio = new Audio()
+      soundboardAudio.volume = 0.7
+    }
+
+    if (!soundboardAudio.paused) {
+      soundboardAudio.pause()
+      soundboardAudio.currentTime = 0
+    }
+
+    soundboardAudio.src = audioUrl
+    soundboardAudio.load()
+
+    try {
+      await soundboardAudio.play()
+    } catch (playErr) {
+      console.warn('Audio playback blocked, may require user interaction:', playErr)
+
+      if (playErr instanceof DOMException && playErr.name === 'NotAllowedError') {
+        console.error('Audio playback not allowed by browser. User interaction required.')
+      } else {
+        throw playErr
+      }
+    }
   } catch (err) {
     console.error('Failed to play soundboard sound:', err)
   }

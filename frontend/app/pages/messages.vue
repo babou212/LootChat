@@ -59,6 +59,21 @@ const gifPickerContainerRef = ref<HTMLElement | null>(null)
 const loadingMoreMessages = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
 
+// Search modal state
+const showSearchModal = ref(false)
+
+// Keyboard shortcut for search (Cmd+K / Ctrl+K)
+onMounted(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      showSearchModal.value = true
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown)
+  onUnmounted(() => window.removeEventListener('keydown', handleKeyDown))
+})
+
 const hasMoreMessages = computed(() => {
   if (!directMessagesStore.selectedDirectMessageId) return true
   return directMessagesStore.hasMoreMessages(directMessagesStore.selectedDirectMessageId)
@@ -532,7 +547,19 @@ const isUserOnline = (userId: number): boolean => {
             </h1>
           </div>
         </div>
+        <div class="flex items-center gap-3">
+          <UButton
+            icon="i-lucide-search"
+            color="neutral"
+            variant="ghost"
+            aria-label="Search messages"
+            @click="showSearchModal = true"
+          />
+        </div>
       </div>
+
+      <!-- Search Modal -->
+      <MessageSearch v-model="showSearchModal" />
 
       <div v-if="directMessagesStore.loading" class="flex-1 flex items-center justify-center">
         <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-gray-400 dark:text-gray-500" />

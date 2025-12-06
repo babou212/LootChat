@@ -55,6 +55,7 @@ public class MessageService {
     private final CacheManager cacheManager;
     private final WebSocketBroadcastService broadcastService;
     private final MentionService mentionService;
+    private final MessageSearchService messageSearchService;
 
     @Transactional
     public MessageResponse createMessage(String content) {
@@ -106,6 +107,9 @@ public class MessageService {
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
         
+        // Index message for search
+        messageSearchService.indexMessage(savedMessage);
+        
         evictChannelFirstPageCache(channelId);
         
         publishMessageToKafka(savedMessage.getId(), content, channelId, userId);
@@ -152,6 +156,9 @@ public class MessageService {
         Message message = messageBuilder.build();
         Message savedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(savedMessage);
+        
+        // Index message for search
+        messageSearchService.indexMessage(savedMessage);
         
         evictChannelFirstPageCache(channelId);
         
@@ -420,6 +427,9 @@ public class MessageService {
         Message updatedMessage = messageRepository.save(message);
         MessageResponse response = mapToMessageResponse(updatedMessage);
         
+        // Update search index
+        messageSearchService.updateMessage(updatedMessage);
+        
         publishMessageUpdateToKafka(updatedMessage.getId(), content, 
             updatedMessage.getChannel() != null ? updatedMessage.getChannel().getId() : null);
         
@@ -461,6 +471,9 @@ public class MessageService {
         message.setImageUrl(null);
         message.setImageFilename(null);
         messageRepository.save(message);
+        
+        // Delete from search index
+        messageSearchService.deleteMessage(id);
 
         Long channelId = message.getChannel() != null ? message.getChannel().getId() : null;
         publishMessageDeleteToKafka(id, channelId);

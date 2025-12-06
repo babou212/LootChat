@@ -196,13 +196,21 @@ export function useMessageList<TMessage extends BaseMessage, TReaction extends B
   }
 
   const scrollToMessage = (messageId: number) => {
-    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
-    if (messageElement) {
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      messageElement.classList.add('highlight-message')
-      setTimeout(() => {
-        messageElement.classList.remove('highlight-message')
-      }, 2000)
+    // Find the index of the message in visibleMessages
+    const messageIndex = visibleMessages.value.findIndex(m => m.id === messageId)
+
+    if (messageIndex !== -1) {
+      console.log('[useMessageList] Scrolling to message index:', messageIndex, 'of', visibleMessages.value.length)
+      virtualizer.value.scrollToIndex(messageIndex, {
+        align: 'center',
+        behavior: 'auto'
+      })
+    } else {
+      console.warn('[useMessageList] Message not found in visible messages:', messageId)
+      const messageElement = document.querySelector(`[data-message-id="${messageId}"]`)
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'auto', block: 'center' })
+      }
     }
   }
 
