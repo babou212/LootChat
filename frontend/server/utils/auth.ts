@@ -118,10 +118,11 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       })
 
       return response.token
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       // Only clear session on explicit 401/403 errors, not network errors
       const is401or403 = error?.response?.status === 401 || error?.response?.status === 403
-      
+
       // If this was the last attempt and it's an auth error, clear session
       if (attempt === maxRetries - 1 && is401or403) {
         await clearUserSession(event)
