@@ -81,6 +81,7 @@ const {
   activeEmojiPicker,
   emojiPickerRef,
   emojiPickerPosition,
+  emojiPickerHeight,
   toggleEmojiPicker,
   closeEmojiPicker,
   handleEmojiSelect,
@@ -367,31 +368,31 @@ defineExpose({
               }"
             >
               <UAvatar
-                :src="getLoadedAvatarUrl(getMessageUserId(messages[virtualRow.index]!))"
-                :alt="getMessageUsername(messages[virtualRow.index]!)"
+                :src="getLoadedAvatarUrl(getMessageUserId(getMessage(virtualRow.index)! as AnyMessage))"
+                :alt="getMessageUsername(getMessage(virtualRow.index)! as AnyMessage)"
                 size="md"
               />
 
               <div class="flex-1 min-w-0">
                 <div class="flex items-baseline gap-2 mb-1">
                   <UPopover
-                    v-if="mode === 'channel' && getMessageUserId(messages[virtualRow.index]!) !== authStore.user?.userId?.toString()"
+                    v-if="mode === 'channel' && getMessageUserId(getMessage(virtualRow.index)! as AnyMessage) !== authStore.user?.userId?.toString()"
                     :popper="{ placement: 'right', offsetDistance: 8 }"
                   >
                     <button
                       class="font-semibold text-gray-900 dark:text-white hover:underline cursor-pointer"
                     >
-                      {{ getMessageUsername(messages[virtualRow.index]!) }}
+                      {{ getMessageUsername(getMessage(virtualRow.index)! as AnyMessage) }}
                     </button>
                     <template #content>
-                      <UserProfileCard :user="getUserPresence(messages[virtualRow.index]! as Message)" />
+                      <UserProfileCard :user="getUserPresence(getMessage(virtualRow.index)! as Message)" />
                     </template>
                   </UPopover>
                   <span
                     v-else
                     class="font-semibold text-gray-900 dark:text-white"
                   >
-                    {{ getMessageUsername(messages[virtualRow.index]!) }}
+                    {{ getMessageUsername(getMessage(virtualRow.index)! as AnyMessage) }}
                   </span>
 
                   <span class="text-xs text-gray-500 dark:text-gray-400">
@@ -468,7 +469,7 @@ defineExpose({
                 <!-- Reactions and actions -->
                 <div class="flex items-center gap-2 mt-2 flex-wrap">
                   <button
-                    v-for="reactionGroup in groupReactions(getMessageReactions(messages[virtualRow.index]!) as BaseReaction[])"
+                    v-for="reactionGroup in groupReactions(getMessageReactions(getMessage(virtualRow.index)! as AnyMessage) as BaseReaction[])"
                     :key="reactionGroup.emoji"
                     type="button"
                     class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm transition-colors"
@@ -510,7 +511,7 @@ defineExpose({
                     type="button"
                     class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors opacity-0 group-hover:opacity-100"
                     title="Reply to message"
-                    @click="handleReplyClick(messages[virtualRow.index]!)"
+                    @click="handleReplyClick(getMessage(virtualRow.index)! as AnyMessage)"
                   >
                     <UIcon name="i-lucide-reply" class="text-gray-600 dark:text-gray-300" />
                   </button>
@@ -520,7 +521,7 @@ defineExpose({
                     type="button"
                     class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 hover:bg-red-200 dark:hover:bg-red-800 transition-colors opacity-0 group-hover:opacity-100"
                     title="Delete message"
-                    @click="onDeleteMessage(messages[virtualRow.index]!)"
+                    @click="onDeleteMessage(getMessage(virtualRow.index)! as AnyMessage)"
                   >
                     <UIcon name="i-lucide-trash-2" class="text-red-600 dark:text-red-300" />
                   </button>
@@ -535,6 +536,13 @@ defineExpose({
     <div class="h-0" />
 
     <Teleport to="body">
+      <!-- Click-away overlay -->
+      <div
+        v-if="activeEmojiPicker !== null"
+        class="fixed inset-0 z-40"
+        @click="closeEmojiPicker"
+      />
+      <!-- Emoji picker -->
       <div
         v-if="activeEmojiPicker !== null"
         ref="emojiPickerRef"
@@ -544,7 +552,7 @@ defineExpose({
           left: `${emojiPickerPosition.left}px`
         }"
       >
-        <EmojiPicker @select="(emoji: string) => handleEmojiSelect(activeEmojiPicker!, emoji)" />
+        <EmojiPicker :max-height="emojiPickerHeight" @select="(emoji: string) => handleEmojiSelect(activeEmojiPicker!, emoji)" />
       </div>
     </Teleport>
 

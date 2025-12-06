@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import type { Channel } from '../../../shared/types/chat'
+import type { Client } from '@stomp/stompjs'
 import { useAvatarStore } from '../../../stores/avatars'
+import { useSoundboardStore } from '../../../stores/soundboard'
+import type { SoundboardEvent } from '../../../shared/types/soundboard'
+import Soundboard from './Soundboard.vue'
 
 interface Props {
   channels: Channel[]
   isCollapsed: boolean
+  stompClient?: Client | null
 }
 
 interface Emits {
@@ -16,6 +21,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 const avatarStore = useAvatarStore()
+const soundboardStore = useSoundboardStore()
 
 const { user } = useAuth()
 
@@ -35,7 +41,11 @@ const {
 
 const isConnecting = ref(false)
 const showAudioSettings = ref(false)
+const showSoundboard = ref(false)
 const settingsTab = ref<'audio' | 'screenshare'>('audio')
+
+let soundboardSubscription: ReturnType<Client['subscribe']> | null = null
+let globalSoundboardSubscription: ReturnType<Client['subscribe']> | null = null
 
 const voiceChannels = computed(() =>
   props.channels.filter(channel => channel.channelType === 'VOICE')
@@ -100,6 +110,70 @@ const toggleScreenShare = async () => {
     await stopScreenShare()
   } else {
     await startScreenShare()
+  }
+}
+
+watch([() => props.stompClient?.connected, currentChannelId], ([connected, channelId]) => {
+  // Unsubscribe from previous subscriptions
+  if (soundboardSubscription) {
+    soundboardSubscription.unsubscribe()
+    soundboardSubscription = null
+  }
+  if (globalSoundboardSubscription) {
+    globalSoundboardSubscription.unsubscribe()
+    globalSoundboardSubscription = null
+  }
+
+  if (connected && props.stompClient) {
+    // Subscribe to global soundboard updates (SOUND_ADDED)
+    globalSoundboardSubscription = props.stompClient.subscribe(
+      '/topic/soundboard',
+      async (message) => {
+        const event: SoundboardEvent = JSON.parse(message.body)
+        if (event.type === 'SOUND_ADDED') {
+          soundboardStore.addSound(event.sound)
+        }
+      }
+    )
+
+    // Subscribe to channel-specific soundboard (SOUND_PLAYED)
+    if (channelId) {
+      soundboardSubscription = props.stompClient.subscribe(
+        `/topic/channels/${channelId}/soundboard`,
+        async (message) => {
+          const event: SoundboardEvent = JSON.parse(message.body)
+          if (event.type === 'SOUND_PLAYED') {
+            await playSoundForChannel(event.soundId, channelId)
+          }
+        }
+      )
+    }
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  if (soundboardSubscription) {
+    soundboardSubscription.unsubscribe()
+    soundboardSubscription = null
+  }
+  if (globalSoundboardSubscription) {
+    globalSoundboardSubscription.unsubscribe()
+    globalSoundboardSubscription = null
+  }
+})
+
+async function playSoundForChannel(soundId: number, _channelId: number) {
+  try {
+    const sounds = soundboardStore.allSounds
+    const sound = sounds.find(s => s.id === soundId)
+    if (!sound) return
+
+    const audioUrl = await soundboardStore.getAudioUrl(sound.fileUrl)
+    const audio = new Audio(audioUrl)
+    audio.volume = 0.7
+    await audio.play()
+  } catch (err) {
+    console.error('Failed to play soundboard sound:', err)
   }
 }
 </script>
@@ -196,7 +270,7 @@ const toggleScreenShare = async () => {
       </div>
     </div>
 
-    <div v-if="!isCollapsed && isInVoice && connectedVoiceChannel" class="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900 mt-2">
+    <div v-if="!isCollapsed && isInVoice && connectedVoiceChannel" class="relative border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900 mt-2">
       <div class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">
         Voice Connected
       </div>
@@ -243,12 +317,22 @@ const toggleScreenShare = async () => {
           size="sm"
           icon="i-lucide-settings"
           class="flex-1"
-          @click="showAudioSettings = !showAudioSettings"
+          @click="showAudioSettings = !showAudioSettings; settingsTab = 'audio'"
         >
           Settings
         </UButton>
       </div>
       <div class="flex gap-2 mt-2">
+        <UButton
+          :color="showSoundboard ? 'primary' : 'neutral'"
+          :variant="showSoundboard ? 'solid' : 'soft'"
+          size="sm"
+          icon="i-lucide-volume-2"
+          class="flex-1"
+          @click="showSoundboard = !showSoundboard"
+        >
+          Soundboard
+        </UButton>
         <UButton
           color="error"
           size="sm"
@@ -308,6 +392,20 @@ const toggleScreenShare = async () => {
       />
     </div>
   </div>
+
+  <!-- Soundboard Popup Panel -->
+  <Teleport v-if="showSoundboard && connectedVoiceChannel" to="body">
+    <div
+      class="fixed bottom-4 left-64 w-[520px] h-[600px] bg-gray-900 rounded-lg shadow-2xl border border-gray-700 overflow-hidden z-9999"
+    >
+      <Soundboard
+        :channel-id="connectedVoiceChannel.id"
+        :stomp-client="stompClient || null"
+        :compact="false"
+        @close="showSoundboard = false"
+      />
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>

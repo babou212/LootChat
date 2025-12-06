@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { Channel } from '../../../shared/types/chat'
 import { useAvatarStore } from '../../../stores/avatars'
+import type { Client } from '@stomp/stompjs'
+import Soundboard from './Soundboard.vue'
 
 interface Props {
   channel: Channel
   wsConnected?: boolean
+  stompClient?: Client | null
 }
 
 interface Emits {
@@ -38,6 +41,7 @@ const error = ref<string | null>(null)
 const showAudioSettings = ref(false)
 const showScreenShareViewer = ref(false)
 const selectedScreenShare = ref<string | null>(null)
+const activeTab = ref<'participants' | 'soundboard'>('participants')
 
 const screenVideoRef = ref<HTMLVideoElement | null>(null)
 
@@ -180,72 +184,101 @@ const handleViewScreenShare = (odod: string) => {
       </div>
 
       <div v-else class="space-y-6">
-        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Participants ({{ participants.length }})
-          </h3>
-
-          <div v-if="participants.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
-            <UIcon name="i-lucide-users" class="text-4xl mb-2" />
-            <p>No other participants yet</p>
+        <!-- Tabs -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div class="flex border-b border-gray-200 dark:border-gray-700">
+            <button
+              class="flex-1 px-6 py-3 font-medium transition-colors"
+              :class="activeTab === 'participants'
+                ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="activeTab = 'participants'"
+            >
+              <UIcon name="i-lucide-users" class="inline mr-2" />
+              Participants ({{ participants.length }})
+            </button>
+            <button
+              class="flex-1 px-6 py-3 font-medium transition-colors"
+              :class="activeTab === 'soundboard'
+                ? 'text-primary-600 dark:text-primary-400 border-b-2 border-primary-600 dark:border-primary-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'"
+              @click="activeTab = 'soundboard'"
+            >
+              <UIcon name="i-lucide-volume-2" class="inline mr-2" />
+              Soundboard
+            </button>
           </div>
 
-          <div v-else class="space-y-3">
-            <div
-              v-for="participant in participants"
-              :key="participant.odod"
-              class="flex items-center gap-3 p-3 rounded-lg transition-all duration-200"
-              :class="{
-                'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500': participant.isSpeaking,
-                'bg-gray-50 dark:bg-gray-700/50': !participant.isSpeaking,
-                'cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/30': isUserSharing(participant.odod)
-              }"
-              @click="handleViewScreenShare(participant.odod)"
-            >
-              <div class="shrink-0 relative">
+          <div class="p-6">
+            <!-- Participants Tab -->
+            <div v-if="activeTab === 'participants'">
+              <div v-if="participants.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
+                <UIcon name="i-lucide-users" class="text-4xl mb-2" />
+                <p>No other participants yet</p>
+              </div>
+
+              <div v-else class="space-y-3">
                 <div
-                  v-if="participant.avatar && getLoadedAvatarUrl(participant.odod)"
-                  class="w-10 h-10 rounded-full overflow-hidden"
-                  :class="{ 'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking }"
+                  v-for="participant in participants"
+                  :key="participant.odod"
+                  class="flex items-center gap-3 p-3 rounded-lg transition-all duration-200"
+                  :class="{
+                    'bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500': participant.isSpeaking,
+                    'bg-gray-50 dark:bg-gray-700/50': !participant.isSpeaking,
+                    'cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/30': isUserSharing(participant.odod)
+                  }"
+                  @click="handleViewScreenShare(participant.odod)"
                 >
-                  <img :src="getLoadedAvatarUrl(participant.odod)" :alt="participant.username" class="w-full h-full object-cover">
-                </div>
-                <div v-else class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center" :class="{ 'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking }">
-                  <span class="text-white font-semibold text-sm">{{ participant.username.substring(0, 2).toUpperCase() }}</span>
-                </div>
-                <div v-if="participant.isSpeaking" class="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
-              </div>
+                  <div class="shrink-0 relative">
+                    <div
+                      v-if="participant.avatar && getLoadedAvatarUrl(participant.odod)"
+                      class="w-10 h-10 rounded-full overflow-hidden"
+                      :class="{ 'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking }"
+                    >
+                      <img :src="getLoadedAvatarUrl(participant.odod)" :alt="participant.username" class="w-full h-full object-cover">
+                    </div>
+                    <div v-else class="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center" :class="{ 'ring-4 ring-green-400 ring-opacity-75 scale-110': participant.isSpeaking }">
+                      <span class="text-white font-semibold text-sm">{{ participant.username.substring(0, 2).toUpperCase() }}</span>
+                    </div>
+                    <div v-if="participant.isSpeaking" class="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
+                  </div>
 
-              <div class="flex-1 min-w-0">
-                <p class="font-medium truncate" :class="{ 'text-primary-700 dark:text-primary-300 font-semibold': participant.isSpeaking, 'text-gray-900 dark:text-white': !participant.isSpeaking }">
-                  {{ participant.username }}
-                  <span v-if="participant.isSpeaking" class="text-xs text-green-600 dark:text-green-400 ml-2">Speaking</span>
-                  <span v-if="participant.isScreenSharing" class="text-xs text-purple-600 dark:text-purple-400 ml-2">
-                    <UIcon name="i-lucide-monitor" class="inline text-sm" /> Sharing
-                  </span>
-                </p>
-              </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="font-medium truncate" :class="{ 'text-primary-700 dark:text-primary-300 font-semibold': participant.isSpeaking, 'text-gray-900 dark:text-white': !participant.isSpeaking }">
+                      {{ participant.username }}
+                      <span v-if="participant.isSpeaking" class="text-xs text-green-600 dark:text-green-400 ml-2">Speaking</span>
+                      <span v-if="participant.isScreenSharing" class="text-xs text-purple-600 dark:text-purple-400 ml-2">
+                        <UIcon name="i-lucide-monitor" class="inline text-sm" /> Sharing
+                      </span>
+                    </p>
+                  </div>
 
-              <div class="shrink-0 flex items-center gap-2">
-                <UButton
-                  v-if="isUserSharing(participant.odod)"
-                  color="primary"
-                  variant="soft"
-                  size="xs"
-                  icon="i-lucide-eye"
-                  @click.stop="handleViewScreenShare(participant.odod)"
-                >
-                  Watch
-                </UButton>
-                <UIcon v-if="participant.isScreenSharing" name="i-lucide-monitor" class="text-purple-500 text-xl" />
-                <UIcon v-if="participant.isMuted" name="i-lucide-mic-off" class="text-red-500 text-xl" />
-                <UIcon
-                  v-else
-                  name="i-lucide-mic"
-                  class="text-xl"
-                  :class="{ 'text-green-500': participant.isSpeaking, 'text-gray-400': !participant.isSpeaking }"
-                />
+                  <div class="shrink-0 flex items-center gap-2">
+                    <UButton
+                      v-if="isUserSharing(participant.odod)"
+                      color="primary"
+                      variant="soft"
+                      size="xs"
+                      icon="i-lucide-eye"
+                      @click.stop="handleViewScreenShare(participant.odod)"
+                    >
+                      Watch
+                    </UButton>
+                    <UIcon v-if="participant.isScreenSharing" name="i-lucide-monitor" class="text-purple-500 text-xl" />
+                    <UIcon v-if="participant.isMuted" name="i-lucide-mic-off" class="text-red-500 text-xl" />
+                    <UIcon
+                      v-else
+                      name="i-lucide-mic"
+                      class="text-xl"
+                      :class="{ 'text-green-500': participant.isSpeaking, 'text-gray-400': !participant.isSpeaking }"
+                    />
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div v-else-if="activeTab === 'soundboard'" class="h-[500px]">
+              <Soundboard :channel-id="channel.id" :stomp-client="stompClient || null" />
             </div>
           </div>
         </div>

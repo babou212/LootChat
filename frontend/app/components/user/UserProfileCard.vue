@@ -193,9 +193,10 @@ useClickAway(emojiPickerRef, closeEmojiPicker)
         <div
           v-if="showEmojiPicker"
           ref="emojiPickerRef"
-          class="absolute bottom-full right-0 mb-2 z-50"
+          class="fixed z-50"
+          style="bottom: 80px; right: 20px;"
         >
-          <EmojiPicker @select="handleEmojiSelect" />
+          <EmojiPicker :max-height="350" @select="handleEmojiSelect" />
         </div>
       </div>
     </div>

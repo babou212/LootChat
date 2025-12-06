@@ -157,6 +157,7 @@ onMounted(() => {
       <VoiceChannelSection
         :channels="channels"
         :is-collapsed="isCollapsed"
+        :stomp-client="stompClient"
         @join-voice="handleJoinVoice"
         @leave-voice="handleLeaveVoice"
         @view-screen-share="handleViewScreenShare"

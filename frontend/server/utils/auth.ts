@@ -52,8 +52,11 @@ export async function requireSessionToken(event: H3Event): Promise<string> {
 }
 
 /**
- * Refresh JWT token if expiring soon
- * Returns current or new token, null if refresh failed
+ * Refresh JWT token if expiring soon or expired (within grace period)
+ * Returns current or new token, null if refresh failed after retries
+ *
+ * Grace period allows refresh of expired tokens to keep session alive for 7 days
+ * Retries up to 3 times with exponential backoff for network resilience
  */
 export async function refreshTokenIfNeeded(event: H3Event): Promise<string | null> {
   const session = await getUserSession(event)
@@ -64,51 +67,72 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
   // Token not expiring soon - return current
   if (!isJwtExpiring(token)) return token
 
-  // Token already expired - can't refresh
-  if (isJwtExpired(token)) {
-    await clearUserSession(event)
-    return null
-  }
-
-  // Attempt token refresh
-  try {
-    const config = useRuntimeConfig()
-    const apiUrl = config.apiUrl || config.public.apiUrl
-
-    const response = await $fetch<{
-      token: string
-      userId: string | number
-      username: string
-      email: string
-      role: string
-      avatar?: string
-    }>(`${apiUrl}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` }
-    })
-
-    if (!response.token) {
+  // Token expired but within session grace period - attempt refresh
+  // Session lasts 7 days, so we allow refresh of expired tokens
+  const payload = decodeJwtPayload(token)
+  if (payload?.exp) {
+    const expiredSeconds = Math.floor(Date.now() / 1000) - payload.exp
+    // If expired more than 7 days, don't try to refresh
+    if (expiredSeconds > 60 * 60 * 24 * 7) {
       await clearUserSession(event)
       return null
     }
-
-    await replaceUserSession(event, {
-      user: {
-        userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
-        username: response.username,
-        email: response.email,
-        role: response.role,
-        avatar: response.avatar
-      },
-      token: response.token,
-      loggedInAt: session.loggedInAt
-    })
-
-    return response.token
-  } catch {
-    await clearUserSession(event)
-    return null
   }
+
+  // Attempt token refresh with retries
+  const config = useRuntimeConfig()
+  const apiUrl = config.apiUrl || config.public.apiUrl
+  const maxRetries = 3
+  const baseDelay = 100 // ms
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await $fetch<{
+        token: string
+        userId: string | number
+        username: string
+        email: string
+        role: string
+        avatar?: string
+      }>(`${apiUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        retry: 0 // Handle retries ourselves
+      })
+
+      if (!response.token) {
+        await clearUserSession(event)
+        return null
+      }
+
+      await replaceUserSession(event, {
+        user: {
+          userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
+          username: response.username,
+          email: response.email,
+          role: response.role,
+          avatar: response.avatar
+        },
+        token: response.token,
+        loggedInAt: session.loggedInAt
+      })
+
+      return response.token
+    } catch {
+      // If this was the last attempt, clear session
+      if (attempt === maxRetries - 1) {
+        await clearUserSession(event)
+        return null
+      }
+
+      // Wait before retry with exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  await clearUserSession(event)
+  return null
 }
 
 /**
