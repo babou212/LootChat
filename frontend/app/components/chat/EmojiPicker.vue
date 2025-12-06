@@ -1,97 +1,101 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 
-// Simple categorized emoji sets (can be expanded later)
-interface EmojiCategory {
-  key: string
-  label: string
-  emojis: string[]
+interface Props {
+  maxHeight?: number
 }
 
-const categories: EmojiCategory[] = [
-  {
-    key: 'smileys',
-    label: 'Smileys',
-    emojis: ['😀', '😃', '😄', '😁', '😆', '🥹', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '😍', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😴', '🤤', '🥱', '😮', '😯', '😲', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😎', '🤓', '🧐', '🥳']
-  },
-  {
-    key: 'gestures',
-    label: 'Gestures',
-    emojis: ['👍', '👎', '🙏', '👏', '🤝', '👊', '🤛', '🤜', '🤞', '✌️', '🤘', '👌', '🤌', '🖖', '✋', '🤚', '🖐️', '🫱', '🫲', '🫸', '🫷', '🫳', '🫴', '👋']
-  },
-  {
-    key: 'animals',
-    label: 'Animals',
-    emojis: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🐣', '🐺', '🦄']
-  },
-  {
-    key: 'food',
-    label: 'Food',
-    emojis: ['🍎', '🍊', '🍉', '🍓', '🍒', '🍍', '🥝', '🍅', '🥑', '🍆', '🥕', '🌽', '🥔', '🥐', '🍞', '🧀', '🥚', '🍖', '🍗', '🌭', '🍔', '🍟', '🍕', '🥪', '🥙', '🌮', '🌯', '🥗', '🍣']
-  },
-  {
-    key: 'activity',
-    label: 'Activity',
-    emojis: ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏓', '🏸', '🥏', '🥅', '⛳', '🏒', '🏑', '🏏', '🥍', '🏹', '🎣', '🥊', '🥋', '🎽', '🛼', '🛹', '⛸️', '🥌', '🎯', '🎱', '🎮', '🕹️', '🎲', '♟️']
-  },
-  {
-    key: 'objects',
-    label: 'Objects',
-    emojis: ['💡', '🔌', '💻', '🖥️', '⌨️', '🖱️', '📱', '📷', '🎥', '🎧', '📡', '📺', '⏰', '⌚', '🔋', '🔑', '✏️', '🖊️', '📝', '📎', '🗂️', '📁', '📦', '🔒', '🔓']
-  },
-  {
-    key: 'symbols',
-    label: 'Symbols',
-    emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '⭐', '🌟', '✨', '⚡', '🔥', '💥', '❄️', '💦', '💢', '💣']
-  }
-]
-
-const activeCategoryKey = ref(categories[0]!.key)
-
-const activeCategory = computed(() => categories.find(c => c.key === activeCategoryKey.value)!)
+const props = withDefaults(defineProps<Props>(), {
+  maxHeight: 435
+})
 
 const emit = defineEmits<{ (e: 'select', emoji: string): void }>()
 
-const selectEmoji = (e: string) => {
-  emit('select', e)
-}
+const pickerContainer = ref<HTMLDivElement | null>(null)
+let picker: any = null
+
+onMounted(async () => {
+  if (!pickerContainer.value) return
+
+  // Dynamic import for client-side only (SSR safe)
+  const { Picker } = await import('emoji-picker-element')
+  
+  picker = new Picker({
+    locale: 'en',
+    dataSource: 'https://cdn.jsdelivr.net/npm/emoji-picker-element-data@^1/en/emojibase/data.json',
+    skinToneEmoji: '👋',
+  })
+
+  // Style the picker with custom height
+  picker.className = 'emoji-picker-light dark:emoji-picker-dark'
+  picker.style.height = `${props.maxHeight}px`
+  
+  // Listen for emoji selection
+  picker.addEventListener('emoji-click', (event: any) => {
+    emit('select', event.detail.unicode)
+  })
+
+  pickerContainer.value.appendChild(picker)
+})
+
+onBeforeUnmount(() => {
+  if (picker && pickerContainer.value?.contains(picker)) {
+    pickerContainer.value.removeChild(picker)
+  }
+})
 </script>
 
 <template>
-  <div class="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow p-2 w-72">
-    <div class="flex flex-wrap gap-1 mb-2">
-      <button
-        v-for="c in categories"
-        :key="c.key"
-        type="button"
-        class="px-2 py-1 text-xs rounded border"
-        :class="c.key === activeCategoryKey ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 border-gray-900 dark:border-gray-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'"
-        @click="activeCategoryKey = c.key"
-      >
-        {{ c.label }}
-      </button>
-    </div>
-    <div class="grid grid-cols-8 gap-1 max-h-48 overflow-auto pr-1 scrollbar-hide">
-      <button
-        v-for="(e, i) in activeCategory.emojis"
-        :key="i"
-        type="button"
-        class="text-xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        @click="selectEmoji(e)"
-      >
-        {{ e }}
-      </button>
-    </div>
+  <div class="emoji-picker-wrapper">
+    <div ref="pickerContainer" class="emoji-picker-container" />
   </div>
 </template>
 
-<style scoped>
-.scrollbar-hide {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+<style>
+/* Light theme */
+emoji-picker {
+  --border-color: rgb(229 231 235);
+  --background: white;
+  --emoji-size: 1.375rem;
+  --input-border-color: rgb(209 213 219);
+  --input-font-color: rgb(17 24 39);
+  --input-background: white;
+  --outline-color: rgb(59 130 246);
+  --category-emoji-size: 1.25rem;
+  --category-font-color: rgb(55 65 81);
+  --button-active-background: rgb(243 244 246);
+  --button-hover-background: rgb(249 250 251);
+  --indicator-color: rgb(59 130 246);
+  --skintone-border-radius: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  width: 352px;
+  max-height: 100%;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari and Opera */
+/* Dark theme */
+.dark emoji-picker {
+  --border-color: rgb(55 65 81);
+  --background: rgb(31 41 55);
+  --emoji-size: 1.375rem;
+  --input-border-color: rgb(75 85 99);
+  --input-font-color: rgb(229 231 235);
+  --input-background: rgb(55 65 81);
+  --outline-color: rgb(96 165 250);
+  --category-emoji-size: 1.25rem;
+  --category-font-color: rgb(209 213 219);
+  --button-active-background: rgb(55 65 81);
+  --button-hover-background: rgb(75 85 99);
+  --indicator-color: rgb(96 165 250);
+  --skintone-border-radius: 0.5rem;
+}
+
+.emoji-picker-wrapper {
+  display: contents;
+}
+
+.emoji-picker-container {
+  display: flex;
 }
 </style>

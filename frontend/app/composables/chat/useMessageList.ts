@@ -211,8 +211,8 @@ export function useMessageList<TMessage extends BaseMessage, TReaction extends B
   const openEmojiUpwards = ref(false)
   const emojiAnchorEl = ref<HTMLElement | null>(null)
   const emojiPickerPosition = ref({ top: 0, left: 0 })
-  const PICKER_HEIGHT_ESTIMATE = 260
-  const PICKER_WIDTH_ESTIMATE = 300
+  const emojiPickerHeight = ref(435)
+  const PICKER_WIDTH = 352
 
   const toggleEmojiPicker = (messageId: number, event?: MouseEvent) => {
     if (activeEmojiPicker.value === messageId) {
@@ -230,23 +230,49 @@ export function useMessageList<TMessage extends BaseMessage, TReaction extends B
       const anchorRect = anchor.getBoundingClientRect()
       const viewportHeight = window.innerHeight
       const viewportWidth = window.innerWidth
+      const pickerHeight = emojiPickerHeight.value
 
-      const spaceBelow = viewportHeight - anchorRect.bottom
-      const spaceAbove = anchorRect.top
-      openEmojiUpwards.value = spaceBelow < PICKER_HEIGHT_ESTIMATE && spaceAbove > spaceBelow
+      // Calculate space available
+      const spaceBelow = viewportHeight - anchorRect.bottom - 8
+      const spaceAbove = anchorRect.top - 8
 
+      // Decide whether to open upwards or downwards
+      openEmojiUpwards.value = spaceBelow < pickerHeight && spaceAbove > spaceBelow
+
+      // Calculate horizontal position
       let left = anchorRect.left
-      if (left + PICKER_WIDTH_ESTIMATE > viewportWidth) {
-        left = viewportWidth - PICKER_WIDTH_ESTIMATE - 16
+      // Prevent overflow on right side
+      if (left + PICKER_WIDTH > viewportWidth - 16) {
+        left = viewportWidth - PICKER_WIDTH - 16
       }
+      // Prevent overflow on left side
       if (left < 16) left = 16
 
+      // Calculate vertical position with bounds checking
       let top: number
       if (openEmojiUpwards.value) {
-        top = anchorRect.top - PICKER_HEIGHT_ESTIMATE - 4
-        if (top < 8) top = 8
+        // Open upwards - position above the button with spacing
+        top = anchorRect.top - pickerHeight - 12
+        // If it would go above viewport, clamp to top with some padding
+        if (top < 8) {
+          top = 8
+          // Adjust height if needed
+          const availableHeight = anchorRect.top - 20
+          if (availableHeight < pickerHeight) {
+            emojiPickerHeight.value = Math.max(300, availableHeight)
+          }
+        }
       } else {
-        top = anchorRect.bottom + 4
+        // Open downwards - position below the button with spacing
+        top = anchorRect.bottom + 12
+        // If it would go below viewport, adjust
+        if (top + pickerHeight > viewportHeight - 8) {
+          const availableHeight = viewportHeight - anchorRect.bottom - 20
+          if (availableHeight < pickerHeight) {
+            // Not enough space below, try to fit what we can
+            emojiPickerHeight.value = Math.max(300, availableHeight)
+          }
+        }
       }
 
       emojiPickerPosition.value = { top, left }
@@ -257,6 +283,7 @@ export function useMessageList<TMessage extends BaseMessage, TReaction extends B
     activeEmojiPicker.value = null
     openEmojiUpwards.value = false
     emojiAnchorEl.value = null
+    emojiPickerHeight.value = 435 // Reset to default
   }
 
   useClickAway(emojiPickerRef, closeEmojiPicker)
@@ -545,6 +572,7 @@ export function useMessageList<TMessage extends BaseMessage, TReaction extends B
     activeEmojiPicker,
     emojiPickerRef,
     emojiPickerPosition,
+    emojiPickerHeight,
     toggleEmojiPicker,
     closeEmojiPicker,
     handleReactionClick,

@@ -1,13 +1,13 @@
-import { isJwtExpired, refreshTokenIfNeeded } from '../utils/auth'
+import { refreshTokenIfNeeded } from '../utils/auth'
 
 /**
  * Server middleware to validate and refresh JWT tokens
  *
  * Runs on every request and:
- * 1. Clears session if JWT is expired
- * 2. Refreshes JWT if it's about to expire
+ * 1. Attempts to refresh expired or expiring JWT tokens
+ * 2. Clears session only if refresh fails or token expired beyond grace period
  *
- * This ensures API calls always have a valid token.
+ * This keeps the session alive for 7 days even though JWT expires after 15 minutes.
  */
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
@@ -31,13 +31,7 @@ export default defineEventHandler(async (event) => {
       return
     }
 
-    // JWT expired - clear session immediately
-    if (isJwtExpired(session.token as string)) {
-      await clearUserSession(event)
-      return
-    }
-
-    // Refresh token if expiring soon (within 2 minutes)
+    // Attempt to refresh token (handles expired tokens within grace period)
     await refreshTokenIfNeeded(event)
   } catch {
     // Silently handle - routes will handle auth failures

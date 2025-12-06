@@ -8,8 +8,13 @@ DELETE FROM direct_message_messages WHERE 1=1;
 DELETE FROM direct_messages WHERE 1=1;
 DELETE FROM message_reactions WHERE 1=1;
 DELETE FROM messages WHERE 1=1;
+DELETE FROM soundboard_sounds WHERE 1=1;
 DELETE FROM channels WHERE 1=1;
 DELETE FROM invite_tokens WHERE 1=1;
+DELETE FROM devices WHERE 1=1;
+DELETE FROM password_reset_tokens WHERE 1=1;
+DELETE FROM outbox_events WHERE 1=1;
+DELETE FROM inbox_events WHERE 1=1;
 DELETE FROM users WHERE 1=1;
 
 INSERT INTO users (id, username, email, password, first_name, last_name, avatar, role, created_at, updated_at, is_enabled, is_account_non_expired, is_account_non_locked, is_credentials_non_expired) 
@@ -63,3 +68,4 @@ SELECT setval('message_reactions_id_seq', (SELECT COALESCE(MAX(id), 1) FROM mess
 SELECT setval('direct_messages_id_seq', (SELECT COALESCE(MAX(id), 1) FROM direct_messages));
 SELECT setval('direct_message_messages_id_seq', (SELECT COALESCE(MAX(id), 1) FROM direct_message_messages));
 SELECT setval('direct_message_reactions_id_seq', (SELECT COALESCE(MAX(id), 1) FROM direct_message_reactions));
+SELECT setval('soundboard_sounds_id_seq', (SELECT COALESCE(MAX(id), 1) FROM soundboard_sounds));
