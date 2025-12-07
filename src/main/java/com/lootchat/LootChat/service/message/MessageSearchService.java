@@ -10,6 +10,7 @@ import com.lootchat.LootChat.repository.MessageSearchRepository;
 import com.lootchat.LootChat.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@Lazy
 @RequiredArgsConstructor
 public class MessageSearchService {
     
