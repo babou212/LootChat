@@ -5,24 +5,10 @@ import type { H3Event } from 'h3'
  * Proxies to backend to refresh the user's presence TTL.
  */
 export default defineEventHandler(async (event: H3Event): Promise<{ success: boolean }> => {
-  const session = await getUserSession(event)
-
-  if (!session || !session.token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Not authenticated'
-    })
-  }
-
   try {
-    const config = useRuntimeConfig()
-    const apiUrl = config.apiUrl || config.public.apiUrl
-
-    await $fetch(`${apiUrl}/api/users/presence/heartbeat`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      }
+    const $api = await createValidatedFetch(event)
+    await $api('/api/users/presence/heartbeat', {
+      method: 'POST'
     })
 
     return { success: true }

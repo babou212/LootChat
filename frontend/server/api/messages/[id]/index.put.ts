@@ -16,26 +16,12 @@ interface MessageResponse {
 
 export default defineEventHandler(async (event: H3Event): Promise<MessageResponse> => {
   const body = await validateBody(event, updateMessageSchema)
-
-  const session = await getUserSession(event)
-
-  if (!session || !session.token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Not authenticated'
-    })
-  }
-
-  const config = useRuntimeConfig()
   const messageId = getRouterParam(event, 'id')
+  const $api = await createValidatedFetch(event)
 
   try {
-    const response: MessageResponse = await $fetch<MessageResponse>(`${config.apiUrl || config.public.apiUrl}/api/messages/${messageId}`, {
+    const response: MessageResponse = await $api<MessageResponse>(`/api/messages/${messageId}`, {
       method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${session.token}`,
-        'Content-Type': 'application/json'
-      },
       body: {
         content: body.content
       }

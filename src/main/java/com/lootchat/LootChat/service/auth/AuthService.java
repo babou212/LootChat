@@ -34,10 +34,12 @@ public class AuthService {
                     .build();
         }
 
-        var jwtToken = jwtService.generateToken(user);
+        var accessToken = jwtService.generateToken(user);
+        var refreshToken = jwtService.generateRefreshToken(user);
 
         return AuthResponse.builder()
-                .token(jwtToken)
+                .token(accessToken)
+                .refreshToken(refreshToken)
                 .userId(String.valueOf(user.getId()))
                 .username(user.getUsername())
                 .email(user.getEmail())
@@ -48,17 +50,17 @@ public class AuthService {
     }
 
     /**
-     * Refresh the JWT token for the currently authenticated user.
-     * This endpoint requires a valid (but potentially near-expiration) JWT token.
-     * Returns a new token with fresh expiration time.
+     * Refresh the access token using a valid refresh token.
+     * The refresh token must be valid and not expired (7 days).
+     * Returns a new access token (15 minutes) - refresh token stays the same.
      */
     public AuthResponse refreshToken() {
         User user = currentUserService.getCurrentUserOrThrow();
         
-        var newToken = jwtService.generateToken(user);
+        var newAccessToken = jwtService.generateToken(user);
         
         return AuthResponse.builder()
-                .token(newToken)
+                .token(newAccessToken)
                 .userId(String.valueOf(user.getId()))
                 .username(user.getUsername())
                 .email(user.getEmail())
