@@ -33,11 +33,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String jwt = null;
         String username = null;
 
-        // First, try to get JWT from Authorization header
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             jwt = authHeader.substring(7);
         } 
-        // If no header, check for token query parameter (for img tags)
         else {
             String tokenParam = request.getParameter("token");
             if (tokenParam != null && !tokenParam.isEmpty()) {
@@ -45,17 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
 
-        // If no token found in either location, continue filter chain
         if (jwt == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // Extract username and validate token
         try {
             username = jwtService.extractUsername(jwt);
         } catch (Exception e) {
-            // Invalid token format, continue without authentication
             filterChain.doFilter(request, response);
             return;
         }
@@ -63,7 +58,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-            if (jwtService.isTokenValid(jwt, userDetails)) {
+            boolean isRefreshEndpoint = request.getRequestURI().equals("/api/auth/refresh");
+            boolean isTokenValid;
+            
+            if (isRefreshEndpoint) {
+                isTokenValid = jwtService.isRefreshToken(jwt) && jwtService.isTokenValid(jwt, userDetails);
+            } else {
+                isTokenValid = !jwtService.isRefreshToken(jwt) && jwtService.isTokenValid(jwt, userDetails);
+            }
+
+            if (isTokenValid) {
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,

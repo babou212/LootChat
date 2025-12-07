@@ -1,16 +1,6 @@
 import type { H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
-  const session = await getUserSession(event)
-
-  if (!session || !session.token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Not authenticated'
-    })
-  }
-
-  const config = useRuntimeConfig()
   const formData = await readMultipartFormData(event)
 
   if (!formData) {
@@ -36,11 +26,9 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       }
     }
 
-    const message: unknown = await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/direct-messages/upload`, {
+    const $api = await createValidatedFetch(event)
+    const message: unknown = await $api<unknown>('/api/direct-messages/upload', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      },
       body: backendFormData
     })
     return message

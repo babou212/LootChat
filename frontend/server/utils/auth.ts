@@ -39,8 +39,11 @@ export async function requireSessionToken(event: H3Event): Promise<string> {
 export async function refreshTokenIfNeeded(event: H3Event): Promise<string | null> {
   const session = await getUserSession(event)
   const token = session?.token
+  const refreshToken = session?.refreshToken
 
   if (!session?.user || !token || typeof token !== 'string') return null
+
+  if (!refreshToken || typeof refreshToken !== 'string') return null
 
   if (!isJwtExpiring(token, 300)) return token
 
@@ -60,7 +63,7 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       avatar?: string
     }>(`${apiUrl}/api/auth/refresh`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${refreshToken}` },
       retry: 1
     })
 
@@ -77,6 +80,7 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
         avatar: response.avatar
       },
       token: response.token,
+      refreshToken: refreshToken,
       loggedInAt: session.loggedInAt,
       failedRefreshAttempts: 0
     })
@@ -118,7 +122,6 @@ export async function createValidatedFetch(event: H3Event) {
   const token = await requireValidToken(event)
   const config = useRuntimeConfig()
 
-  // Get CSRF token from cookies if available
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`
   }
@@ -128,7 +131,6 @@ export async function createValidatedFetch(event: H3Event) {
     headers['X-XSRF-TOKEN'] = csrfToken
   }
 
-  // Forward cookies to backend
   const cookieHeader = getHeader(event, 'cookie')
   if (cookieHeader) {
     headers['Cookie'] = cookieHeader

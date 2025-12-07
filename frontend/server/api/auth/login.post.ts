@@ -28,12 +28,12 @@ export default defineEventHandler(async (event) => {
 
   try {
     const config = useRuntimeConfig()
-    // Use internal API URL for server-side requests
     const apiUrl = config.apiUrl || config.public.apiUrl
 
     const response = await $fetch<{
       userId: string | number
       token: string
+      refreshToken?: string
       username: string
       email: string
       role: string
@@ -55,8 +55,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Store user data and JWT token in secure session
-    // Session expiration is handled by the cookie maxAge (7 days in nuxt.config)
     await setUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -66,11 +64,11 @@ export default defineEventHandler(async (event) => {
         avatar: response.avatar
       },
       token: response.token,
+      refreshToken: response.refreshToken,
       loggedInAt: new Date(),
       failedRefreshAttempts: 0
     })
 
-    // Return only user data to client (never expose token)
     return {
       success: true,
       user: {
@@ -82,7 +80,6 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: unknown) {
-    // Extract the actual error message from the backend
     interface ErrorWithData {
       data?: { message?: string }
       message?: string

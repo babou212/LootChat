@@ -2,16 +2,6 @@ import type { H3Event } from 'h3'
 
 export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
   try {
-    const session = await getUserSession(event)
-
-    if (!session || !session.token) {
-      throw createError({
-        statusCode: 401,
-        message: 'Not authenticated'
-      })
-    }
-
-    const config = useRuntimeConfig()
     const formData = await readMultipartFormData(event)
 
     if (!formData) {
@@ -36,11 +26,9 @@ export default defineEventHandler(async (event: H3Event): Promise<unknown> => {
       }
     }
 
-    return await $fetch<unknown>(`${config.apiUrl || config.public.apiUrl}/api/soundboard/sounds`, {
+    const $api = await createValidatedFetch(event)
+    return await $api<unknown>('/api/soundboard/sounds', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      },
       body: backendFormData
     })
   } catch (error) {

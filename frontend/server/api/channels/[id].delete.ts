@@ -1,22 +1,10 @@
 export default defineEventHandler(async (event) => {
-  const session = await getUserSession(event)
-
-  if (!session || !session.token) {
-    throw createError({
-      statusCode: 401,
-      message: 'Not authenticated'
-    })
-  }
-
-  const config = useRuntimeConfig()
   const channelId = getRouterParam(event, 'id')
+  const $api = await createValidatedFetch(event)
 
   try {
-    await $fetch(`${config.apiUrl || config.public.apiUrl}/api/channels/${channelId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${session.token}`
-      }
+    await $api(`/api/channels/${channelId}`, {
+      method: 'DELETE'
     })
     return { success: true }
   } catch {
