@@ -4,7 +4,7 @@ export default defineEventHandler(async (event) => {
   const $api = await createValidatedFetch(event)
 
   try {
-    const response = await $api('/api/users/password', {
+    await $api('/api/users/password', {
       method: 'PUT',
       body: validatedBody
     })

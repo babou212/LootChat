@@ -1,5 +1,4 @@
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig()
   const session = await getUserSession(event)
 
   if (!session.user) {
