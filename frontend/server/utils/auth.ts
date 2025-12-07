@@ -118,8 +118,24 @@ export async function createValidatedFetch(event: H3Event) {
   const token = await requireValidToken(event)
   const config = useRuntimeConfig()
 
+  // Get CSRF token from cookies if available
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`
+  }
+
+  const csrfToken = getCsrfToken(event)
+  if (csrfToken) {
+    headers['X-XSRF-TOKEN'] = csrfToken
+  }
+
+  // Forward cookies to backend
+  const cookieHeader = getHeader(event, 'cookie')
+  if (cookieHeader) {
+    headers['Cookie'] = cookieHeader
+  }
+
   return $fetch.create({
     baseURL: config.apiUrl || config.public.apiUrl,
-    headers: { Authorization: `Bearer ${token}` }
+    headers
   })
 }

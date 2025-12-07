@@ -18,6 +18,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.http.HttpMethod;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -39,14 +40,28 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+        requestHandler.setCsrfRequestAttributeName("_csrf");
+
         http
-            .csrf(AbstractHttpConfigurer::disable)
+            .csrf(csrf -> csrf
+                .csrfTokenRepository(new CookieCsrfTokenRepository())
+                .csrfTokenRequestHandler(requestHandler)
+                .ignoringRequestMatchers(
+                    "/api/auth/login",
+                    "/api/invites/*/register",
+                    "/api/auth/password/**",
+                    "/ws/**",
+                    "/actuator/**"
+                )
+            )
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.POST, "/api/invites/*/register").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/invites/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/password/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/csrf/token").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/users/check-username/*").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/users/check-email/*").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/files/**").permitAll()
@@ -60,7 +75,8 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new CsrfCookieFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -82,6 +98,7 @@ public class SecurityConfig {
             "Accept",
             "Origin",
             "X-Requested-With",
+            "X-XSRF-TOKEN",
             "Cache-Control"
         ));
         
@@ -89,7 +106,8 @@ public class SecurityConfig {
         configuration.setExposedHeaders(Arrays.asList(
             "Authorization",
             "Content-Type",
-            "Content-Disposition"
+            "Content-Disposition",
+            "X-XSRF-TOKEN"
         ));
         
         // Allow credentials (cookies, authorization headers)
