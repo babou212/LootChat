@@ -26,7 +26,6 @@ export default defineEventHandler(async (event): Promise<unknown> => {
 
   try {
     const response: unknown = await $fetch(`${config.apiUrl}/api/direct-messages/${directMessageId}/search?${params.toString()}`, {
-      method: 'GET',
       headers: {
         'Authorization': `Bearer ${session.token}`,
         'Content-Type': 'application/json'
