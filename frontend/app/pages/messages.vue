@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { z } from 'zod'
 import type GifPicker from '~/components/chat/GifPicker.vue'
+import MessageList from '~/components/chat/MessageList.vue'
 import type { DirectMessageMessage } from '../../shared/types/directMessage.d'
 import type { Message } from '../../shared/types/chat'
 import { useDirectMessagesStore } from '../../stores/directMessages'
@@ -59,20 +60,9 @@ const gifPickerContainerRef = ref<HTMLElement | null>(null)
 const loadingMoreMessages = ref(false)
 const PICKER_HEIGHT_ESTIMATE = 420
 
-// Search modal state
-const showSearchModal = ref(false)
-
-// Keyboard shortcut for search (Cmd+K / Ctrl+K)
-onMounted(() => {
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      e.preventDefault()
-      showSearchModal.value = true
-    }
-  }
-  window.addEventListener('keydown', handleKeyDown)
-  onUnmounted(() => window.removeEventListener('keydown', handleKeyDown))
-})
+const showDMSearchModal = ref(false)
+const highlightMessageId = ref<number | null>(null)
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null)
 
 const hasMoreMessages = computed(() => {
   if (!directMessagesStore.selectedDirectMessageId) return true
@@ -493,10 +483,52 @@ const cancelReply = () => {
   composerStore.cancelReply()
 }
 
+const handleNavigateToMessage = async (messageId: number) => {
+  if (!directMessagesStore.selectedDirectMessageId) return
+
+  try {
+    const dmId = directMessagesStore.selectedDirectMessageId
+    let messageExists = false
+    let attempts = 0
+    const maxAttempts = 10
+
+    while (!messageExists && attempts < maxAttempts) {
+      const messages = directMessagesStore.getMessages(dmId)
+      messageExists = messages.some(m => m.id === messageId)
+
+      if (!messageExists && hasMoreMessages.value && !loadingMoreMessages.value) {
+        // Load more messages
+        await loadMoreMessages()
+        attempts++
+      } else {
+        break
+      }
+    }
+
+    if (!messageExists) {
+      console.warn('Could not find message', messageId)
+      return
+    }
+
+    highlightMessageId.value = messageId
+
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 150))
+
+    if (messageListRef.value) {
+      messageListRef.value.scrollToMessage(messageId)
+    }
+
+    setTimeout(() => {
+      highlightMessageId.value = null
+    }, 3000)
+  } catch (error) {
+    console.error('Failed to navigate to message:', error)
+  }
+}
+
 const removeMessageById = (id: number) => {
   if (directMessagesStore.selectedDirectMessageId) {
-    // Soft delete: mark as deleted instead of removing
-    // This preserves reply chain context in the UI
     directMessagesStore.markAsDeleted(directMessagesStore.selectedDirectMessageId, id)
   }
 }
@@ -547,19 +579,13 @@ const isUserOnline = (userId: number): boolean => {
             </h1>
           </div>
         </div>
-        <div class="flex items-center gap-3">
-          <UButton
-            icon="i-lucide-search"
-            color="neutral"
-            variant="ghost"
-            aria-label="Search messages"
-            @click="showSearchModal = true"
-          />
-        </div>
       </div>
 
-      <!-- Search Modal -->
-      <MessageSearch v-model="showSearchModal" />
+      <DirectMessageSearch
+        v-model="showDMSearchModal"
+        :direct-message-id="directMessagesStore.selectedDirectMessageId"
+        @navigate-to-message="handleNavigateToMessage"
+      />
 
       <div v-if="directMessagesStore.loading" class="flex-1 flex items-center justify-center">
         <UIcon name="i-lucide-loader-2" class="animate-spin text-2xl text-gray-400 dark:text-gray-500" />
@@ -631,7 +657,7 @@ const isUserOnline = (userId: number): boolean => {
     </div>
 
     <div v-else class="flex-1 flex flex-col min-w-0">
-      <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center px-6">
+      <div class="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6">
         <div v-if="directMessagesStore.getSelectedDirectMessage" class="flex items-center gap-3">
           <div class="relative">
             <UAvatar
@@ -653,14 +679,23 @@ const isUserOnline = (userId: number): boolean => {
             </p>
           </div>
         </div>
+        <UButton
+          icon="i-lucide-search"
+          color="neutral"
+          variant="ghost"
+          aria-label="Search in conversation"
+          @click="showDMSearchModal = true"
+        />
       </div>
 
       <MessageList
+        ref="messageListRef"
         :messages="directMessagesStore.getMessages(directMessagesStore.selectedDirectMessageId)"
         :loading="false"
         :error="null"
         :has-more="hasMoreMessages"
         :loading-more="loadingMoreMessages"
+        :highlight-message-id="highlightMessageId"
         mode="direct"
         @message-deleted="removeMessageById"
         @reply-to-message="setReplyingTo"

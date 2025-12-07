@@ -1,9 +1,11 @@
 package com.lootchat.LootChat.controller.directmessage;
 
 import com.lootchat.LootChat.dto.directmessage.*;
+import com.lootchat.LootChat.dto.message.MessageSearchResponse;
 import com.lootchat.LootChat.dto.message.ReactionRequest;
 import com.lootchat.LootChat.dto.message.UpdateMessageRequest;
 import com.lootchat.LootChat.service.directmessage.DirectMessageService;
+import com.lootchat.LootChat.service.directmessage.DirectMessageSearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +19,7 @@ import java.util.List;
 public class DirectMessageController {
     
     private final DirectMessageService directMessageService;
+    private final DirectMessageSearchService searchService;
     
     @GetMapping
     public ResponseEntity<List<DirectMessageResponse>> getAllDirectMessages() {
@@ -85,5 +88,14 @@ public class DirectMessageController {
     public ResponseEntity<Void> deleteMessage(@PathVariable Long messageId) {
         directMessageService.deleteMessage(messageId);
         return ResponseEntity.noContent().build();
+    }
+    
+    @GetMapping("/{directMessageId}/search")
+    public ResponseEntity<MessageSearchResponse> searchMessages(
+            @PathVariable Long directMessageId,
+            @RequestParam String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(directMessageService.searchMessages(directMessageId, query, page, size));
     }
 }

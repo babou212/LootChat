@@ -104,5 +104,26 @@ export const directMessageApi = {
     await $fetch(`/api/direct-messages/messages/${messageId}`, {
       method: 'DELETE'
     })
+  },
+
+  async searchMessages(directMessageId: number, query: string, page = 0, size = 20): Promise<{
+    results: Array<{
+      messageId: number
+      content: string
+      userId: number
+      username: string
+      userAvatar?: string
+      createdAt: string
+      edited: boolean
+      attachmentUrls?: string[]
+    }>
+    page: number
+    size: number
+    totalElements: number
+    totalPages: number
+  }> {
+    return await $fetch(`/api/search/direct-messages`, {
+      params: { directMessageId, query, page, size }
+    })
   }
 }
