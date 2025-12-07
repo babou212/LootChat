@@ -37,11 +37,9 @@ export default defineEventHandler(async (event) => {
 
   const response = await $api<DirectMessageMessageResponse>(`/api/direct-messages/messages/${messageId}`, {
     method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${session.token}`,
-      'Content-Type': 'application/json'
-    },
-    body
+    body: {
+      content: body.content
+    }
   })
 
   return response
