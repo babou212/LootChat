@@ -8,6 +8,7 @@ definePageMeta({
 })
 
 const { login, loading, error } = useAuth()
+const { fetchCsrfToken } = useCsrf()
 
 const schema = z.object({
   username: z.string()
@@ -28,6 +29,8 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
   const result = await login(event.data)
 
   if (result.success) {
+    await fetchCsrfToken()
+
     await navigateTo('/')
   }
 }

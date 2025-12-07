@@ -1,5 +1,6 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const { loggedIn, fetch: fetchSession } = useUserSession()
+  const { fetchCsrfToken } = useCsrf()
 
   const publicRoutes = new Set([
     '/login',
@@ -11,6 +12,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const isPublic = publicRoutes.has(to.path) || to.path.startsWith('/invite/')
 
   await fetchSession()
+
+  if (loggedIn.value && import.meta.client) {
+    await fetchCsrfToken()
+  }
 
   if (isPublic) {
     if (loggedIn.value && to.path === '/login') {
