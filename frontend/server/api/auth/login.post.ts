@@ -1,13 +1,8 @@
 import { z } from 'zod'
 
 const loginSchema = z.object({
-  username: z.string()
-    .min(3, 'Username must be at least 3 characters')
-    .max(50, 'Username must be less than 50 characters')
-    .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores and hyphens'),
+  username: z.string(),
   password: z.string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(255, 'Password is too long')
 })
 
 export default defineEventHandler(async (event) => {
@@ -53,9 +48,10 @@ export default defineEventHandler(async (event) => {
     })
 
     if (!response.token) {
+      const errorMessage = response.message || 'Authentication failed'
       throw createError({
         statusCode: 401,
-        message: 'Authentication failed'
+        message: errorMessage
       })
     }
 
@@ -70,7 +66,8 @@ export default defineEventHandler(async (event) => {
         avatar: response.avatar
       },
       token: response.token,
-      loggedInAt: new Date()
+      loggedInAt: new Date(),
+      failedRefreshAttempts: 0
     })
 
     // Return only user data to client (never expose token)
@@ -85,13 +82,20 @@ export default defineEventHandler(async (event) => {
       }
     }
   } catch (error: unknown) {
-    const statusCode = error && typeof error === 'object' && 'statusCode' in error
-      ? (error as { statusCode?: number }).statusCode || 401
-      : 401
+    // Extract the actual error message from the backend
+    interface ErrorWithData {
+      data?: { message?: string }
+      message?: string
+      statusCode?: number
+      status?: number
+    }
+    const errorObj = error as ErrorWithData
+    const message = errorObj?.data?.message || errorObj?.message || 'Invalid credentials'
+    const statusCode = errorObj?.statusCode || errorObj?.status || 401
 
     throw createError({
       statusCode,
-      message: 'Invalid credentials'
+      message
     })
   }
 })

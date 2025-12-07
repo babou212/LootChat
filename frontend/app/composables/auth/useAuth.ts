@@ -41,7 +41,10 @@ export const useAuth = () => {
       error.value = 'Login failed'
       return { success: false, message: 'Login failed' }
     } catch (err: unknown) {
-      error.value = (err as { data?: { message?: string } })?.data?.message || 'Invalid credentials'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const errorObj = err as any
+      const message = errorObj?.data?.message || errorObj?.message || 'Invalid credentials'
+      error.value = message
       return { success: false, message: error.value }
     } finally {
       loading.value = false
