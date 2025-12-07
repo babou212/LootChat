@@ -2,6 +2,7 @@ package com.lootchat.LootChat.service.directmessage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lootchat.LootChat.dto.directmessage.*;
+import com.lootchat.LootChat.dto.message.MessageSearchResponse;
 import com.lootchat.LootChat.dto.user.UserResponse;
 import com.lootchat.LootChat.entity.DirectMessage;
 import com.lootchat.LootChat.entity.DirectMessageMessage;
@@ -18,6 +19,7 @@ import com.lootchat.LootChat.service.file.S3FileStorageService;
 import com.lootchat.LootChat.service.inbox.OutboxService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
@@ -37,7 +39,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class DirectMessageService {
     
@@ -51,6 +52,32 @@ public class DirectMessageService {
     private final S3FileStorageService s3FileStorageService;
     private final CacheManager cacheManager;
     private final WebSocketBroadcastService broadcastService;
+    private final DirectMessageSearchService searchService;
+    
+    public DirectMessageService(
+            DirectMessageRepository directMessageRepository,
+            DirectMessageMessageRepository directMessageMessageRepository,
+            DirectMessageReactionRepository directMessageReactionRepository,
+            UserRepository userRepository,
+            CurrentUserService currentUserService,
+            OutboxService outboxService,
+            ObjectMapper objectMapper,
+            S3FileStorageService s3FileStorageService,
+            CacheManager cacheManager,
+            WebSocketBroadcastService broadcastService,
+            @Lazy DirectMessageSearchService searchService) {
+        this.directMessageRepository = directMessageRepository;
+        this.directMessageMessageRepository = directMessageMessageRepository;
+        this.directMessageReactionRepository = directMessageReactionRepository;
+        this.userRepository = userRepository;
+        this.currentUserService = currentUserService;
+        this.outboxService = outboxService;
+        this.objectMapper = objectMapper;
+        this.s3FileStorageService = s3FileStorageService;
+        this.cacheManager = cacheManager;
+        this.broadcastService = broadcastService;
+        this.searchService = searchService;
+    }
     
     @Transactional(readOnly = true)
     public List<DirectMessageResponse> getAllDirectMessages() {
@@ -153,6 +180,8 @@ public class DirectMessageService {
         DirectMessageMessage message = messageBuilder.build();
         DirectMessageMessage savedMessage = directMessageMessageRepository.save(message);
         
+        searchService.indexMessage(savedMessage);
+        
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
         
@@ -209,6 +238,8 @@ public class DirectMessageService {
         
         DirectMessageMessage message = messageBuilder.build();
         DirectMessageMessage savedMessage = directMessageMessageRepository.save(message);
+        
+        searchService.indexMessage(savedMessage);
         
         dm.setLastMessageAt(LocalDateTime.now());
         directMessageRepository.save(dm);
@@ -400,6 +431,8 @@ public class DirectMessageService {
         message.setImageUrl(null);
         message.setImageFilename(null);
         directMessageMessageRepository.save(message);
+        
+        searchService.deleteMessage(messageId);
 
         evictDirectMessagesListCache(dm.getUser1().getId(), dm.getUser2().getId());
         
@@ -671,5 +704,19 @@ public class DirectMessageService {
         } catch (Exception e) {
             log.error("Error broadcasting direct message reaction immediately: {}", e.getMessage(), e);
         }
+    }
+    
+    @Transactional(readOnly = true)
+    public MessageSearchResponse searchMessages(Long directMessageId, String query, int page, int size) {
+        Long currentUserId = currentUserService.getCurrentUserIdOrThrow();
+        
+        DirectMessage dm = directMessageRepository.findByIdWithUsers(directMessageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Direct message not found"));
+        
+        if (!dm.includesUser(currentUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+        
+        return searchService.searchMessages(query, directMessageId, page, size);
     }
 }
