@@ -3,10 +3,10 @@
  * This endpoint calls the backend to get a new JWT token and updates the session
  */
 export default defineEventHandler(async (event) => {
-  const token = await requireSessionToken(event)
   const session = await getUserSession(event)
+  const token = session?.token
 
-  if (!session?.user) {
+  if (!session?.user || !token) {
     throw createError({
       statusCode: 401,
       message: 'Not authenticated'
@@ -37,10 +37,6 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    // Calculate new token expiration
-    const expiresAt = new Date()
-    expiresAt.setDate(expiresAt.getDate() + 7)
-
     await replaceUserSession(event, {
       user: {
         userId: typeof response.userId === 'string' ? parseInt(response.userId) : response.userId,
@@ -50,8 +46,7 @@ export default defineEventHandler(async (event) => {
         avatar: response.avatar
       },
       token: response.token,
-      loggedInAt: session.loggedInAt,
-      expiresAt
+      loggedInAt: session.loggedInAt
     })
 
     return {

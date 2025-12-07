@@ -3,6 +3,7 @@ package com.lootchat.LootChat.service.message;
 import com.lootchat.LootChat.document.MessageDocument;
 import com.lootchat.LootChat.dto.message.MessageSearchResponse;
 import com.lootchat.LootChat.dto.message.MessageSearchResult;
+import com.lootchat.LootChat.entity.ChannelType;
 import com.lootchat.LootChat.entity.Message;
 import com.lootchat.LootChat.entity.User;
 import com.lootchat.LootChat.repository.MessageRepository;
@@ -57,6 +58,11 @@ public class MessageSearchService {
      */
     @Transactional
     public void indexMessage(Message message) {
+        if (message.getChannel().getChannelType() != ChannelType.TEXT) {
+            log.debug("Skipping indexing for message {} from voice channel", message.getId());
+            return;
+        }
+        
         try {
             MessageDocument document = MessageDocument.builder()
                     .id(message.getId().toString())
@@ -109,6 +115,7 @@ public class MessageSearchService {
         
         List<Message> allMessages = messageRepository.findAll();
         List<MessageDocument> documents = allMessages.stream()
+                .filter(message -> message.getChannel().getChannelType() == ChannelType.TEXT)
                 .map(message -> MessageDocument.builder()
                         .id(message.getId().toString())
                         .messageId(message.getId())
@@ -124,7 +131,7 @@ public class MessageSearchService {
                 .collect(Collectors.toList());
         
         searchRepository.saveAll(documents);
-        log.info("Completed reindex of {} messages", documents.size());
+        log.info("Completed reindex of {} messages (TEXT channels only)", documents.size());
     }
     
     private MessageSearchResponse buildResponse(Page<MessageDocument> page) {

@@ -98,10 +98,30 @@ const onSubmit = async (event: FormSubmitEvent<Schema>) => {
           </NuxtLink>
         </div>
 
-        <div v-if="error" class="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-alert-circle" class="h-4 w-4" />
-            <span>{{ error }}</span>
+        <div
+          v-if="error"
+          :class="[
+            'text-sm rounded-lg p-3 border',
+            error.toLowerCase().includes('locked') || error.toLowerCase().includes('too many')
+              ? 'text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/20 border-orange-300 dark:border-orange-700'
+              : 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          ]"
+        >
+          <div class="flex items-start gap-2">
+            <UIcon
+              :name="error.toLowerCase().includes('locked') || error.toLowerCase().includes('too many')
+                ? 'i-lucide-shield-alert'
+                : 'i-lucide-alert-circle'"
+              class="h-4 w-4 mt-0.5 shrink-0"
+            />
+            <div class="flex-1">
+              <p class="font-medium">
+                {{ error }}
+              </p>
+              <p v-if="error.toLowerCase().includes('locked')" class="mt-1 text-xs opacity-90">
+                Your account has been temporarily locked. Please wait 5 minutes before trying again.
+              </p>
+            </div>
           </div>
         </div>
 

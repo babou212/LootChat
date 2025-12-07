@@ -67,4 +67,20 @@ public class RateLimitService {
     public void reset(String key) {
         redisTemplate.delete("ratelimit:" + key);
     }
+    
+    /**
+     * Check if a lockout key exists
+     */
+    public boolean isLocked(String key) {
+        String rateLimitKey = "ratelimit:" + key;
+        return Boolean.TRUE.equals(redisTemplate.hasKey(rateLimitKey));
+    }
+    
+    /**
+     * Set a lockout for a key
+     */
+    public void setLockout(String key, Duration duration) {
+        String rateLimitKey = "ratelimit:" + key;
+        redisTemplate.opsForValue().set(rateLimitKey, "locked", duration);
+    }
 }

@@ -31,13 +31,17 @@ const isOpen = computed({
 const channelOptions = computed(() => {
   return [
     { id: undefined, name: 'All Channels' },
-    ...channelsStore.channels.map((ch: Channel) => ({ id: ch.id, name: ch.name }))
+    ...channelsStore.channels
+      .filter((ch: Channel) => ch.channelType === 'TEXT')
+      .map((ch: Channel) => ({ id: ch.id, name: ch.name }))
   ]
 })
 
 const selectedChannelName = computed(() => {
   if (!selectedChannelId.value) return 'All Channels'
-  return channelsStore.channels.find((ch: Channel) => ch.id === selectedChannelId.value)?.name || 'All Channels'
+  return channelsStore.channels
+    .filter((ch: Channel) => ch.channelType === 'TEXT')
+    .find((ch: Channel) => ch.id === selectedChannelId.value)?.name || 'All Channels'
 })
 
 async function performSearch(page: number = 0) {
