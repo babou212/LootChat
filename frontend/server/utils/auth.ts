@@ -45,13 +45,10 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
 
   if (!refreshToken || typeof refreshToken !== 'string') return null
 
-  if (!isJwtExpiring(token, 300)) return token
+  if (!isJwtExpired(token) && !isJwtExpiring(token, 300)) return token
 
   const config = useRuntimeConfig()
   const apiUrl = config.apiUrl || config.public.apiUrl
-
-  const failedAttempts = (session.failedRefreshAttempts as number) || 0
-  const maxFailures = 3
 
   try {
     const response = await $fetch<{
@@ -81,27 +78,17 @@ export async function refreshTokenIfNeeded(event: H3Event): Promise<string | nul
       },
       token: response.token,
       refreshToken: refreshToken,
-      loggedInAt: session.loggedInAt,
-      failedRefreshAttempts: 0
+      loggedInAt: session.loggedInAt
     })
 
     return response.token
   } catch (error: unknown) {
-    const fetchError = error as { response?: { status?: number } }
+    const fetchError = error as { response?: { status?: number }, data?: { message?: string } }
     const isAuthError = fetchError?.response?.status === 401 || fetchError?.response?.status === 403
 
     if (isAuthError) {
-      const newFailedAttempts = failedAttempts + 1
-
-      if (newFailedAttempts >= maxFailures) {
-        await clearUserSession(event)
-        return null
-      }
-
-      await replaceUserSession(event, {
-        ...session,
-        failedRefreshAttempts: newFailedAttempts
-      })
+      await clearUserSession(event)
+      return null
     }
 
     return token
