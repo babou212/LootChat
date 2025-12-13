@@ -373,11 +373,15 @@ const selectChannel = async (channel: typeof channels.value[0]) => {
 const fetchMessages = async (loadOlder = false) => {
   try {
     if (!user.value) {
+      loading.value = false
+      loadingMoreMessages.value = false
       return navigateTo('/login')
     }
 
     const channelId = selectedChannel.value?.id
     if (!channelId) {
+      loading.value = false
+      loadingMoreMessages.value = false
       return
     }
 
